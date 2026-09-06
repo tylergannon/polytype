@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/constant"
 	"go/token"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -666,7 +667,7 @@ func (r *ScanResult) resolveTypes() error {
 			if err = remote.resolveTypes(); err != nil {
 				return fmt.Errorf("resolving type at %s: %w", pkgPath, err)
 			}
-		} else if pkgs, err := Load(pkgPath); err != nil {
+		} else if pkgs, err := r.loadDependency(pkgPath); err != nil {
 			return err
 		} else {
 			remote = newScanResult(pkgs[0], r.deps)
@@ -677,6 +678,34 @@ func (r *ScanResult) resolveTypes() error {
 		}
 	}
 	return nil
+}
+
+// loadDependency resolves an imported package by import path from the loading
+// package's own directory. Resolving it from the process working directory
+// instead would look it up in the wrong module whenever the loaded package is
+// not the one the process was started in.
+func (r *ScanResult) loadDependency(pkgPath string) ([]*decorator.Package, error) {
+	files := r.Pkg.GoFiles
+	if len(files) == 0 {
+		files = r.Pkg.CompiledGoFiles
+	}
+	if len(files) == 0 {
+		return Load(pkgPath)
+	}
+	return LoadFrom(filepath.Dir(files[0]), pkgPath)
+}
+
+// EnsureRemoteType loads pkgPath as a dependency of r, if it is not loaded
+// already, and resolves typeName inside it. Dependency packages otherwise
+// enter deps only through marker-seeded traversal, so a caller that reaches a
+// named type without a marker (a caller-supplied lowering root) must ask for
+// the package on demand. Loading is per package, not per module.
+func (r *ScanResult) EnsureRemoteType(pkgPath, typeName string) error {
+	if pkgPath == "" || pkgPath == r.Pkg.PkgPath {
+		return nil
+	}
+	r.remoteTypes.addType(pkgPath, typeName)
+	return r.resolveTypes()
 }
 
 func (r *ScanResult) requestType(typeName string) error {

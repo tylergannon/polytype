@@ -803,12 +803,12 @@ func (s SchemaBuilder) AddSchema(t syntax.TypeID, schema JSONSchema) {
 // loadScanResult gets the scan result associated with the given syntax.TypeID
 func (s SchemaBuilder) loadScanResult(t syntax.TypeID) (syntax.ScanResult, error) {
 	if t.PkgPath == "" {
-		panic("empty package path in loadScanResult")
+		return syntax.ScanResult{}, fmt.Errorf("empty package path in loadScanResult")
 	}
 	if res, ok := s.Scan.GetPackage(t.PkgPath); ok {
 		return res, nil
 	}
-	panic("package was not loaded: " + t.PkgPath)
+	return syntax.ScanResult{}, fmt.Errorf("package was not loaded: %s", t.PkgPath)
 }
 
 func (s SchemaBuilder) find(t syntax.TypeID) (token.Position, error) {

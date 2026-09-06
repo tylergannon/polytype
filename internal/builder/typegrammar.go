@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -46,20 +47,63 @@ func (s *SchemaBuilder) TypeDefinitions() (typegrammar.Definitions, error) {
 	return l.defs, nil
 }
 
+// Refusal messages shared by the two lowering entry points. The dst-based
+// field lowering (typ) and the go/types root bridge (rootType) must reject the
+// same shape with the same words, so a caller cannot tell which path found it.
+const (
+	msgMapType             = "maps are outside the static type grammar at %s"
+	msgChanType            = "channels are outside the static type grammar at %s"
+	msgFuncType            = "functions are outside the static type grammar at %s"
+	msgInterfaceType       = "interfaces are valid only as configured direct fields at %s"
+	msgPresenceWrapper     = "presence wrappers are valid only as complete direct named fields at %s"
+	msgUnsupportedTypeExpr = "unsupported type expression %T at %s"
+	msgUnresolvedExternal  = "unresolved external type %s; no static wire shape was loaded"
+)
+
 type typeGrammarLowerer struct {
 	builder *SchemaBuilder
 	defs    typegrammar.Definitions
 	index   map[typegrammar.Name]int
+	// resolve, when set, loads a package that marker-seeded traversal never
+	// reached. Only the root bridge sets it: the builder's own roots are
+	// marker-seeded, so their dependencies are already in the scan.
+	resolve func(name typegrammar.Name) error
+}
+
+// errPackageNotLoaded reports that name's package is absent and no resolver
+// could supply it. Each caller words that outcome for its own context.
+var errPackageNotLoaded = errors.New("package not loaded")
+
+// ensurePackage loads name's package on demand, if this lowerer was given a
+// resolver. A resolver failure is returned as-is: it names a real load error,
+// which is more useful than "not loaded".
+func (l *typeGrammarLowerer) ensurePackage(name typegrammar.Name) error {
+	if _, ok := l.builder.Scan.GetPackage(name.PackagePath); ok {
+		return nil
+	}
+	if l.resolve == nil {
+		return errPackageNotLoaded
+	}
+	if err := l.resolve(name); err != nil {
+		return fmt.Errorf("load package %q for named type %s: %w", name.PackagePath, name, err)
+	}
+	if _, ok := l.builder.Scan.GetPackage(name.PackagePath); !ok {
+		return errPackageNotLoaded
+	}
+	return nil
 }
 
 func (l *typeGrammarLowerer) named(name typegrammar.Name) error {
 	if _, ok := l.index[name]; ok {
 		return nil
 	}
-	scan, ok := l.builder.Scan.GetPackage(name.PackagePath)
-	if !ok {
+	if err := l.ensurePackage(name); err != nil {
+		if !errors.Is(err, errPackageNotLoaded) {
+			return err
+		}
 		return fmt.Errorf("unresolved package %q for named type %s", name.PackagePath, name)
 	}
+	scan, _ := l.builder.Scan.GetPackage(name.PackagePath)
 	if err := typeGrammarPackageError(scan); err != nil {
 		return err
 	}
@@ -131,8 +175,11 @@ func (l *typeGrammarLowerer) typ(expr syntax.TypeExpr) (typegrammar.Type, error)
 			return &typegrammar.Time{}, nil
 		}
 		name := typegrammar.Name{PackagePath: pkgPath, Name: node.Name}
-		if _, ok := l.builder.Scan.GetPackage(pkgPath); !ok {
-			return nil, fmt.Errorf("unresolved external type %s; no static wire shape was loaded", name)
+		if err := l.ensurePackage(name); err != nil {
+			if !errors.Is(err, errPackageNotLoaded) {
+				return nil, err
+			}
+			return nil, fmt.Errorf(msgUnresolvedExternal, name)
 		}
 		if err := l.named(name); err != nil {
 			return nil, err
@@ -188,17 +235,17 @@ func (l *typeGrammarLowerer) typ(expr syntax.TypeExpr) (typegrammar.Type, error)
 		return &typegrammar.Object{Fields: fields}, nil
 
 	case *dst.MapType:
-		return nil, fmt.Errorf("maps are outside the static type grammar at %s", expr.Position())
+		return nil, fmt.Errorf(msgMapType, expr.Position())
 	case *dst.ChanType:
-		return nil, fmt.Errorf("channels are outside the static type grammar at %s", expr.Position())
+		return nil, fmt.Errorf(msgChanType, expr.Position())
 	case *dst.FuncType:
-		return nil, fmt.Errorf("functions are outside the static type grammar at %s", expr.Position())
+		return nil, fmt.Errorf(msgFuncType, expr.Position())
 	case *dst.InterfaceType:
-		return nil, fmt.Errorf("interfaces are valid only as configured direct fields at %s", expr.Position())
+		return nil, fmt.Errorf(msgInterfaceType, expr.Position())
 	case *dst.IndexExpr, *dst.IndexListExpr:
-		return nil, fmt.Errorf("presence wrappers are valid only as complete direct named fields at %s", expr.Position())
+		return nil, fmt.Errorf(msgPresenceWrapper, expr.Position())
 	default:
-		return nil, fmt.Errorf("unsupported type expression %T at %s", node, expr.Position())
+		return nil, fmt.Errorf(msgUnsupportedTypeExpr, node, expr.Position())
 	}
 }
 

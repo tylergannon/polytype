@@ -27,6 +27,16 @@ var DefaultPackageCfg = &packages.Config{
 	BuildFlags: []string{"-tags=" + BuildTag},
 }
 
+// LoadFrom resolves pattern (an import path) with the go command running in
+// dir, so a package outside the current module -- a dependency of a caller's
+// own loaded package -- resolves against that package's module rather than the
+// process working directory.
+func LoadFrom(dir, pattern string) ([]*decorator.Package, error) {
+	config := *DefaultPackageCfg
+	config.Dir = dir
+	return decorator.Load(&config, pattern)
+}
+
 func Load(path string) ([]*decorator.Package, error) {
 	targetDir, err := filepath.Abs(path)
 	if err != nil {
