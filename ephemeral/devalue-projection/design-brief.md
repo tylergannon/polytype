@@ -51,9 +51,11 @@ Both reject a non-member with an error that names the type and the value.
   amendment log at the top of the file, nothing more.
 - Proof: extend an existing enum fixture (`internal/builder/testfixtures/enums`
   or the `test_run` copy) so a consumer test shows `json.Marshal` of a
-  zero-valued struct fails naming the field, a member marshals, a validated
-  document round-trips byte-identically, and `json.Unmarshal` of a
-  non-member fails.
+  zero-valued struct fails with an error naming the enum type and the
+  offending value (`encoding/json` wraps it with the Go type; naming the
+  enclosing field would need an owner codec on every struct with an enum
+  field, which is forbidden), a member marshals, a validated document
+  round-trips byte-identically, and `json.Unmarshal` of a non-member fails.
 
 ## Milestone 2: #104 export the grammar
 
