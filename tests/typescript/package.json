@@ -1,7 +1,0 @@
-{
-  "name": "polytype-typescript-conformance",
-  "private": true,
-  "type": "module",
-  "scripts": { "test": "node check.mjs" },
-  "devDependencies": { "typescript": "6.0.3" }
-}

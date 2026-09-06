@@ -12,9 +12,7 @@ func (Envelope) Schema() json.RawMessage    { panic("not implemented") }
 func (Detail) Schema() json.RawMessage      { panic("not implemented") }
 func (Composition) Schema() json.RawMessage { panic("not implemented") }
 
-var _ = polytype.NewJSONSchemaMethod(Detail.Schema, polytype.AsRef())
-var _ = polytype.NewJSONSchemaMethod(Composition.Schema)
-var _ = polytype.NewJSONSchemaMethod(Envelope.Schema,
-	polytype.WithStringerEnum(Envelope{}.PriorityName),
-)
+var _ = polytype.Declare(Detail.Schema).Ref()
+var _ = polytype.Declare(Composition.Schema)
+var _ = polytype.Declare(Envelope.Schema).StringerEnum(Envelope{}.PriorityName)
 var _ = polytype.SealedUnion[Event]("!kind")

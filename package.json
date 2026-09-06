@@ -1,0 +1,10 @@
+{
+  "name": "polytype-dev",
+  "private": true,
+  "type": "module",
+  "description": "Development-only pins: the TypeScript compiler the internal/typescript conformance test runs, and the devalue release the devalue goldens are recorded against. Neither production generation nor `go test ./...` needs npm.",
+  "devDependencies": {
+    "devalue": "5.9.2",
+    "typescript": "6.0.3"
+  }
+}

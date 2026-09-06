@@ -19,12 +19,6 @@ type Deleted struct {
 
 func (*Deleted) event() {}
 
-type Renamed struct {
-	NewName string `json:"new_name"`
-}
-
-// ADDED_VARIANT
-
 // Detail comments safely contain a terminator: */ and Unicode: 雪.
 type Detail struct {
 	Message string `json:"message"`
