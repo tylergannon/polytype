@@ -20,7 +20,123 @@ var errNoDiscriminator = errors.New("no discriminator property 'type' found")
 // the generator requires.
 var (
 	_ interface{ enum() } = EnumVal1
+	_ interface{ enum() } = ZeroCodeNone
+	_ interface{ enum() } = ZeroValueEmpty
 )
+
+// MarshalJSON encodes EnumType as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue EnumType) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case EnumVal1:
+		return []byte("\"val1\""), nil
+	case EnumVal2:
+		return []byte("\"val2\""), nil
+	case EnumVal3:
+		return []byte("\"val3\""), nil
+	case EnumVal4:
+		return []byte("\"val4\""), nil
+	}
+	return nil, fmt.Errorf("polytype: %q is not a declared member of enum EnumType", string(__enumValue))
+}
+
+// UnmarshalJSON decodes EnumType, accepting only the values of its
+// declared constants.
+func (__enumValue *EnumType) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *string
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum EnumType: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum EnumType cannot be JSON null")
+	}
+	switch EnumType(*__wire) {
+	case EnumVal1:
+	case EnumVal2:
+	case EnumVal3:
+	case EnumVal4:
+	default:
+		return fmt.Errorf("polytype: %q is not a declared member of enum EnumType", *__wire)
+	}
+	*__enumValue = EnumType(*__wire)
+	return nil
+}
+
+// MarshalJSON encodes ZeroCodeEnum as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue ZeroCodeEnum) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case ZeroCodeNone:
+		return []byte("0"), nil
+	case ZeroCodeOne:
+		return []byte("1"), nil
+	}
+	return nil, fmt.Errorf("polytype: %v is not a declared member of enum ZeroCodeEnum", int(__enumValue))
+}
+
+// UnmarshalJSON decodes ZeroCodeEnum, accepting only the values of its
+// declared constants.
+func (__enumValue *ZeroCodeEnum) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *int
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum ZeroCodeEnum: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum ZeroCodeEnum cannot be JSON null")
+	}
+	switch ZeroCodeEnum(*__wire) {
+	case ZeroCodeNone:
+	case ZeroCodeOne:
+	default:
+		return fmt.Errorf("polytype: %v is not a declared member of enum ZeroCodeEnum", *__wire)
+	}
+	*__enumValue = ZeroCodeEnum(*__wire)
+	return nil
+}
+
+// MarshalJSON encodes ZeroValueEnum as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue ZeroValueEnum) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case ZeroValueEmpty:
+		return []byte("\"\""), nil
+	case ZeroValueSet:
+		return []byte("\"set\""), nil
+	}
+	return nil, fmt.Errorf("polytype: %q is not a declared member of enum ZeroValueEnum", string(__enumValue))
+}
+
+// UnmarshalJSON decodes ZeroValueEnum, accepting only the values of its
+// declared constants.
+func (__enumValue *ZeroValueEnum) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *string
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum ZeroValueEnum: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum ZeroValueEnum cannot be JSON null")
+	}
+	switch ZeroValueEnum(*__wire) {
+	case ZeroValueEmpty:
+	case ZeroValueSet:
+	default:
+		return fmt.Errorf("polytype: %q is not a declared member of enum ZeroValueEnum", *__wire)
+	}
+	*__enumValue = ZeroValueEnum(*__wire)
+	return nil
+}
 
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))

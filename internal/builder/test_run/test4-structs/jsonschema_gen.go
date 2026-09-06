@@ -22,6 +22,48 @@ var (
 	_ interface{ enum() } = Var1
 )
 
+// MarshalJSON encodes EnumType123 as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue EnumType123) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case Var1:
+		return []byte("\"var1\""), nil
+	case Var2:
+		return []byte("\"var2\""), nil
+	case Var3:
+		return []byte("\"var3\""), nil
+	case Var4:
+		return []byte("\"var4\""), nil
+	}
+	return nil, fmt.Errorf("polytype: %q is not a declared member of enum EnumType123", string(__enumValue))
+}
+
+// UnmarshalJSON decodes EnumType123, accepting only the values of its
+// declared constants.
+func (__enumValue *EnumType123) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *string
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum EnumType123: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum EnumType123 cannot be JSON null")
+	}
+	switch EnumType123(*__wire) {
+	case Var1:
+	case Var2:
+	case Var3:
+	case Var4:
+	default:
+		return fmt.Errorf("polytype: %q is not a declared member of enum EnumType123", *__wire)
+	}
+	*__enumValue = EnumType123(*__wire)
+	return nil
+}
+
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
 }

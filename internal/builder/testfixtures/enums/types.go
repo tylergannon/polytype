@@ -32,3 +32,31 @@ type SliceOfPointerToRemoteEnum []*enumsremote.RemoteEnumType
 
 // EnumType declares itself as an enum; the generator emits its typed constants.
 func (EnumType) enum() {}
+
+// ZeroValueEnum has the empty string as a declared member, so JSON null must
+// not be mistaken for it when decoding.
+type ZeroValueEnum string
+
+const (
+	// ZeroValueEmpty is the zero value of the underlying string type.
+	ZeroValueEmpty ZeroValueEnum = ""
+	// ZeroValueSet is a non-zero member.
+	ZeroValueSet ZeroValueEnum = "set"
+)
+
+// ZeroValueEnum declares itself as an enum.
+func (ZeroValueEnum) enum() {}
+
+// ZeroCodeEnum has zero as a declared member, so JSON null must not be
+// mistaken for it when decoding.
+type ZeroCodeEnum int
+
+const (
+	// ZeroCodeNone is the zero value of the underlying integer type.
+	ZeroCodeNone ZeroCodeEnum = 0
+	// ZeroCodeOne is a non-zero member.
+	ZeroCodeOne ZeroCodeEnum = 1
+)
+
+// ZeroCodeEnum declares itself as an enum.
+func (ZeroCodeEnum) enum() {}
