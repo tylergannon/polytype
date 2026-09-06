@@ -93,10 +93,10 @@ module release. Add validation and the TypeScript destination to one directive:
 
 `--typescript-barrel` is optional. There is no separate codec flag: a
 registered struct whose fields use sealed-interface unions or `.StringerEnum`
-enums automatically receives generated JSON codecs. Marked enums (`func (T)
-enum()`) in their default value mode need no codec and keep ordinary Go JSON
-behavior. The run writes `types.ts` and, when requested, `index.ts` alongside
-the schema and Go outputs.
+enums automatically receives generated JSON codecs, and every marked enum
+(`func (T) enum()`) declared in the package receives a type-level
+`MarshalJSON`/`UnmarshalJSON` pair that rejects non-members. The run writes
+`types.ts` and, when requested, `index.ts` alongside the schema and Go outputs.
 
 This combined surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
 TypeScript declarations but predates generated owner codecs, and releases before
@@ -141,4 +141,5 @@ including `.json.sum` files, and any requested generated TypeScript files.
 </Aside>
 
 Next, choose the field semantics you need in [Optional and nullable](/features/optionality/),
-or jump to [Validation and CI](/guides/validation-ci/).
+jump to [Validation and CI](/guides/validation-ci/), or, for a SvelteKit
+boundary, generate [devalue transport codecs](/guides/devalue/).

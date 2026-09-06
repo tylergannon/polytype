@@ -83,8 +83,9 @@ needed for the fields that should carry integer values.
 Generation adds one value `MarshalJSON` and pointer `UnmarshalJSON` to the
 containing owner. These methods compose string-mode enum fields with any union
 fields. They use constant identifiers, so `LogInfo` becomes `"LogInfo"` even
-when a `String()` method returns different text. No global codec is added to
-the enum type; another field of the same marked type remains numeric.
+when a `String()` method returns different text. String mode is per field:
+another field of the same marked type remains numeric, guarded only by the
+type-level value-mode codec described above.
 
 Supported adapted fields are direct integer-backed `E`, `Optional[E]`, and
 `Nullable[E]`. Optional absence is omitted; Nullable null remains null. Present

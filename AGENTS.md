@@ -31,7 +31,7 @@ protocol in `/Users/tyler/.agents/skills/session-worklog/SKILL.md`.
 
 ## Project Overview
 
-polytype is a Go code generator that creates JSON Schema definitions from Go types, optimized for LLM function calling (OpenAI, Anthropic). It uses `//go:build jsonschema` build tags to separate schema registration from production code.
+polytype is a type projection tool. It lowers Go types statically into one closed type grammar (`typegrammar`) and projects that grammar into JSON Schema for LLM function calling (the CLI's always-on output), validation methods, Go JSON codecs for enums and sealed unions, TypeScript declarations, and devalue transport codecs for SvelteKit (`devalue`, `devalue/codegen`). The `grammar` package exposes the lowering so other tools can write their own backend. The CLI uses `//go:build jsonschema` build tags to separate schema registration from production code.
 
 ## Commands
 
@@ -69,6 +69,11 @@ Task runner is `just` (justfile), not `make`.
 ### Package Layout
 
 - **`polytype/`** — CLI entry point (`gen`, the only subcommand)
+- **`typegrammar/`** — The closed, validated type grammar every backend consumes (`Scalar`, `Time`, `Enum`, `Object`, `Pointer`, `Slice`, `Array`, `Ref`; field values `Required`/`Optional`/`Nullable`/`Union`/`OptionalUnion`/`UnionSlice`). `Validate` is the admission boundary
+- **`grammar/`** — Public lowering entry point: `Load(dir)`, `(*Package).Types()`, `(*Package).Lower(roots)`; thin bridge over `builder.SchemaBuilder.LowerRoots`
+- **`devalue/`** — Go port of the devalue flat `stringify`/`parse` runtime; goldens in `testdata/golden.json` recorded from devalue 5.9 by `testdata/record`
+- **`devalue/codegen/`** — Emits strict Go encoders/decoders (`EncodeT`/`DecodeT`/`StringifyT`/`ParseT`) for a lowered definition graph; compile-and-run fixture in `testdata/fixture`
+- **`internal/typescript/`** — TypeScript declaration backend over `typegrammar`
 - **`internal/syntax/`** — AST parsing, package loading (uses `golang.org/x/tools/go/packages` with `jsonschema` build tag), type scanning, comment extraction
 - **`internal/builder/`** — Schema generation engine. `SchemaBuilder` orchestrates: type scanning → schema node construction → JSON output → Go code generation
 - **`internal/builder/model.go`** — Schema node types: `ObjectNode`, `PropertyNode`, `ArrayNode`, `UnionTypeNode`, `RefNode`, `TemplateHoleNode`
@@ -112,4 +117,5 @@ Pass `--validate` to generation, and add a panic stub such as `func (Person) Val
 - Unit tests alongside source files (`*_test.go`)
 - Integration test fixtures in `internal/builder/testfixtures/` and `internal/builder/test_run/`
 - Golden file comparisons via `internal/testutils/golden_file.go`
+- All tests are plain `go test`. Two consult Node tooling only when present and skip otherwise: `internal/typescript` compiles its edge-case output with `tsc`, and `devalue` compares against goldens recorded from devalue 5.9. `npm ci` at the repo root installs both pins; CI does this. Do not add TypeScript test code, ledgers, or provenance machinery
 - Example directories each contain types, registration, and generated output

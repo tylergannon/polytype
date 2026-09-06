@@ -1,6 +1,6 @@
 ---
 title: polytype
-description: Project Go types into JSON Schema, TypeScript declarations, and codecs — one source of truth, many typed boundaries.
+description: Project Go types into JSON Schema, validation, Go codecs, TypeScript declarations, and devalue transport — one source of truth, many typed boundaries.
 template: splash
 hero:
   tagline: One Go type. Many typed projections.
@@ -37,16 +37,38 @@ import CopyCommand from '../../components/CopyCommand.astro';
   <Card title="Validate and prevent drift" icon="setting" href="/guides/validation-ci/">
     Validate LLM output and make CI reject stale generated schemas.
   </Card>
+  <Card title="Ship a Go ↔ JavaScript transport" icon="laptop" href="/guides/devalue/">
+    Generate strict Go codecs for the devalue wire format SvelteKit speaks.
+  </Card>
+  <Card title="Build your own projection" icon="pencil" href="/guides/custom-backends/">
+    Lower any Go types into the shared type grammar and emit a new target.
+  </Card>
 </CardGrid>
 
-## What the generator guarantees
+## One grammar, many projections
 
-- Property order follows Go struct field order, producing deterministic prompts.
-- Unknown properties are rejected with `additionalProperties: false`.
+polytype lowers Go types, statically at `go generate` time, into one closed
+type grammar and projects it into whatever the boundary needs:
+
+| Projection | How |
+| --- | --- |
+| JSON Schema, embedded in Go, for LLM tool calls and structured output | `go tool polytype` (always on) |
+| `ValidateJSON` / `ValidateYAML` methods | `--validate`, `--formats=both` |
+| Go JSON codecs: membership-checked enums, discriminated sealed unions, YAML input | Inferred from the types; no flag |
+| Structural TypeScript declarations | `--typescript DIR` |
+| devalue transport: Go runtime port plus generated typed codecs | `devalue`, `devalue/codegen` packages |
+| Your own backend | `grammar`, `typegrammar` packages |
+
+## What every projection guarantees
+
+- The Go type is the single source of truth; nothing uses runtime reflection.
+- Property order follows Go struct field order, producing deterministic prompts and stable wire layouts.
+- Unknown properties are rejected: `additionalProperties: false` in schemas, strict decoders elsewhere.
 - Go doc comments become LLM-facing schema descriptions.
 - Ordinary and nullable fields are required; only `Optional[T]` removes a property from `required`.
-- Generated schema files and Go accessors are safe to commit and verify in CI.
-- Optionality, enums, discriminated interfaces, shared `$defs`, providers, and validation use explicit APIs.
+- Union discriminators and enum values are the same in every projection.
+- A shape that cannot be represented faithfully fails generation with a diagnostic naming the type or field, instead of widening to `any`.
+- Generated files are safe to commit and verify in CI.
 
 Need exact exported signatures? The generated [Go API reference](/api/) is available,
 but most integrations should begin with [Getting started](/getting-started/).

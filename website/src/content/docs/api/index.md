@@ -652,6 +652,1020 @@ type SchemaProperty struct {
 }
 ```
 
+# grammar
+
+```go
+import "github.com/tylergannon/polytype/grammar"
+```
+
+Package grammar is the exported entry point for lowering Go types into the static type\-definition grammar of github.com/tylergannon/polytype/typegrammar.
+
+Load reads a Go package the way the polytype CLI does, and Lower turns caller\-chosen root types into a validated definition graph plus one grammar node per root. Callers use it to write their own code\-generation backend without going through the CLI or asking for a schema file.
+
+Roots are matched structurally and by name, so a \*types.Type obtained from the caller's own packages.Load works. A named root does not need a Declare marker; whatever the CLI would refuse in a struct field \(maps, channels, functions, unconfigured interfaces, presence wrappers\) is refused here with the same wording.
+
+## Index
+
+- [type Package](<#Package>)
+  - [func Load\(dir string\) \(\*Package, error\)](<#Load>)
+  - [func \(p \*Package\) Lower\(roots \[\]Root\) \(typegrammar.Definitions, \[\]typegrammar.Type, error\)](<#Package.Lower>)
+  - [func \(p \*Package\) Types\(\) \*types.Package](<#Package.Types>)
+- [type Root](<#Root>)
+
+
+<a name="Package"></a>
+## type Package
+
+Package is a loaded Go package that roots can be lowered against.
+
+```go
+type Package struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="Load"></a>
+### func Load
+
+```go
+func Load(dir string) (*Package, error)
+```
+
+Load loads the Go package at dir with the jsonschema build tag, the same way the CLI does, together with the packages it references.
+
+<a name="Package.Lower"></a>
+### func \(\*Package\) Lower
+
+```go
+func (p *Package) Lower(roots []Root) (typegrammar.Definitions, []typegrammar.Type, error)
+```
+
+Lower returns the validated definition graph reachable from the roots, and one grammar node per root in order. Named roots need no Declare marker.
+
+<a name="Package.Types"></a>
+### func \(\*Package\) Types
+
+```go
+func (p *Package) Types() *types.Package
+```
+
+Types is the package's type\-checked scope, for looking up the roots to lower.
+
+<a name="Root"></a>
+## type Root
+
+Root is one shape a caller wants lowered. Type may be anonymous; Position is reported in diagnostics because an anonymous type has no source location of its own.
+
+```go
+type Root struct {
+    Type     types.Type
+    Position token.Position
+}
+```
+
+# typegrammar
+
+```go
+import "github.com/tylergannon/polytype/typegrammar"
+```
+
+Package typegrammar defines the accepted, resolved static type\-definition grammar shared by code\-generation backends. Validate is its admission boundary.
+
+A definition describes a Go type's JSON value structure, retaining numeric kinds, pointer/value identity, collection shape, and field\-local registrations. Source loading must resolve aliases, embedding/field selection, registrations, and JSON names before constructing this model. The builder's TypeDefinitions adapter produces this model for the TypeScript backend.
+
+Types form a finite DAG. References may share definitions but may not introduce recursion. Objects are closed, ordered sets of properties. Ordinary values are non\-null; absence and null are separate, direct\-field constructors. Unions are field\-only constructors with explicit, resolved tags, including singleton unions. There is no general anyOf, any, map, or opaque\-provider constructor.
+
+This is the static structural subset of the v1 contract, not a Go\-source parser, arbitrary JSON Schema grammar, or claim of codec conformance. Runtime provider output, unresolved external schema refs and unproved custom wire mappings must be diagnosed by lowering, not replaced with a permissive node. Backends must define their projection explicitly: for example TypeScript's number cannot enforce all Go ranges, and its object types are not validators.
+
+New node kinds may be added in minor versions. Consumers must not treat a type switch over the node types as exhaustive: always provide a default case that reports an unrecognized kind rather than silently ignoring it.
+
+## Index
+
+- [type Array](<#Array>)
+- [type Definition](<#Definition>)
+- [type Definitions](<#Definitions>)
+  - [func \(defs Definitions\) Validate\(\) error](<#Definitions.Validate>)
+  - [func \(defs Definitions\) ValidateWithRoots\(roots \[\]Type\) error](<#Definitions.ValidateWithRoots>)
+- [type Enum](<#Enum>)
+- [type EnumMember](<#EnumMember>)
+- [type EnumMode](<#EnumMode>)
+- [type Error](<#Error>)
+  - [func \(e \*Error\) Error\(\) string](<#Error.Error>)
+- [type Field](<#Field>)
+- [type FieldValue](<#FieldValue>)
+- [type Name](<#Name>)
+  - [func \(n Name\) String\(\) string](<#Name.String>)
+- [type Nullable](<#Nullable>)
+- [type Object](<#Object>)
+- [type Optional](<#Optional>)
+- [type OptionalUnion](<#OptionalUnion>)
+- [type Pointer](<#Pointer>)
+- [type Ref](<#Ref>)
+- [type Required](<#Required>)
+- [type Scalar](<#Scalar>)
+- [type ScalarKind](<#ScalarKind>)
+- [type Slice](<#Slice>)
+- [type Time](<#Time>)
+- [type Type](<#Type>)
+- [type Union](<#Union>)
+- [type UnionSlice](<#UnionSlice>)
+- [type Variant](<#Variant>)
+
+
+<a name="Array"></a>
+## type Array
+
+Array retains the Go length, including zero. It does not by itself claim that the existing JSON Schema renderer enforces that length.
+
+```go
+type Array struct {
+    Length  int64
+    Element Type
+}
+```
+
+<a name="Definition"></a>
+## type Definition
+
+
+
+```go
+type Definition struct {
+    Name        Name
+    Type        Type
+    Description string
+    Source      token.Position
+}
+```
+
+<a name="Definitions"></a>
+## type Definitions
+
+Definitions is the complete local definition graph, in source order. Every reference and union implementation must resolve here, including dependencies from supported packages. Consumers select output roots separately.
+
+```go
+type Definitions []Definition
+```
+
+<a name="Definitions.Validate"></a>
+### func \(Definitions\) Validate
+
+```go
+func (defs Definitions) Validate() error
+```
+
+Validate admits exactly the constructors and compositions documented by this package. It checks all definitions, including unused ones. It neither mutates nor normalizes the graph, executes user code, nor validates runtime JSON.
+
+The graph's edges are child types, references, object field operands and union implementations. Rejecting every back edge establishes a finite DAG; each constructor can therefore be projected by structural induction. Sharing is permitted and checked once per relevant context, rather than mistaken for recursion. Source\-level admissibility \(including aliases, tags, interface satisfaction, custom hooks and supported package discovery\) remains lowering's obligation because those facts are not recoverable from a resolved graph.
+
+<details><summary>Example</summary>
+<p>
+
+
+
+```go
+package main
+
+import (
+	"fmt"
+
+	g "github.com/tylergannon/polytype/typegrammar"
+)
+
+func main() {
+	payload := g.Name{PackagePath: "example.com/events", Name: "Created"}
+	defs := g.Definitions{
+		{Name: payload, Type: &g.Object{Fields: []g.Field{{
+			GoName: "Text", JSONName: "text", Value: &g.Required{Type: &g.Scalar{Kind: g.String}},
+		}}}},
+		{Name: g.Name{PackagePath: "example.com/events", Name: "Envelope"}, Type: &g.Object{Fields: []g.Field{{
+			GoName: "Event", JSONName: "event", Value: &g.Union{
+				Interface:     g.Name{PackagePath: "example.com/events", Name: "Event"},
+				Discriminator: "kind",
+				Variants:      []g.Variant{{Implementation: payload, Pointer: true, Tag: "created"}},
+			},
+		}}}},
+	}
+	fmt.Println(defs.Validate())
+}
+```
+
+#### Output
+
+```
+<nil>
+```
+
+</p>
+</details>
+
+<a name="Definitions.ValidateWithRoots"></a>
+### func \(Definitions\) ValidateWithRoots
+
+```go
+func (defs Definitions) ValidateWithRoots(roots []Type) error
+```
+
+ValidateWithRoots admits the definitions and, in addition, each root node. A root is a node a caller asked to have lowered directly; no definition reaches it, so Validate alone would never see it and a shape this grammar excludes could be returned unchecked.
+
+Roots are checked as anonymous operands, because that is what they are: they have no named object owner, so the compositions that require one \(a string\-mode enum, most obviously\) are refused in a root exactly as they are in an anonymous position inside a definition.
+
+<a name="Enum"></a>
+## type Enum
+
+Enum is a resolved registration, not a global adapter for GoType. The same Go type can have different mappings in different fields. Values retain exact Go constants, including integers not exactly representable by JavaScript number. Representability in a target language is a later backend obligation.
+
+```go
+type Enum struct {
+    GoType  Name
+    Kind    ScalarKind
+    Mode    EnumMode
+    Members []EnumMember
+}
+```
+
+<a name="EnumMember"></a>
+## type EnumMember
+
+
+
+```go
+type EnumMember struct {
+    Name  string
+    Value constant.Value
+}
+```
+
+<a name="EnumMode"></a>
+## type EnumMode
+
+
+
+```go
+type EnumMode uint8
+```
+
+<a name="EnumValues"></a>
+
+```go
+const (
+    // EnumValues uses underlying string or integer constant values on the wire.
+    EnumValues EnumMode = iota
+    // EnumNames uses Go constant names as wire strings, for integer enums only.
+    // It is admitted only in direct fields of named object owners (Required,
+    // Optional or Nullable), including references to reusable enum definitions.
+    // Pointer/collection operands and anonymous owners cannot request this
+    // adaptation. String() methods never determine wire values.
+    EnumNames
+)
+```
+
+<a name="Error"></a>
+## type Error
+
+Error identifies the first invalid constructor in deterministic definition, field, and variant order. Source is the nearest available source location; Path is usable even for programmatically constructed definitions without one.
+
+```go
+type Error struct {
+    Path    string
+    Source  token.Position
+    Message string
+}
+```
+
+<a name="Error.Error"></a>
+### func \(\*Error\) Error
+
+```go
+func (e *Error) Error() string
+```
+
+
+
+<a name="Field"></a>
+## type Field
+
+
+
+```go
+type Field struct {
+    GoName      string
+    JSONName    string
+    Value       FieldValue
+    Description string
+    Source      token.Position
+}
+```
+
+<a name="FieldValue"></a>
+## type FieldValue
+
+FieldValue is a closed sum of direct\-field forms. In particular a Union is not a Type: refs, pointers, aliases and ordinary collections cannot hide one. A collection of named objects whose own fields contain unions is permitted.
+
+```go
+type FieldValue interface {
+    // contains filtered or unexported methods
+}
+```
+
+<a name="Name"></a>
+## type Name
+
+Name identifies a resolved Go type. PackagePath is always a full import path; pointer qualification and field\-specific wire identity do not belong here.
+
+```go
+type Name struct {
+    PackagePath string
+    Name        string
+}
+```
+
+<a name="Name.String"></a>
+### func \(Name\) String
+
+```go
+func (n Name) String() string
+```
+
+
+
+<a name="Nullable"></a>
+## type Nullable
+
+Nullable is a required key that admits null or a value. Its admitted operands are scalars/enums, objects, pointers to objects, and refs to those shapes; time.Time is also supported; collection and union operands are excluded.
+
+```go
+type Nullable struct{ Type Type }
+```
+
+<a name="Object"></a>
+## type Object
+
+Object's properties retain resolved Go field order and are closed to unknown JSON properties. An empty object is valid. Embedding is resolved before here.
+
+```go
+type Object struct{ Fields []Field }
+```
+
+<a name="Optional"></a>
+## type Optional
+
+Optional is absent or a non\-null value, corresponding to direct Optional\[T\]. Lowering must check the required json:",omitzero" tag. It cannot occur inside collections or definitions because it does not implement Type.
+
+```go
+type Optional struct{ Type Type }
+```
+
+<a name="OptionalUnion"></a>
+## type OptionalUnion
+
+OptionalUnion and UnionSlice are the only other admitted interface forms: direct Optional\[I\] and direct one\-dimensional \[\]I. Neither is a Type.
+
+```go
+type OptionalUnion struct{ Union Union }
+```
+
+<a name="Pointer"></a>
+## type Pointer
+
+Pointer retains source indirection without introducing null into the grammar.
+
+```go
+type Pointer struct{ Element Type }
+```
+
+<a name="Ref"></a>
+## type Ref
+
+Ref is a resolved named\-type edge, not an arbitrary URI or a request for a particular backend's reference syntax \(such as JSON Schema's AsRef option\).
+
+```go
+type Ref struct{ Target Name }
+```
+
+<a name="Required"></a>
+## type Required
+
+Required is a required non\-null field. Ordinary omitempty/omitzero tags do not become Optional; lowering must diagnose their valid\-domain limitation.
+
+```go
+type Required struct{ Type Type }
+```
+
+<a name="Scalar"></a>
+## type Scalar
+
+
+
+```go
+type Scalar struct{ Kind ScalarKind }
+```
+
+<a name="ScalarKind"></a>
+## type ScalarKind
+
+ScalarKind retains Go numeric width and signedness instead of prematurely projecting all JSON numbers to float64. Int and Uint remain platform\-sized. byte/rune aliases normalize to Uint8/Int32. Complex and uintptr are excluded.
+
+```go
+type ScalarKind string
+```
+
+<a name="Bool"></a>
+
+```go
+const (
+    Bool    ScalarKind = "bool"
+    String  ScalarKind = "string"
+    Int     ScalarKind = "int"
+    Int8    ScalarKind = "int8"
+    Int16   ScalarKind = "int16"
+    Int32   ScalarKind = "int32"
+    Int64   ScalarKind = "int64"
+    Uint    ScalarKind = "uint"
+    Uint8   ScalarKind = "uint8"
+    Uint16  ScalarKind = "uint16"
+    Uint32  ScalarKind = "uint32"
+    Uint64  ScalarKind = "uint64"
+    Float32 ScalarKind = "float32"
+    Float64 ScalarKind = "float64"
+)
+```
+
+<a name="Slice"></a>
+## type Slice
+
+Slice represents an ordinary non\-null slice. Byte\-like slices, whose default Go JSON representation is base64, are outside this static portable grammar.
+
+```go
+type Slice struct{ Element Type }
+```
+
+<a name="Time"></a>
+## type Time
+
+Time is the renderer\-owned time.Time leaf. Its wire type is string; neither date\-time schema validation nor JavaScript Date precision is implied.
+
+```go
+type Time struct{}
+```
+
+<a name="Type"></a>
+## type Type
+
+Type is the closed set of ordinary, non\-null type constructors. Only pointer nodes implement it, allowing validation to detect cycles in hand\-built graphs as well as cycles through named references. A node is admitted only after the entire Definitions value passes Validate; Go structs alone cannot enforce graph or context invariants. Do not mutate admitted graphs during consumption.
+
+```go
+type Type interface {
+    // contains filtered or unexported methods
+}
+```
+
+<a name="Union"></a>
+## type Union
+
+Union describes a direct registered interface field I. Its identity is the containing definition/field, not Interface alone. Tags have already been resolved from either explicit strings \(including empty strings\) or legacy implementation names. Discriminator is the effective, nonempty property name after applying registration defaults; whitespace is never trimmed here. Every member is a non\-null object carrying the required Discriminator key with its exact Tag. A pointer registration does not imply nullable payloads.
+
+```go
+type Union struct {
+    Interface     Name
+    Discriminator string
+    Variants      []Variant
+}
+```
+
+<a name="UnionSlice"></a>
+## type UnionSlice
+
+
+
+```go
+type UnionSlice struct{ Union Union }
+```
+
+<a name="Variant"></a>
+## type Variant
+
+
+
+```go
+type Variant struct {
+    Implementation Name
+    Pointer        bool
+    Tag            string
+    Source         token.Position
+}
+```
+
+# devalue
+
+```go
+import "github.com/tylergannon/polytype/devalue"
+```
+
+Package devalue implements the \`devalue\` wire format for structured values.
+
+It is a port of the JavaScript \`devalue\` package's flat "stringify"/"parse" pair \(the JSON\-array form, not \`uneval\`\), scoped to the value shapes that travel over that format in practice: plain and null\-prototype objects, arrays with holes, strings, numbers, booleans, null, undefined, Date, Map, Set, BigInt, RegExp, ArrayBuffer and boxed primitives. Typed arrays, DataView, URL, URLSearchParams and Temporal values are deliberately not implemented; a payload containing one parses to an "Unknown type" error.
+
+## Index
+
+- [Variables](<#variables>)
+- [func CompareUTF16\(a, b string\) int](<#CompareUTF16>)
+- [func Parse\(s string, revivers map\[string\]func\(any\) \(any, error\)\) \(any, error\)](<#Parse>)
+- [func SortStringsUTF16\(s \[\]string\)](<#SortStringsUTF16>)
+- [func Stringify\(v any\) \(string, error\)](<#Stringify>)
+- [func StringifyWith\(v any, reducers \[\]Reducer\) \(string, error\)](<#StringifyWith>)
+- [type ArrayBuffer](<#ArrayBuffer>)
+- [type BigInt](<#BigInt>)
+- [type Boxed](<#Boxed>)
+  - [func NewBoxed\(v any\) \*Boxed](<#NewBoxed>)
+- [type Date](<#Date>)
+  - [func \(d Date\) Time\(\) time.Time](<#Date.Time>)
+- [type HoleValue](<#HoleValue>)
+  - [func \(HoleValue\) MarshalJSON\(\) \(\[\]byte, error\)](<#HoleValue.MarshalJSON>)
+  - [func \(HoleValue\) String\(\) string](<#HoleValue.String>)
+- [type Map](<#Map>)
+  - [func NewMap\(kv ...any\) \*Map](<#NewMap>)
+  - [func \(m \*Map\) Entries\(\) \[\]MapEntry](<#Map.Entries>)
+  - [func \(m \*Map\) Get\(key any\) \(any, bool\)](<#Map.Get>)
+  - [func \(m \*Map\) Len\(\) int](<#Map.Len>)
+  - [func \(m \*Map\) Set\(key, value any\)](<#Map.Set>)
+- [type MapEntry](<#MapEntry>)
+- [type Object](<#Object>)
+  - [func NewNullProtoObject\(kv ...any\) \*Object](<#NewNullProtoObject>)
+  - [func NewObject\(kv ...any\) \*Object](<#NewObject>)
+  - [func \(o \*Object\) Get\(key string\) \(any, bool\)](<#Object.Get>)
+  - [func \(o \*Object\) Keys\(\) \[\]string](<#Object.Keys>)
+  - [func \(o \*Object\) Len\(\) int](<#Object.Len>)
+  - [func \(o \*Object\) MarshalJSON\(\) \(\[\]byte, error\)](<#Object.MarshalJSON>)
+  - [func \(o \*Object\) Set\(key string, value any\)](<#Object.Set>)
+- [type Reducer](<#Reducer>)
+- [type RegExp](<#RegExp>)
+- [type Set](<#Set>)
+  - [func NewSet\(items ...any\) \*Set](<#NewSet>)
+  - [func \(s \*Set\) Add\(v any\)](<#Set.Add>)
+  - [func \(s \*Set\) Has\(v any\) bool](<#Set.Has>)
+  - [func \(s \*Set\) Items\(\) \[\]any](<#Set.Items>)
+  - [func \(s \*Set\) Len\(\) int](<#Set.Len>)
+- [type UndefinedValue](<#UndefinedValue>)
+  - [func \(UndefinedValue\) MarshalJSON\(\) \(\[\]byte, error\)](<#UndefinedValue.MarshalJSON>)
+  - [func \(UndefinedValue\) String\(\) string](<#UndefinedValue.String>)
+
+
+## Variables
+
+<a name="Hole"></a>Hole is an empty slot in a sparse array. It appears in the \[\]any produced by Parse wherever the array had no element, and may be used in a \[\]any passed to Stringify to produce holes.
+
+```go
+var Hole = HoleValue{}
+```
+
+<a name="Undefined"></a>Undefined is the JavaScript value \`undefined\`. It is what Parse returns for the payload "\-1", and what Stringify writes as the bare token "\-1".
+
+```go
+var Undefined = UndefinedValue{}
+```
+
+<a name="CompareUTF16"></a>
+## func CompareUTF16
+
+```go
+func CompareUTF16(a, b string) int
+```
+
+CompareUTF16 compares two strings the way JavaScript's relational operators and \`Array\#sort\` do: lexicographically by UTF\-16 code unit. It returns \-1, 0 or \+1.
+
+This is not the same as Go's \`\<\`, which compares UTF\-8 bytes. The two orders agree everywhere except when an astral character \(U\+10000 and above, encoded in UTF\-16 as a surrogate pair D800–DFFF\) is compared against a character in U\+E000–U\+FFFF: JavaScript puts the astral character first, Go puts it last. Any sort whose result reaches the wire — a remote function's payload, which the client also computes — has to use this one.
+
+<a name="Parse"></a>
+## func Parse
+
+```go
+func Parse(s string, revivers map[string]func(any) (any, error)) (any, error)
+```
+
+Parse parses devalue's flat format. revivers maps a custom type tag to a function that turns the already\-parsed payload into a value; revivers take precedence over the built\-in tags.
+
+Values come back as: nil for null, Undefined for undefined, bool, float64, string, \[\]any \(with Hole in empty slots\), \*Object, \*Map, \*Set, Date, BigInt, RegExp, ArrayBuffer and \*Boxed.
+
+<a name="SortStringsUTF16"></a>
+## func SortStringsUTF16
+
+```go
+func SortStringsUTF16(s []string)
+```
+
+SortStringsUTF16 sorts a slice the way JavaScript's \`Array\#sort\` sorts an array of strings.
+
+<a name="Stringify"></a>
+## func Stringify
+
+```go
+func Stringify(v any) (string, error)
+```
+
+Stringify serializes a value into devalue's flat\-array format.
+
+<a name="StringifyWith"></a>
+## func StringifyWith
+
+```go
+func StringifyWith(v any, reducers []Reducer) (string, error)
+```
+
+StringifyWith is Stringify with custom reducers, which run before the built\-in type handling.
+
+<a name="ArrayBuffer"></a>
+## type ArrayBuffer
+
+ArrayBuffer is a JavaScript ArrayBuffer, serialized as base64.
+
+```go
+type ArrayBuffer []byte
+```
+
+<a name="BigInt"></a>
+## type BigInt
+
+BigInt is a JavaScript BigInt, held as its decimal digits.
+
+```go
+type BigInt string
+```
+
+<a name="Boxed"></a>
+## type Boxed
+
+Boxed is a boxed primitive — \`Object\(42\)\`, \`new String\("x"\)\` — serialized as \["Object", i\]. Always use \*Boxed so that repeated references share identity.
+
+```go
+type Boxed struct {
+    Value any
+}
+```
+
+<a name="NewBoxed"></a>
+### func NewBoxed
+
+```go
+func NewBoxed(v any) *Boxed
+```
+
+NewBoxed boxes a primitive.
+
+<a name="Date"></a>
+## type Date
+
+Date is a JavaScript Date. It serializes as an ISO 8601 string with millisecond precision in UTC.
+
+```go
+type Date time.Time
+```
+
+<a name="Date.Time"></a>
+### func \(Date\) Time
+
+```go
+func (d Date) Time() time.Time
+```
+
+Time returns the underlying time.
+
+<a name="HoleValue"></a>
+## type HoleValue
+
+HoleValue is the type of Hole.
+
+```go
+type HoleValue struct{}
+```
+
+<a name="HoleValue.MarshalJSON"></a>
+### func \(HoleValue\) MarshalJSON
+
+```go
+func (HoleValue) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON renders an array hole as null, as JSON.stringify does.
+
+<a name="HoleValue.String"></a>
+### func \(HoleValue\) String
+
+```go
+func (HoleValue) String() string
+```
+
+
+
+<a name="Map"></a>
+## type Map
+
+Map is a JavaScript Map: ordered entries, keys compared by identity the way SameValueZero compares them \(primitives by value, containers by reference\).
+
+```go
+type Map struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewMap"></a>
+### func NewMap
+
+```go
+func NewMap(kv ...any) *Map
+```
+
+NewMap builds a Map from alternating key/value arguments.
+
+<a name="Map.Entries"></a>
+### func \(\*Map\) Entries
+
+```go
+func (m *Map) Entries() []MapEntry
+```
+
+Entries returns the entries in insertion order.
+
+<a name="Map.Get"></a>
+### func \(\*Map\) Get
+
+```go
+func (m *Map) Get(key any) (any, bool)
+```
+
+Get returns the value stored under key.
+
+<a name="Map.Len"></a>
+### func \(\*Map\) Len
+
+```go
+func (m *Map) Len() int
+```
+
+Len returns the number of entries.
+
+<a name="Map.Set"></a>
+### func \(\*Map\) Set
+
+```go
+func (m *Map) Set(key, value any)
+```
+
+Set adds or replaces an entry.
+
+<a name="MapEntry"></a>
+## type MapEntry
+
+MapEntry is one key/value pair of a Map.
+
+```go
+type MapEntry struct {
+    Key   any
+    Value any
+}
+```
+
+<a name="Object"></a>
+## type Object
+
+Object is a JavaScript plain object with an explicit property order.
+
+Property order is part of the serialized bytes, so Stringify accepts both \*Object \(order preserved\) and map\[string\]any \(keys sorted, since a Go map has no order\). Parse always produces \*Object.
+
+```go
+type Object struct {
+    // NullProto reports whether this is an `Object.create(null)` object,
+    // which devalue tags as ["null", key, value, ...].
+    NullProto bool
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewNullProtoObject"></a>
+### func NewNullProtoObject
+
+```go
+func NewNullProtoObject(kv ...any) *Object
+```
+
+NewNullProtoObject is NewObject for a null\-prototype object.
+
+<a name="NewObject"></a>
+### func NewObject
+
+```go
+func NewObject(kv ...any) *Object
+```
+
+NewObject builds an object from alternating key/value pairs. It panics if the arguments are not pairs of \(string, any\).
+
+<a name="Object.Get"></a>
+### func \(\*Object\) Get
+
+```go
+func (o *Object) Get(key string) (any, bool)
+```
+
+Get returns the named property.
+
+<a name="Object.Keys"></a>
+### func \(\*Object\) Keys
+
+```go
+func (o *Object) Keys() []string
+```
+
+Keys returns the property names in insertion order.
+
+<a name="Object.Len"></a>
+### func \(\*Object\) Len
+
+```go
+func (o *Object) Len() int
+```
+
+Len returns the number of properties.
+
+<a name="Object.MarshalJSON"></a>
+### func \(\*Object\) MarshalJSON
+
+```go
+func (o *Object) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON renders the object the way JSON.stringify would, so a parsed devalue tree can be round\-tripped through encoding/json into a typed Go value. Property order is preserved, and an \`undefined\` property is omitted exactly as JSON.stringify omits it.
+
+<a name="Object.Set"></a>
+### func \(\*Object\) Set
+
+```go
+func (o *Object) Set(key string, value any)
+```
+
+Set assigns a property, appending it if new and keeping its original position if it already exists.
+
+<a name="Reducer"></a>
+## type Reducer
+
+A Reducer is a custom serializer, the Go form of devalue's \`reducers\` argument. Fn reports ok=false when it does not apply to the value, in which case the next reducer \(and finally the built\-in handling\) is tried. A reducer that applies emits \["\<Key\>", i\] where i indexes the replacement value.
+
+Reducers are held in a slice rather than a map because they are tried in order and the order is observable in the output.
+
+```go
+type Reducer struct {
+    Key string
+    Fn  func(v any) (any, bool, error)
+}
+```
+
+<a name="RegExp"></a>
+## type RegExp
+
+RegExp is a JavaScript regular expression. Kit rejects these as remote function arguments, but the wire format can carry them.
+
+```go
+type RegExp struct {
+    Source string
+    Flags  string
+}
+```
+
+<a name="Set"></a>
+## type Set
+
+Set is a JavaScript Set: ordered items, deduplicated by identity.
+
+```go
+type Set struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewSet"></a>
+### func NewSet
+
+```go
+func NewSet(items ...any) *Set
+```
+
+NewSet builds a Set from its items.
+
+<a name="Set.Add"></a>
+### func \(\*Set\) Add
+
+```go
+func (s *Set) Add(v any)
+```
+
+Add appends an item unless an identical one is already present.
+
+<a name="Set.Has"></a>
+### func \(\*Set\) Has
+
+```go
+func (s *Set) Has(v any) bool
+```
+
+Has reports whether an identical item is present.
+
+<a name="Set.Items"></a>
+### func \(\*Set\) Items
+
+```go
+func (s *Set) Items() []any
+```
+
+Items returns the items in insertion order.
+
+<a name="Set.Len"></a>
+### func \(\*Set\) Len
+
+```go
+func (s *Set) Len() int
+```
+
+Len returns the number of items.
+
+<a name="UndefinedValue"></a>
+## type UndefinedValue
+
+UndefinedValue is the type of Undefined.
+
+```go
+type UndefinedValue struct{}
+```
+
+<a name="UndefinedValue.MarshalJSON"></a>
+### func \(UndefinedValue\) MarshalJSON
+
+```go
+func (UndefinedValue) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON renders \`undefined\` as null, which is what JSON.stringify does with it inside an array.
+
+<a name="UndefinedValue.String"></a>
+### func \(UndefinedValue\) String
+
+```go
+func (UndefinedValue) String() string
+```
+
+
+
+# codegen
+
+```go
+import "github.com/tylergannon/polytype/devalue/codegen"
+```
+
+Package codegen emits Go encoders and strict decoders that move values between Go types and the devalue value model of github.com/tylergannon/polytype/devalue.
+
+The input is a validated [github.com/tylergannon/polytype/typegrammar](<https://pkg.go.dev/github.com/tylergannon/polytype/typegrammar/>) definition graph plus the caller's root nodes, as produced by github.com/tylergannon/polytype/grammar. The output is one Go source file holding, for every definition and every root, an encoder, a strict decoder and a Stringify/Parse convenience wrapper. The file is written for a package other than the one declaring the Go types, so the emitted functions use only exported fields.
+
+### Wire mapping
+
+Every Go numeric kind is a JavaScript number: the encoder converts to float64 itself, so integers beyond 2^53 lose precision on the wire, whether they arrive as a scalar field or as an integer enum member. There is no BigInt. Enum members that share one underlying value are admitted: they share one wire value, which decodes to the first member declaring it. time.Time is the same string encoding/json produces, never a JavaScript Date. A required nil slice encodes as an empty array; a nil pointer where a value is required is an encode error. An absent Optional is no property at all; an absent Nullable is null. Unions encode as one object whose discriminator property holds the concrete type name.
+
+Decoders are strict. They reject a missing required property, an unknown property, a value of the wrong kind, undefined, null where the field is not Nullable, an array whose length does not match a Go array's, an enum non\-member, an unknown union tag, and every devalue tagged form \(Date, Map, Set, BigInt, RegExp, ArrayBuffer, boxed primitives\), since the grammar admits none of them. Every diagnostic names a JSON\-pointer\-style path.
+
+Encoders never dedupe: a fresh object and slice is built per value. Reducers and revivers are a caller concern; pass them to devalue.StringifyWith and devalue.Parse together with the generated encoder or decoder.
+
+### Limitations
+
+An anonymous struct type is supported as a definition's own type and as the direct value of a Required, Optional or Nullable field — positions the emitted code reaches through field selectors on the parent value. Anywhere else — under a slice, an array or a pointer, or as a root — it is refused with a diagnostic naming the grammar path, because the emitter would have to declare a variable of that type: Go type identity includes struct tags, and the grammar does not carry them, so a spelled type would not be assignable.
+
+## Index
+
+- [func Generate\(defs typegrammar.Definitions, roots \[\]typegrammar.Type, opts Options\) \(\[\]byte, error\)](<#Generate>)
+- [type Options](<#Options>)
+
+
+<a name="Generate"></a>
+## func Generate
+
+```go
+func Generate(defs typegrammar.Definitions, roots []typegrammar.Type, opts Options) ([]byte, error)
+```
+
+Generate emits one Go source file holding, for each definition and each root, an encoder and a strict decoder as free functions over the type's exported fields, plus Stringify and Parse wrappers. It never mutates defs.
+
+<a name="Options"></a>
+## type Options
+
+Options configures the emitted file.
+
+```go
+type Options struct {
+    // PackageName is the package clause of the emitted file.
+    PackageName string
+    // ImportPath is the import path of the package the file will live in.
+    // Types declared there are referenced unqualified, so the file never
+    // imports itself.
+    ImportPath string
+}
+```
+
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)
 
 

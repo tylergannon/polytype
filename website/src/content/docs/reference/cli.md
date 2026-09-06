@@ -13,9 +13,10 @@ go get -tool github.com/tylergannon/polytype/polytype@latest
 
 Invoke the pinned CLI as `go tool polytype`.
 
-The CLI generates schemas. Validation and selected JSON codecs/YAML input methods
-are optional generated capabilities; schema generation does not provide a
-general-purpose Go codec.
+The CLI owns the JSON Schema, validation, Go JSON codec, and TypeScript
+projections. The devalue transport codecs and the type-grammar library are Go
+packages driven from your own program, not CLI flags; see
+[devalue transport](/guides/devalue/) and [custom backends](/guides/custom-backends/).
 
 ## Generate
 

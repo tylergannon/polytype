@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "prebuild": "cp ../llms.txt ./public/llms.txt && $(go env GOPATH)/bin/gomarkdoc -e -o './src/content/docs/api/index.md' ../ ../jsonschema",
+    "prebuild": "cp ../llms.txt ./public/llms.txt && $(go env GOPATH)/bin/gomarkdoc -e -o './src/content/docs/api/index.md' ../ ../jsonschema ../grammar ../typegrammar ../devalue ../devalue/codegen",
     "build": "astro build",
     "check-links": "node ./scripts/check-links.mjs",
     "check": "npm run build && npm run check-links",

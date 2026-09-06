@@ -2,15 +2,22 @@
 
 **One Go type. Many typed projections.**
 
-polytype reads your Go types at build time and projects them into the other
-type systems your program has to speak — deterministic JSON Schema for LLM
-tool calls and structured output, plus optional TypeScript declarations, Go
-JSON codecs for sealed unions and enums, and JSON/YAML validation.
+polytype is a type projection tool. It reads your Go types at `go generate`
+time, lowers them into one closed, validated type grammar, and projects that
+grammar into the other type systems your program has to speak:
 
-Schema generation is the primary, always-on projection. Validation, selected
-JSON codecs, YAML input, and TypeScript declarations are separate, opt-in
-capabilities; schema generation does not create a general-purpose Go codec or
-guarantee a typed encode/decode round trip for every Go type.
+| Projection | What you get | How |
+|---|---|---|
+| **JSON Schema** | Deterministic schemas for LLM tool calls and structured output, embedded in Go | `go tool polytype` (always on) |
+| **Validation** | `ValidateJSON` / `ValidateYAML` methods backed by the schemas | `--validate`, `--formats=both` |
+| **Go JSON codecs** | Membership-checked enums, discriminated sealed unions, YAML input | Inferred from your types; no flag |
+| **TypeScript** | Structural `types.ts` declarations for the same shapes | `--typescript DIR` |
+| **devalue transport** | Go encoders/decoders for the [devalue](https://github.com/sveltejs/devalue) wire format SvelteKit uses, plus a Go port of the runtime | `devalue` and `devalue/codegen` packages |
+| **Your own backend** | Load a package, lower any roots, walk the grammar | `grammar` and `typegrammar` packages |
+
+The Go type is the single source of truth. Every projection is derived
+statically from the AST, never from runtime reflection, and every projection
+refuses a shape it cannot represent faithfully instead of widening to `any`.
 
 <p align="center">
   <img src="gopher-front.svg" alt="Gopher mascot" width="200" height="auto">
@@ -264,10 +271,19 @@ marker uses a value receiver. A package that declares a marked enum but never
 runs generation (a shared enums package, say) needs one such line written by
 hand per marked type.
 
-String-mode fields receive generated codecs on the containing struct. Both
+Every marked enum type declared in the generation target package receives a
+type-level `MarshalJSON` (value receiver) and `UnmarshalJSON` (pointer
+receiver) that enforce membership in both directions: encoding a value that is
+not a declared constant, or decoding one, fails with an error naming the enum
+type and the offending value, and `null` is rejected. A marked enum imported
+from another package is not guarded this way. A production `MarshalJSON` or
+`UnmarshalJSON` already declared on a marked type is a generation error before
+anything is written.
+
+String-mode fields additionally receive codecs on the containing struct. Both
 `json.Marshal(Task{...})` and decoding into `*Task` use the registered constant
-names; the enum itself keeps its ordinary Go JSON behavior in numeric fields.
-One owner codec composes enum and union adapters.
+names for that field; other fields of the same type stay numeric. One owner
+codec composes enum and union adapters.
 
 Registered enum fields cannot use the `json:",string"` option. The generator
 rejects that option before writing files because it disagrees with both the
@@ -454,9 +470,10 @@ preserving an application-owned one. `--no-changes` checks these requested
 artifacts for missing or stale content as well as checking JSON Schemas.
 
 These declarations describe the admitted JSON structure for static TypeScript
-checking. They do not provide runtime decoding, validation, or definitive
-Go/TypeScript transport semantics; [issue #71](https://github.com/tylergannon/polytype/issues/71)
-tracks that proof. Time values remain strings and numeric fields become
+checking. They do not provide runtime decoding or validation on the JSON wire;
+[issue #71](https://github.com/tylergannon/polytype/issues/71) tracks that
+proof, and the [devalue codecs](#-go--javascript-transport-with-devalue) are
+the typed, runtime-checked Go/JavaScript transport polytype does ship. Time values remain strings and numeric fields become
 `number`; TypeScript does not enforce Go integer ranges or JSON Schema formats.
 Enum literals that cannot be represented exactly are rejected. Unsupported
 static shapes, including runtime schema providers and custom JSON/text codecs,
@@ -505,10 +522,130 @@ TypeScript consumers import the generated declarations and use the platform's
 validate untrusted values with an application-owned validator before treating
 them as a generated type. The generated Go validation method remains the final
 check before Go decoding. A project that requires generated TypeScript runtime
-decoders or validators still needs a separate implementation; this generator
-does not emit them. Issue #71 extends the product's executed cross-language
-transport proof; it does not block adopting the supported shapes when the
-consumer owns TypeScript-side runtime validation.
+decoders or validators on the JSON wire still needs a separate implementation;
+this generator does not emit them. For a checked Go/JavaScript boundary, use
+the devalue codecs below on the Go side with `devalue.parse`/`stringify` in
+the browser.
+
+## 🧬 Go ↔ JavaScript transport with devalue
+
+[devalue](https://github.com/sveltejs/devalue) is the structured-value wire
+format SvelteKit uses for `load` data and remote functions. polytype ships a
+Go port of its flat `stringify`/`parse` pair and a code generator that emits
+strict, typed Go codecs for your types on that wire, so a Go service can
+produce exactly what `devalue.parse` expects in the browser and consume what
+`devalue.stringify` sends back.
+
+### The runtime: `devalue`
+
+```go
+import "github.com/tylergannon/polytype/devalue"
+
+s, err := devalue.Stringify(devalue.NewObject("name", "Ada", "tags", []any{"a", "b"}))
+// [{"name":1,"tags":2},"Ada",[3,4],"a","b"]
+
+v, err := devalue.Parse(s, nil)   // *devalue.Object; numbers are float64, null is nil
+```
+
+The value model is `*devalue.Object` (ordered properties; `map[string]any` is
+accepted on encode with sorted keys), `[]any`, `string`, `float64` and the
+other Go numeric kinds, `bool`, `nil`, `devalue.Undefined`, `devalue.Hole`,
+and the tagged forms `Date`, `*Map`, `*Set`, `BigInt`, `RegExp`, `ArrayBuffer`
+and `*Boxed`. `StringifyWith(v, reducers)` and the `revivers` argument to
+`Parse` are devalue's custom-type hooks. Output is byte-identical to devalue
+5.9 for every shape the port implements; typed arrays, `URL` and `Temporal`
+values are not implemented and parse to an error.
+
+### Typed codecs: `devalue/codegen`
+
+Generation is a small Go program you own, typically run from a
+`//go:generate` directive. Load the package, choose roots, lower them, emit:
+
+```go
+package main
+
+import (
+    "go/token"
+    "go/types"
+    "os"
+
+    "github.com/tylergannon/polytype/devalue/codegen"
+    "github.com/tylergannon/polytype/grammar"
+)
+
+func main() {
+    pkg, err := grammar.Load("./model")          // same loader the CLI uses
+    if err != nil { panic(err) }
+    scope := pkg.Types().Scope()
+    defs, roots, err := pkg.Lower([]grammar.Root{
+        {Type: scope.Lookup("Envelope").Type()},
+        {Type: types.NewSlice(scope.Lookup("Envelope").Type()),
+         Position: token.Position{Filename: "gen.go", Line: 1}},
+    })
+    if err != nil { panic(err) }
+    src, err := codegen.Generate(defs, roots, codegen.Options{
+        PackageName: "codec",
+        ImportPath:  "example.com/app/codec",
+    })
+    if err != nil { panic(err) }
+    os.WriteFile("codec/codec_gen.go", src, 0o644)
+}
+```
+
+Roots need no `Declare` marker and may be anonymous types such as
+`[]Envelope`; `Position` is only used in diagnostics. The emitted file lives
+in a package of your choosing and uses only exported fields. For every
+definition `T` reachable from the roots it declares:
+
+```go
+func EncodeT(v model.T) (any, error)      // Go value → devalue value model
+func DecodeT(raw any) (model.T, error)    // strict; rejects anything the grammar does not admit
+func StringifyT(v model.T) (string, error)
+func ParseT(s string) (model.T, error)
+```
+
+Anonymous roots get the same four functions named `Root0`, `Root1`, … by
+index. Run `go mod tidy` afterwards; the generated file imports the `devalue`
+runtime.
+
+Wire rules worth knowing before you ship:
+
+- Every Go numeric kind is a JavaScript `number`; integers beyond 2^53 lose
+  precision. There is no BigInt.
+- `time.Time` is the same string `encoding/json` writes, never a `Date`.
+- Absent `Optional` is no property; absent `Nullable` is `null`; a nil
+  required slice is `[]`; a nil pointer where a value is required is an
+  encode error.
+- Enums honor their mode (values, or constant names under `.StringerEnum`)
+  and reject non-members on both sides.
+- Unions are one object whose discriminator property holds the concrete type
+  name, exactly as in the JSON Schema and TypeScript projections.
+- Decoders reject missing or unknown properties, wrong kinds, `undefined`,
+  wrong array lengths, unknown tags, and every devalue tagged form. Errors
+  carry a JSON-pointer-style path such as `/events/1/kind`.
+- An anonymous struct is admitted as a field's own type but not under a
+  slice, array, pointer, or as a root.
+
+See [`devalue/codegen/testdata/fixture`](devalue/codegen/testdata/fixture)
+for a complete module covering every node kind, and the package godoc for
+the full contract.
+
+## 🧱 Build your own projection: `grammar` and `typegrammar`
+
+Every backend in this repository (schema, TypeScript, devalue) consumes the
+same closed grammar in the `typegrammar` package: `Scalar`, `Time`, `Enum`,
+`Object`, `Pointer`, `Slice`, `Array`, `Ref`, with field values `Required`,
+`Optional`, `Nullable`, `Union`, `OptionalUnion`, and `UnionSlice`. Objects
+are closed and ordered, references form a DAG, and `Validate` is the
+admission boundary; there is no `any`, map, or open-union node.
+
+The `grammar` package is the public entry point to that lowering. `Load(dir)`
+reads a package the way the CLI does, `Types()` exposes its type-checked
+scope, and `Lower(roots)` returns the validated definition graph plus one
+node per root, refusing unsupported shapes with the same diagnostics the CLI
+prints. Write a backend by switching over the node kinds (always with a
+`default` case; the set may grow in minor versions) and you have a fourth
+projection of the same types.
 
 ## 🛡️ Validation
 
@@ -661,3 +798,9 @@ go build ./polytype
 go test ./...
 just lint    # task runner is `just`
 ```
+
+All tests are plain `go test`. Two of them consult Node tooling when it is
+present and skip otherwise: the TypeScript backend compiles its edge-case
+output with `tsc`, and the devalue runtime compares against goldens recorded
+from devalue 5.9 by `devalue/testdata/record`. `npm ci` at the repository root
+installs both pinned packages.
