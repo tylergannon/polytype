@@ -1,42 +1,30 @@
 # Next step
 
-Milestone 1 (#106) is done, committed and reviewed (a3afd28). Milestone 2
-(#104) has not started. The brief splits #104 into two independent halves —
-moving the grammar package out of `internal/`, and the new exported `grammar`
-lowering package. This step is the first half only. It is mechanical, it
-changes no behavior, and the full gate suite demonstrates it.
+Milestone 2 (#104) is complete on this branch in two commits:
 
-## Step: export `typegrammar` (first half of #104)
+- `ec5245c` — `git mv internal/typegrammar typegrammar`, six import rewrites,
+  the non-exhaustive-type-switch paragraph in the package doc. No behavior.
+- `8048237` — the exported `grammar` package (`Load`, `Package`, `Root`,
+  `Lower`, `Types`), the `types.Type` root bridge as
+  `builder.SchemaBuilder.LowerRoots`, on-demand dependency loading via
+  `syntax.ScanResult.EnsureRemoteType` + `syntax.LoadFrom`, the seven refusal
+  strings hoisted to shared constants, and `loadScanResult`'s panics turned
+  into errors. `Closes #104`.
 
-1. `git mv internal/typegrammar typegrammar`. Keep the package name
-   `typegrammar`; only the import path changes to
-   `github.com/tylergannon/polytype/typegrammar`.
+Awaiting the milestone review. Milestone 3 (#105, devalue runtime and codec
+backend) has not started.
 
-2. Rewrite the import path in the four Go files that reference it —
-   `internal/typescript/generate.go`, `internal/typescript/generate_test.go`,
-   `internal/builder/typegrammar.go`,
-   `internal/builder/typegrammar_adapter_test.go` — plus
-   `typegrammar/grammar_test.go` and `tests/typescript/projection/generate/main.go`.
-   (`tests/typescript/` is deleted in milestone 4, but it must compile now.)
-   Do not touch the `ephemeral/` files that mention the old path; they are
-   historical records.
+## Gates run at 8048237
 
-3. Add one paragraph to the package doc in `typegrammar/grammar.go`: new node
-   kinds may be added in minor versions, so consumers must not treat type
-   switches over the node types as exhaustive.
-
-4. Commit on this branch, message naming `#104` and stating that this is the
-   package move only (`Closes #104` waits for the `grammar` package). Do not
-   push, do not open a PR. Update
-   `ephemeral/worklog/202609061434-issues-104-107.md` with decisions,
-   corrections and friction only.
-
-Nothing else from #104 is in scope: no `grammar` package, no `Load`, no
-`Lower`, no root bridge, no scanner change, no new tests. Nothing from #105
-or #107.
-
-## Demonstrated by
-
+`go test ./...`, `go vet ./...`, `just build-tagged` — all pass.
 `grep -rn "internal/typegrammar" --exclude-dir=.git --exclude-dir=ephemeral .`
-returning nothing, then the gates: `go test ./...`, `go vet ./...`,
-`just build-tagged`, and `git log -1` showing the commit.
+returns nothing.
+
+## Open items for the reviewer
+
+The brief's #104 proof list asks for three refused roots whose error text
+matches the builder's field lowering. Only `map` and an anonymous interface
+literal actually behave that way; `chan`, `func`, presence wrappers and
+pointer-to-sealed-interface are refused earlier or in a different context by
+the builder. The worklog section "Milestone 2: #104 export the grammar"
+records what was asserted instead and why.
