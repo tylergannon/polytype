@@ -65,7 +65,9 @@ func TestEnumCodecRejectsNonMembers(t *testing.T) {
 
 // TestEnumCodecThroughStruct proves the generated codec is what a consumer of
 // the generated package actually reaches: encoding/json on the enclosing
-// struct, not the enum methods called directly.
+// struct, not the enum methods called directly. The round-tripped document is
+// first validated against the generated schema, so the proof fails if the
+// schema's enum set and the generated codec's member set ever drift apart.
 func TestEnumCodecThroughStruct(t *testing.T) {
 	_, err := json.Marshal(EnumHolder{Name: "widget"})
 	if err == nil {
@@ -85,6 +87,10 @@ func TestEnumCodecThroughStruct(t *testing.T) {
 		t.Fatalf("encoded %s, want %s", encoded, document)
 	}
 
+	if err := (EnumHolder{}).ValidateJSON([]byte(document)); err != nil {
+		t.Fatalf("validating %s against the generated schema: %v", document, err)
+	}
+
 	var decoded EnumHolder
 	if err := json.Unmarshal([]byte(document), &decoded); err != nil {
 		t.Fatalf("decoding %s: %v", document, err)
@@ -97,7 +103,12 @@ func TestEnumCodecThroughStruct(t *testing.T) {
 		t.Fatalf("round trip of %s produced %s", document, reencoded)
 	}
 
-	if err := json.Unmarshal([]byte(`{"kind":"nope","name":"widget"}`), &decoded); err == nil {
+	const nonMember = `{"kind":"nope","name":"widget"}`
+
+	if err := (EnumHolder{}).ValidateJSON([]byte(nonMember)); err == nil {
+		t.Fatal("expected the generated schema to reject a non-member field value")
+	}
+	if err := json.Unmarshal([]byte(nonMember), &decoded); err == nil {
 		t.Fatal("expected a non-member field value to be rejected on decode")
 	}
 }

@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "description": "EnumHolder is the consumer-shaped struct used to prove the generated enum codec fires through encoding/json. Kind is required and EnumType declares no zero-value member, so the Go zero value of EnumHolder is unencodable.",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "description": "EnumType is an enum type from enumsremote\n\nval1: \nEnumVal1 is a value!!\n\nval2: \nEnumVal2 is also a value!!\n\nval3: \nEnumVal3 is truly a value!!\n\nval4: \nEnumVal4 is the fourth value",
+      "enum": [
+        "val1",
+        "val2",
+        "val3",
+        "val4"
+      ]
+    },
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "additionalProperties": false
+}
