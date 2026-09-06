@@ -81,3 +81,56 @@ type Owner struct { Color Color `+"`json:\"color\"`"+` }
 		})
 	}
 }
+
+// TestGeneratedEnumCodecsRegenerateCleanly proves that a package whose
+// type-level enum codecs have already been generated regenerates cleanly:
+// the collision audit must not mistake the codecs it wrote last run for
+// handwritten production JSON methods. The second run must succeed and
+// reproduce the first run's output byte for byte. Putting the same method in
+// any other file of the package instead makes the second run fail.
+func TestGeneratedEnumCodecsRegenerateCleanly(t *testing.T) {
+	targetDir := writeEnumCodecFixture(t, `type Color int
+func (Color) enum() {}
+const (
+	ColorRed Color = 1
+	ColorBlue Color = 4
+)
+
+type Size string
+func (Size) enum() {}
+const (
+	SizeSmall Size = "small"
+	SizeLarge Size = "large"
+)
+
+type Owner struct {
+	Color Color `+"`json:\"color\"`"+`
+	Size Size `+"`json:\"size\"`"+`
+}
+`, "none")
+
+	read := func() map[string]string {
+		t.Helper()
+		out := map[string]string{}
+		generated, err := os.ReadFile(filepath.Join(targetDir, "jsonschema_gen.go"))
+		require.NoError(t, err)
+		out["jsonschema_gen.go"] = string(generated)
+		entries, err := os.ReadDir(filepath.Join(targetDir, "jsonschema"))
+		require.NoError(t, err)
+		for _, entry := range entries {
+			schema, err := os.ReadFile(filepath.Join(targetDir, "jsonschema", entry.Name()))
+			require.NoError(t, err)
+			out["jsonschema/"+entry.Name()] = string(schema)
+		}
+		return out
+	}
+
+	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
+	first := read()
+	// Guard: the file the second run must ignore really does declare the codecs.
+	require.Contains(t, first["jsonschema_gen.go"], "func (__enumValue Color) MarshalJSON() ([]byte, error) {")
+	require.Contains(t, first["jsonschema_gen.go"], "func (__enumValue *Size) UnmarshalJSON(data []byte) error {")
+
+	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
+	require.Equal(t, first, read())
+}

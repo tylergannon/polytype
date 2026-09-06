@@ -45,6 +45,9 @@ must be a value of the marked type (a constant, not a pointer) because the
 marker uses a value receiver. A package that declares a marked enum but never
 runs generation (a shared enums package, say) needs one such line written by
 hand per marked type.
+Only marked types declared in the package generation runs against receive the
+generated value-mode `MarshalJSON`/`UnmarshalJSON` pair, so a marked enum
+imported from another package is not membership-guarded on the wire.
 
 ## Integer and iota constants
 
