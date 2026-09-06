@@ -1,6 +1,6 @@
 # Next step
 
-Milestone 2 (#104) is complete on this branch in two commits:
+Milestone 2 (#104) is complete and reviewed on this branch:
 
 - `ec5245c` — `git mv internal/typegrammar typegrammar`, six import rewrites,
   the non-exhaustive-type-switch paragraph in the package doc. No behavior.
@@ -10,21 +10,14 @@ Milestone 2 (#104) is complete on this branch in two commits:
   `syntax.ScanResult.EnsureRemoteType` + `syntax.LoadFrom`, the seven refusal
   strings hoisted to shared constants, and `loadScanResult`'s panics turned
   into errors. `Closes #104`.
+- one follow-up commit — root nodes now pass the same admission boundary as
+  the definitions (`typegrammar.Definitions.ValidateWithRoots`).
 
-Awaiting the milestone review. Milestone 3 (#105, devalue runtime and codec
-backend) has not started.
+Review outcome: finding 1 accepted and fixed; findings 2 and 3 rejected by the
+manager (see the worklog's "Milestone 2 review resolution").
 
-## Gates run at 8048237
+Milestone 3 (#105, devalue runtime and codec backend) has not started.
+
+## Gates at the follow-up commit
 
 `go test ./...`, `go vet ./...`, `just build-tagged` — all pass.
-`grep -rn "internal/typegrammar" --exclude-dir=.git --exclude-dir=ephemeral .`
-returns nothing.
-
-## Open items for the reviewer
-
-The brief's #104 proof list asks for three refused roots whose error text
-matches the builder's field lowering. Only `map` and an anonymous interface
-literal actually behave that way; `chan`, `func`, presence wrappers and
-pointer-to-sealed-interface are refused earlier or in a different context by
-the builder. The worklog section "Milestone 2: #104 export the grammar"
-records what was asserted instead and why.

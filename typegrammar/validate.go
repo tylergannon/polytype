@@ -36,6 +36,19 @@ func (e *Error) Error() string {
 // satisfaction, custom hooks and supported package discovery) remains lowering's
 // obligation because those facts are not recoverable from a resolved graph.
 func (defs Definitions) Validate() error {
+	return defs.ValidateWithRoots(nil)
+}
+
+// ValidateWithRoots admits the definitions and, in addition, each root node.
+// A root is a node a caller asked to have lowered directly; no definition
+// reaches it, so Validate alone would never see it and a shape this grammar
+// excludes could be returned unchecked.
+//
+// Roots are checked as anonymous operands, because that is what they are: they
+// have no named object owner, so the compositions that require one (a
+// string-mode enum, most obviously) are refused in a root exactly as they are
+// in an anonymous position inside a definition.
+func (defs Definitions) ValidateWithRoots(roots []Type) error {
 	v := validator{
 		defs:   make(map[Name]Definition, len(defs)),
 		active: make(map[Type]string),
@@ -53,6 +66,12 @@ func (defs Definitions) Validate() error {
 	}
 	for _, def := range defs {
 		if err := v.walk(def.Type, location{path: def.Name.String(), source: def.Source}, true, true); err != nil {
+			return err
+		}
+	}
+	for i, root := range roots {
+		at := location{path: fmt.Sprintf("roots[%d]", i)}
+		if err := v.walk(root, at, false, false); err != nil {
 			return err
 		}
 	}

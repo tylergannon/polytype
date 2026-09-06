@@ -153,6 +153,22 @@ func TestAcceptedRootMatchesFieldLowering(t *testing.T) {
 	require.Equal(t, required.Type, nodes[0])
 }
 
+// A root node is reachable from no definition, so validating only the
+// definitions would return a shape the grammar excludes. []byte is the case:
+// Validate refuses a byte-like slice wherever a definition reaches one, and
+// must refuse it as a root in the same words.
+func TestRefusedAnonymousRootPassesAdmissionBoundary(t *testing.T) {
+	dir := writeFixture(t, map[string]string{"fixture.go": shapeFixture("int")})
+	pkg, err := grammar.Load(dir)
+	require.NoError(t, err)
+
+	_, _, err = pkg.Lower([]grammar.Root{{Type: types.NewSlice(types.Typ[types.Byte])}})
+	var grammarErr *typegrammar.Error
+	require.ErrorAs(t, err, &grammarErr)
+	require.Equal(t, "roots[0]", grammarErr.Path)
+	require.Equal(t, "byte-like slices have a base64 wire mapping outside this grammar", grammarErr.Message)
+}
+
 func TestLowerRejectsUnloadablePackage(t *testing.T) {
 	_, err := grammar.Load(filepath.Join(t.TempDir(), "missing"))
 	require.Error(t, err)

@@ -47,7 +47,11 @@ func (s *SchemaBuilder) LowerRoots(roots []RootType) (typegrammar.Definitions, [
 		}
 		nodes = append(nodes, node)
 	}
-	if err := l.defs.Validate(); err != nil {
+	// The roots go through the same admission boundary as the definitions.
+	// A root node is not reachable from any definition, so validating only
+	// l.defs would return shapes the grammar excludes -- a []byte root, for
+	// one -- with no error at all.
+	if err := l.defs.ValidateWithRoots(nodes); err != nil {
 		return nil, nil, fmt.Errorf("validate type definitions: %w", err)
 	}
 	return l.defs, nodes, nil

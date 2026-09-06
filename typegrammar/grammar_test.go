@@ -559,3 +559,30 @@ func TestValidateDiagnosticsPreserveSource(t *testing.T) {
 		t.Fatalf("formatted error drops the source location: %v", diagnostic)
 	}
 }
+
+// A root is not reachable from any definition, so it needs its own trip through
+// the admission boundary: the same operand is admitted or refused whether it
+// arrives as a root or inside a definition.
+func TestValidateWithRoots(t *testing.T) {
+	defs := g.Definitions{definition("Todo", &g.Object{Fields: []g.Field{
+		required("Title", "title", &g.Scalar{Kind: g.String}),
+	}})}
+	if err := defs.ValidateWithRoots([]g.Type{
+		&g.Slice{Element: &g.Ref{Target: name("Todo")}},
+		&g.Scalar{Kind: g.String},
+	}); err != nil {
+		t.Fatalf("valid roots rejected: %v", err)
+	}
+
+	var diagnostic *g.Error
+	err := defs.ValidateWithRoots([]g.Type{&g.Slice{Element: &g.Scalar{Kind: g.Uint8}}})
+	if !errors.As(err, &diagnostic) {
+		t.Fatalf("byte-like root accepted or undiagnosed: %v", err)
+	}
+	if diagnostic.Path != "roots[0]" {
+		t.Fatalf("diagnostic does not name the root: %#v", diagnostic)
+	}
+	if err := defs.ValidateWithRoots([]g.Type{&g.Ref{Target: name("Missing")}}); err == nil {
+		t.Fatal("root referencing an absent definition accepted")
+	}
+}
