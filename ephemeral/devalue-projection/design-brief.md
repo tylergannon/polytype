@@ -249,3 +249,33 @@ records the decisions and any friction. Then stop.
 - #107: see research-107.md for exactly which check.mjs cases move to
   polytype/main_test.go and which edge cases the tsc fixture must add;
   everything it lists as already covered is not re-tested.
+- #105 rules the brief left unstated, now decided:
+  - `Array`: encodes as an array of exactly Length elements; the decoder
+    rejects any other length with an error naming the path.
+  - `Ref`: the emitter calls the referenced definition's function pair.
+  - `OptionalUnion`: Optional semantics around the union rule.
+    `UnionSlice`: Slice semantics around the union rule; nil encodes `[]`.
+  - `Enum` Mode: honor it as the TypeScript backend does. `EnumNames` puts
+    the constant name on the wire; `EnumValues` puts the value. Membership
+    is checked against whichever set applies.
+  - Pointers: a nil pointer anywhere a value is required is an encode error
+    naming the path (Required, present Optional, present Nullable). Only an
+    absent Nullable produces `null`.
+  - Recursion cannot occur; `Validate` rejects it before the emitter runs.
+- #105 runtime: the skgo `asFloat` lacks `uint8`; add it in the copy. The
+  emitter still converts every numeric to `float64` itself before handing
+  values to the runtime, so generated code never depends on `asFloat`'s
+  accepted set.
+- #105 dedupe: "never dedupe" means the emitter builds a fresh `*Object` and
+  `[]any` per value. Primitives sharing a slot is the format's normal
+  behavior and is fine.
+- #105 emitter mechanism: `text/template` rendered and formatted with
+  `builder.FormatCodeWithGoimports`, mirroring internal/typescript's
+  Validate → allocateNames → two type switches with a threaded `at` path.
+- #105 fixture: a new fixture package under `devalue/codegen/testdata/`
+  covering every node kind (start from union_codec; add time.Time, `[N]T`,
+  Nullable, non-union Optional, plain slice, plain pointer, bool, floats,
+  sized ints and uints). The test copies it to `t.TempDir()`, writes a
+  go.mod whose replace uses an absolute path to the repo, runs Generate
+  into a sibling package, then `go build` and `go test` there with
+  `testutils.RunCommand`. No committed `test_run` copy.
