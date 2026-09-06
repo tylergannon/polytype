@@ -1,34 +1,40 @@
 # Next step
 
-Milestone 1 (#106, enum encode-side membership) — nothing implemented yet.
-Baseline `go test ./...` passes on 85c8cb0.
+Milestone 1 (#106) is partly done: commit 24abd7a emits the type-level
+`MarshalJSON`/`UnmarshalJSON` for locally declared `enum()`-marked types and
+proves null rejection, zero-member round-trip, and non-member rejection by
+calling the methods directly in `internal/builder/testfixtures/enums/
+enum_codec_test.go` (mirrored in `test_run/test3-enums`).
+
+Still open in this milestone, in later steps: the `.StringerEnum` coexistence
+test, the regenerates-cleanly test, the `docs/spec/v1.md` row amendment, and
+the foreign-enum sentence in `website/src/content/docs/features/enums.md`.
 
 ## Step
 
-Emit type-level JSON codecs for locally declared `enum()`-marked types.
+Prove the codec through the enclosing struct, which is what a consumer of a
+generated package actually does — the current tests only call the methods.
 
-- Carry each enum-marked type's members into the template. `EnumMarkers`
-  (`internal/builder/gen_schema.go`, `schemaTemplateData`) already holds
-  exactly the right set — every type in the generation target package
-  declaring `func (T) enum()` — with its first constant. Extend `EnumMarker`
-  with the type's underlying kind (string or integer) and its member
-  constant names, taken from the same resolution the schema rendering uses
-  (`discoverEnum` / `syntax.ResolveEnum`).
-- In `internal/builder/schemas.go.tmpl`, emit for each marker a value-receiver
-  `MarshalJSON` and a pointer-receiver `UnmarshalJSON` that accept only
-  members and otherwise return an error naming the type and the value.
-  Value mode: the wire form is the constant's own value (string or number),
-  not its Go identifier.
-- Leave `.StringerEnum` owner codecs untouched.
+In `internal/builder/testfixtures/enums` (and its `test_run/test3-enums`
+copy, which `TestBasic` regenerates and runs):
 
-Scope stops here: no fixture/consumer round-trip proof, no regeneration-clean
-test, no coexistence test, no spec or enum-guide amendment. Those are later
-steps of this same milestone.
+- Add a struct with a required `EnumType` field. `EnumType` has no zero-value
+  member, so its Go zero value is a non-member — that is what makes the
+  first assertion below possible without inventing a new enum.
+- Extend `enum_codec_test.go` with one test asserting, on that struct:
+  - `json.Marshal` of the zero value fails and the error text names the
+    field's enum type and the offending value;
+  - `json.Marshal` of a member succeeds and emits the constant's own value;
+  - a document decoded with `json.Unmarshal` and re-encoded with
+    `json.Marshal` is byte-identical to the input;
+  - `json.Unmarshal` of a document whose field holds a non-member fails.
+
+Nothing else changes: no template edits, no new generator behavior, no
+`.StringerEnum` work, no docs. If the assertions pass without touching
+`schemas.go.tmpl` or `gen_schema.go`, that is the expected outcome — the step
+exists to close the brief's proof line, not to change code.
 
 ## Demonstrated by
 
-A new test in `internal/builder` that generates a fixture package with a
-string enum and an integer enum (reuse `writeEnumCodecFixture` from
-`enum_codec_test.go`), then asserts the generated `jsonschema_gen.go`
-contains both methods for both types and that the emitted rejection path
-names the type. Plus `go test ./...`, `go vet ./...`, `just build-tagged`.
+`go test ./internal/builder/... -run 'TestBasic|TestEnumCodec'`, then the
+gates: `go test ./...`, `go vet ./...`, `just build-tagged`.

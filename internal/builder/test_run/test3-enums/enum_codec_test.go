@@ -2,6 +2,7 @@ package basictypes
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -59,5 +60,44 @@ func TestEnumCodecRejectsNonMembers(t *testing.T) {
 	}
 	if _, err := ZeroValueEnum("nope").MarshalJSON(); err == nil {
 		t.Fatal("expected a non-member to be rejected on encode")
+	}
+}
+
+// TestEnumCodecThroughStruct proves the generated codec is what a consumer of
+// the generated package actually reaches: encoding/json on the enclosing
+// struct, not the enum methods called directly.
+func TestEnumCodecThroughStruct(t *testing.T) {
+	_, err := json.Marshal(EnumHolder{Name: "widget"})
+	if err == nil {
+		t.Fatal("expected the zero-valued enum field to fail encoding")
+	}
+	if !strings.Contains(err.Error(), "EnumType") || !strings.Contains(err.Error(), `""`) {
+		t.Fatalf("error names neither the enum type nor the offending value: %v", err)
+	}
+
+	const document = `{"kind":"val2","name":"widget"}`
+
+	encoded, err := json.Marshal(EnumHolder{Kind: EnumVal2, Name: "widget"})
+	if err != nil {
+		t.Fatalf("encoding a member: %v", err)
+	}
+	if string(encoded) != document {
+		t.Fatalf("encoded %s, want %s", encoded, document)
+	}
+
+	var decoded EnumHolder
+	if err := json.Unmarshal([]byte(document), &decoded); err != nil {
+		t.Fatalf("decoding %s: %v", document, err)
+	}
+	reencoded, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatalf("re-encoding %s: %v", document, err)
+	}
+	if string(reencoded) != document {
+		t.Fatalf("round trip of %s produced %s", document, reencoded)
+	}
+
+	if err := json.Unmarshal([]byte(`{"kind":"nope","name":"widget"}`), &decoded); err == nil {
+		t.Fatal("expected a non-member field value to be rejected on decode")
 	}
 }

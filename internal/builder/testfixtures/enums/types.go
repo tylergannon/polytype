@@ -60,3 +60,11 @@ const (
 
 // ZeroCodeEnum declares itself as an enum.
 func (ZeroCodeEnum) enum() {}
+
+// EnumHolder is the consumer-shaped struct used to prove the generated enum
+// codec fires through encoding/json. Kind is required and EnumType declares no
+// zero-value member, so the Go zero value of EnumHolder is unencodable.
+type EnumHolder struct {
+	Kind EnumType `json:"kind"`
+	Name string   `json:"name"`
+}
