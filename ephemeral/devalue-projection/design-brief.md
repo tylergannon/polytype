@@ -282,3 +282,9 @@ records the decisions and any friction. Then stop.
   go.mod whose replace uses an absolute path to the repo, runs Generate
   into a sibling package, then `go build` and `go test` there with
   `testutils.RunCommand`. No committed `test_run` copy.
+- #104 review rulings (manager): (a) root nodes pass the same admission
+  boundary as definitions; a `[]byte` root is refused. (b) "Same diagnostic
+  as the CLI" means the grammar lowering's wording, the strings the `typ()`
+  switch uses; the pre-v1 JSON-schema mapping's wording is not the exported
+  boundary. (c) skgo adoption is out of scope for this branch by user
+  decision; the issue's acceptance list is amended on close.
