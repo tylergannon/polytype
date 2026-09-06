@@ -1,0 +1,115 @@
+name: devalue-projection
+goal: >
+  Close GitHub issues #106, #104, #105 and #107 of tylergannon/polytype on the
+  current branch, in that order, exactly as decided in
+  ephemeral/devalue-projection/design-brief.md. The brief's decisions are
+  final; its ground rules about tests (plain go test only, no ledgers, no
+  test code in TypeScript or JavaScript, no machinery for one caller) are
+  hard constraints. Each milestone is done when its acceptance list holds,
+  `go test ./...`, `go vet ./...` and `just build-tagged` pass, and it is
+  committed on this branch without pushing.
+start: pick
+
+defaults:
+  timeout: 7200s
+  fidelity: none
+  max_retries: 1
+  model:
+    name: claude-opus-5
+    effort: medium
+
+nodes:
+  - id: pick
+    type: agent
+    max_visits: 12
+    model:
+      name: claude-opus-5
+      effort: low
+    prompt: >
+      $goal
+
+      Look at the branch as it is now (commits, worklog, brief) and choose
+      the smallest next step toward the next unfinished milestone that can
+      be demonstrated by running something. Record it as the only content
+      of ephemeral/devalue-projection/STEP.md. A milestone may take several
+      steps; a step must not span two milestones.
+    edges:
+      - to: implement
+        condition: A next step remains.
+      - to: blocked
+        condition: >
+          Progress needs a decision the brief does not settle and that
+          would materially change the work.
+      - to: success
+        condition: All four milestones are committed and their acceptance lists hold.
+
+  - id: implement
+    type: agent
+    max_visits: 24
+    prompt: >
+      Complete the step recorded in ephemeral/devalue-projection/STEP.md
+      within the constraints of ephemeral/devalue-projection/design-brief.md.
+      When the step finishes a milestone, commit it with a message naming
+      the issue. Record decisions and friction, not activity, in the
+      worklog the brief names.
+    edges:
+      - to: check
+
+  - id: check
+    type: command
+    max_visits: 60
+    timeout: 1800s
+    command: |
+      set -eu
+      go test ./...
+      go vet ./...
+      just build-tagged
+    edges:
+      success: review
+      error: implement
+
+  - id: review
+    type: agent
+    max_visits: 24
+    model:
+      name: gpt-5.6-sol
+      effort: medium
+    prompt: >
+      Review the uncommitted and committed work on this branch since
+      `main` against ephemeral/devalue-projection/design-brief.md and the
+      GitHub issue the current step (ephemeral/devalue-projection/STEP.md)
+      serves. Run the code and tests yourself. Report only material
+      findings in ephemeral/devalue-projection/REVIEW.md: a defect a user
+      would hit, an acceptance item not actually demonstrated, a decision
+      of the brief contradicted, or test machinery the brief's ground rules
+      forbid. Style, naming and speculative edge cases are not findings.
+      An empty findings list is a valid, expected outcome.
+    edges:
+      - to: fix
+        condition: REVIEW.md holds at least one material finding.
+      - to: pick
+        condition: No material findings.
+
+  - id: fix
+    type: agent
+    max_visits: 24
+    prompt: >
+      Resolve the material findings in
+      ephemeral/devalue-projection/REVIEW.md within the brief's constraints.
+      Where a finding is wrong, record why in the worklog instead of
+      changing code. Amend or add to the milestone commit as appropriate.
+    edges:
+      - to: check
+
+  - id: blocked
+    type: agent
+    max_visits: 2
+    model:
+      name: claude-opus-5
+      effort: low
+    prompt: >
+      Write the single decision that blocks progress, the two or three
+      options, and your recommendation, to
+      ephemeral/devalue-projection/QUESTION.md. Commit nothing else.
+    edges:
+      - to: failure
