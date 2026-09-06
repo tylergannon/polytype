@@ -238,3 +238,14 @@ records the decisions and any friction. Then stop.
 - #104: the fixture helpers `loadTypeGrammarFixture`/`writeTypeGrammarFixture`
   in internal/builder/typegrammar_adapter_test.go are unexported. Copy the
   few lines the `grammar` tests need; do not create a shared test package.
+- #107: one root `package.json` (`private: true`) with devDependencies
+  `typescript` 6.0.3 and `devalue` 5.9.2, plus its lockfile; add
+  `node_modules/` to .gitignore. The tsc check looks for
+  `node_modules/.bin/tsc` at the repo root (walk up from the test's
+  directory to the go.mod) or `$POLYTYPE_TSC`. The recorder script imports
+  `devalue` from that same install. Do not create a second package.json.
+- #107: the golden file is read with `os.ReadFile`; `testutils.AssertGoldenFile`
+  is for generated sibling files and does not apply.
+- #107: see research-107.md for exactly which check.mjs cases move to
+  polytype/main_test.go and which edge cases the tsc fixture must add;
+  everything it lists as already covered is not re-tested.

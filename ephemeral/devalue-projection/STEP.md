@@ -1,45 +1,45 @@
 # Next step
 
-Milestone 1 (#106) still owes four items from the brief: the `.StringerEnum`
-coexistence test, the regenerates-cleanly test, the `docs/spec/v1.md` row
-amendment, and the foreign-enum sentence in the enum guide. This step takes
-the first, because it is the one that can fail: if the owner codec and the new
-type-level codec interfere, generation or round-tripping breaks, and nothing
-committed so far would notice.
+Per the manager's step-size direction (2026-09-06): a step is a whole
+milestone unless the brief splits it. Milestone 1 (#106) is unsplit and has
+three items left. This step is all of them plus the commit.
 
-## Step
+## Step: finish #106 and commit
 
-Prove that an integer enum used in string mode in one field and numeric mode
-in another gets both codecs and that they do not collide, using the fixture
-that already has exactly that shape: `internal/builder/testfixtures/
-v1_enums_stringmode` (regenerated and run as test10 by `TestBasic`), where
-`Paint.C` is `WithStringerEnum(Paint{}.C)` and `Paint.Numeric` is the same
-`Color` type left in numeric mode.
+1. **Regenerates-cleanly test.** The generated type-level enum codecs live in
+   a `!jsonschema` file, so the scanner — which loads with the `jsonschema`
+   tag — must not see them as production `MarshalJSON`/`UnmarshalJSON` and
+   trip the collision rejection added earlier this milestone
+   (`syntax.FindProductionJSONMethods`, used at
+   `internal/builder/gen_schema.go:449`/`:504`/`:1127`). Add one test that
+   generates an enum-bearing fixture package, then generates the *same
+   directory* a second time with the first run's `jsonschema_gen.go` still on
+   disk, and asserts the second run succeeds and produces byte-identical
+   output. Use whatever generation entry point the existing builder tests
+   already drive; do not add a helper for one caller. Verify the test bites
+   by temporarily making the scanner load without the tag (or by hand-adding
+   the same methods to a tagged-visible file) and seeing it fail.
 
-Extend that fixture's `codec_test.go` with one test asserting, on a `Paint`
-value whose fields all hold members:
+2. **Spec row.** In `docs/spec/v1.md`, amend the row at line 34 (marked value
+   -mode enums, currently "Standard Go JSON") to name the generated
+   type-level codec and its membership guarantee, and add one sentence to the
+   amendment log at the top of the file. One row, one sentence, nothing more.
 
-- `json.Marshal` emits the constant *name* for `c` (the owner codec's mapped
-  string) and the constant *value* for `numeric` (the type-level codec) in the
-  same document — the two modes coexist on one type in one struct;
-- that document round-trips through `json.Unmarshal` and `json.Marshal`
-  byte-identically;
-- `json.Marshal` of a `Paint` whose `Numeric` holds a non-member `Color`
-  fails with an error naming `Color` and the offending value, while the same
-  non-member in `C` is rejected by the owner codec — assert whatever error the
-  existing owner path actually produces, do not change it;
-- `colorStringCalls` is still 0 afterwards, so neither codec started routing
-  through `String()`.
+3. **Enum guide sentence.** In
+   `website/src/content/docs/features/enums.md`, one sentence saying that
+   only enum types declared in the generation target package receive the
+   generated codec; enum types from other packages are not guarded.
 
-Regenerate the fixture's `jsonschema_gen.go.golden` if and only if the
-generated output actually changed; a green run with no golden churn is the
-expected outcome, since the type-level codec was already emitted.
+4. **Commit** on this branch with a message naming `Closes #106`. Do not
+   push, do not open a PR. Update
+   `ephemeral/worklog/202609061434-issues-104-107.md` with decisions,
+   corrections and friction only.
 
-Nothing else changes: no template or generator edits unless the test fails,
-no regenerates-cleanly test, no spec or website edits.
+Nothing from #104, #105 or #107 is in scope, including reading their research
+notes.
 
 ## Demonstrated by
 
-`go test ./internal/builder/... -run 'TestBasic'` (regenerates test10 and runs
-the fixture module's own tests), then the gates: `go test ./...`,
-`go vet ./...`, `just build-tagged`.
+`go test ./internal/builder/... -run 'TestBasic'` and the new regeneration
+test by name, then the gates: `go test ./...`, `go vet ./...`,
+`just build-tagged`, and `git log -1` showing the milestone commit.
