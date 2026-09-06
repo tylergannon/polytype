@@ -13,8 +13,11 @@ you to amend it.
 ## Ground rules
 
 - Plain `go test ./...` is the only test entry point. No test code in
-  TypeScript or JavaScript. No Node inside `go test`. No ledgers, claims
-  files, proof directories, provenance trackers, or run logs.
+  TypeScript or JavaScript. No Node inside `go test`. No machine-generated
+  ledgers, claims files, proof directories, provenance trackers, or run
+  logs. The manager records hand-run proof of the real software (examples
+  regenerated and run, downstream consumers driven) as sections of the
+  worklog; that is expected, not a violation.
 - If a test takes longer to write than the code it proves, it is the wrong
   test. Replace it with a smaller assertion.
 - No new abstractions for one caller. No interfaces with one implementation.
