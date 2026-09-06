@@ -1,6 +1,7 @@
 package v1_enums_stringmode
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -139,5 +140,68 @@ func assertString(t *testing.T, data json.RawMessage, want string) {
 	}
 	if got != want {
 		t.Fatalf("value = %q, want %q", got, want)
+	}
+}
+
+// TestOwnerAndTypeLevelEnumCodecsCoexist covers the one case where the
+// two enum codecs could interfere: Color is used in string mode by the
+// owner codec on Paint.C and left in numeric mode on Paint.Numeric, where
+// the type-level Color codec is what encodes it.
+func TestOwnerAndTypeLevelEnumCodecsCoexist(t *testing.T) {
+	colorStringCalls = 0
+	value := Paint{
+		C:        ColorBlue,
+		Optional: polytype.Optional[Color]{Present: true, Value: ColorGreen},
+		Nullable: polytype.Nullable[Color]{Present: true, Value: ColorZero},
+		Numeric:  ColorRed,
+		Finish:   FinishDone,
+		Remote:   palette.LevelHigh,
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal(data, &wire); err != nil {
+		t.Fatal(err)
+	}
+	assertString(t, wire["c"], "ColorBlue")
+	if string(wire["numeric"]) != "-2" {
+		t.Fatalf("numeric = %s, want -2", wire["numeric"])
+	}
+
+	var decoded Paint
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(decoded, value) {
+		t.Fatalf("decoded = %#v, want %#v", decoded, value)
+	}
+	again, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(again, data) {
+		t.Fatalf("round trip = %s, want %s", again, data)
+	}
+
+	const nonMember = Color(99)
+
+	numericNonMember := value
+	numericNonMember.Numeric = nonMember
+	_, err = json.Marshal(numericNonMember)
+	if err == nil || !strings.Contains(err.Error(), "99 is not a declared member of enum Color") {
+		t.Fatalf("numeric non-member encode error = %v", err)
+	}
+
+	stringNonMember := value
+	stringNonMember.C = nonMember
+	_, err = json.Marshal(stringNonMember)
+	if err == nil || !strings.Contains(err.Error(), "undeclared value for string-mode enum Color") {
+		t.Fatalf("string-mode non-member encode error = %v", err)
+	}
+
+	if colorStringCalls != 0 {
+		t.Fatalf("Color.String calls = %d, want 0", colorStringCalls)
 	}
 }
