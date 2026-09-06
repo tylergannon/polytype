@@ -68,6 +68,21 @@ nodes:
       success: review
       error: implement
 
+  # After a fix pass the gate routes to the picker, not back to review. The
+  # manager reads REVIEW.md and steers or overrides before the fix runs.
+  - id: recheck
+    type: command
+    max_visits: 60
+    timeout: 1800s
+    command: |
+      set -eu
+      go test ./...
+      go vet ./...
+      just build-tagged
+    edges:
+      success: pick
+      error: fix
+
   - id: review
     type: agent
     max_visits: 24
@@ -99,7 +114,7 @@ nodes:
       Where a finding is wrong, record why in the worklog instead of
       changing code. Amend or add to the milestone commit as appropriate.
     edges:
-      - to: check
+      - to: recheck
 
   - id: blocked
     type: agent
