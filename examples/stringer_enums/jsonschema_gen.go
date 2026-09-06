@@ -24,6 +24,93 @@ var (
 	_ interface{ enum() } = PriorityLow
 )
 
+// MarshalJSON encodes LogLevel as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue LogLevel) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case LogDebug:
+		return []byte("0"), nil
+	case LogInfo:
+		return []byte("1"), nil
+	case LogWarning:
+		return []byte("2"), nil
+	case LogError:
+		return []byte("3"), nil
+	case LogFatal:
+		return []byte("4"), nil
+	}
+	return nil, fmt.Errorf("polytype: %v is not a declared member of enum LogLevel", int(__enumValue))
+}
+
+// UnmarshalJSON decodes LogLevel, accepting only the values of its
+// declared constants.
+func (__enumValue *LogLevel) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *int
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum LogLevel: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum LogLevel cannot be JSON null")
+	}
+	switch LogLevel(*__wire) {
+	case LogDebug:
+	case LogInfo:
+	case LogWarning:
+	case LogError:
+	case LogFatal:
+	default:
+		return fmt.Errorf("polytype: %v is not a declared member of enum LogLevel", *__wire)
+	}
+	*__enumValue = LogLevel(*__wire)
+	return nil
+}
+
+// MarshalJSON encodes Priority as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue Priority) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case PriorityLow:
+		return []byte("100"), nil
+	case PriorityNormal:
+		return []byte("200"), nil
+	case PriorityHigh:
+		return []byte("300"), nil
+	case PriorityUrgent:
+		return []byte("400"), nil
+	}
+	return nil, fmt.Errorf("polytype: %v is not a declared member of enum Priority", int(__enumValue))
+}
+
+// UnmarshalJSON decodes Priority, accepting only the values of its
+// declared constants.
+func (__enumValue *Priority) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *int
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum Priority: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum Priority cannot be JSON null")
+	}
+	switch Priority(*__wire) {
+	case PriorityLow:
+	case PriorityNormal:
+	case PriorityHigh:
+	case PriorityUrgent:
+	default:
+		return fmt.Errorf("polytype: %v is not a declared member of enum Priority", *__wire)
+	}
+	*__enumValue = Priority(*__wire)
+	return nil
+}
+
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
 }
