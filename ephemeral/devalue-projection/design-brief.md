@@ -288,3 +288,9 @@ records the decisions and any friction. Then stop.
   switch uses; the pre-v1 JSON-schema mapping's wording is not the exported
   boundary. (c) skgo adoption is out of scope for this branch by user
   decision; the issue's acceptance list is amended on close.
+- #105 anonymous objects (manager ruling on review): an inline struct that
+  is the direct value of a definition's field is encoded and decoded through
+  field selectors on the parent, never by spelling the anonymous type (Go
+  type identity includes struct tags, which the grammar does not carry).
+  An inline struct nested inside a Slice, Array or Pointer is refused by
+  Generate with a diagnostic naming the path and asking for a named type.
