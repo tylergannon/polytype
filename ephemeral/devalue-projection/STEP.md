@@ -1,23 +1,44 @@
 # Next step
 
-Milestone 2 (#104) is complete and reviewed on this branch:
+Milestones 1 (#106) and 2 (#104) are committed and reviewed. Milestone 3
+(#105) is half done: the runtime is ported and committed
+(`github.com/tylergannon/polytype/devalue`, nine files from skgo, `uint8`
+added to `asFloat`, package doc and three cross-repo comments de-skgo-ed).
+The codec backend has not started.
 
-- `ec5245c` — `git mv internal/typegrammar typegrammar`, six import rewrites,
-  the non-exhaustive-type-switch paragraph in the package doc. No behavior.
-- `8048237` — the exported `grammar` package (`Load`, `Package`, `Root`,
-  `Lower`, `Types`), the `types.Type` root bridge as
-  `builder.SchemaBuilder.LowerRoots`, on-demand dependency loading via
-  `syntax.ScanResult.EnsureRemoteType` + `syntax.LoadFrom`, the seven refusal
-  strings hoisted to shared constants, and `loadScanResult`'s panics turned
-  into errors. `Closes #104`.
-- one follow-up commit — root nodes now pass the same admission boundary as
-  the definitions (`typegrammar.Definitions.ValidateWithRoots`).
+## The step
 
-Review outcome: finding 1 accepted and fixed; findings 2 and 3 rejected by the
-manager (see the worklog's "Milestone 2 review resolution").
+Build the codec backend: package
+`github.com/tylergannon/polytype/devalue/codegen`, per the brief's
+"Codec backend" section and the `#105` addenda.
 
-Milestone 3 (#105, devalue runtime and codec backend) has not started.
+- `Generate(defs typegrammar.Definitions, roots []typegrammar.Type, opts Options) ([]byte, error)`,
+  Go API, no CLI.
+- Emitter mechanism: `text/template` rendered and formatted with
+  `builder.FormatCodeWithGoimports`, mirroring `internal/typescript`'s
+  Validate -> allocateNames -> two type switches with a threaded `at` path.
+- Wire mapping and the per-node-kind rules are settled in the brief and its
+  addenda (`Array` length, `Ref`, `OptionalUnion`, `UnionSlice`, `Enum`
+  Mode, pointer nil rules, no dedupe). Do not reopen them.
 
-## Gates at the follow-up commit
+## How it is demonstrated
 
-`go test ./...`, `go vet ./...`, `just build-tagged` — all pass.
+The brief's milestone 3 proof: a fixture package under
+`devalue/codegen/testdata/` covering every node kind (start from
+`union_codec`; add `time.Time`, `[N]T`, Nullable, non-union Optional, plain
+slice, plain pointer, bool, floats, sized ints and uints), copied to
+`t.TempDir()` with a go.mod whose replace is an absolute path to the repo,
+`Generate` into a sibling package, then `go build` and `go test` there via
+`testutils.RunCommand`. No committed `test_run` copy.
+
+Tests: encode/decode round-trip equality; nil Required slice encodes `[]`;
+absent Optional is not a key; Nullable zero is `null`; the decoder rejects a
+missing required property, a wrong kind, and an enum non-member, each error
+containing the path.
+
+Then commit with `Closes #105`.
+
+## Not this step
+
+Milestone 4 (#107): deleting `tests/typescript/`, the `tsc` test, the devalue
+goldens and the recorder.
