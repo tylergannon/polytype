@@ -174,11 +174,15 @@ func (e *emitter) decodeEnum(n *typegrammar.Enum, raw, at, out string) (string, 
 	e.check()
 	e.writef("var %s %s", out, goType)
 	e.writef("switch {")
+	emitted := make(map[string]bool, len(n.Members))
 	for _, member := range n.Members {
-		wireLiteral, err := e.g.enumWireLiteral(n, member)
-		if err != nil {
-			return "", e.errorf("enum member %s: %v", member.Name, err)
+		wireLiteral := e.g.enumWireLiteral(n, member)
+		if emitted[wireLiteral] {
+			// An alias. One wire value decodes to one Go value: the first
+			// member declaring it, matching how the JSON codec resolves them.
+			continue
 		}
+		emitted[wireLiteral] = true
 		goLiteral, err := e.g.enumGoLiteral(n, member)
 		if err != nil {
 			return "", e.errorf("enum member %s: %v", member.Name, err)

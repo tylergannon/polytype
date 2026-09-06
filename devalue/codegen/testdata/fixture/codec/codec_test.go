@@ -24,6 +24,7 @@ func sample() model.Envelope {
 		Priority: model.PriorityHigh,
 		Ranked:   model.PriorityLow,
 		Status:   model.StatusDone,
+		Shade:    model.ShadeRed,
 		Primary:  model.Created{Name: "created"},
 		Events:   []model.Event{model.Created{Name: "one"}, &model.Deleted{ID: "two"}},
 	}
@@ -187,6 +188,65 @@ func TestDecodeRejectsEnumNonMember(t *testing.T) {
 	object.Set("priority", float64(3))
 	_, err := DecodeEnvelope(object)
 	assertErrorContains(t, err, "/priority", "not a member of enum")
+}
+
+// TestAliasedEnumMembersShareOneWireValue covers the enum shape the grammar
+// admits in value mode but the fixture otherwise misses: two members with one
+// underlying value. The generated switches carry a single case for the pair,
+// so encoding either member writes that value and decoding it yields the first
+// member declaring it.
+func TestAliasedEnumMembersShareOneWireValue(t *testing.T) {
+	for _, member := range []model.Shade{model.ShadeRed, model.ShadeCrimson} {
+		value := sample()
+		value.Shade = member
+		shade, ok := encode(t, value).Get("shade")
+		if !ok {
+			t.Fatal("shade property is absent")
+		}
+		if shade != float64(1) {
+			t.Fatalf("shade = %#v, want 1", shade)
+		}
+	}
+
+	object := encode(t, sample())
+	object.Set("shade", float64(1))
+	got, err := DecodeEnvelope(object)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Shade != model.ShadeRed {
+		t.Fatalf("shade = %d, want ShadeRed (%d)", got.Shade, model.ShadeRed)
+	}
+}
+
+// TestEnumMemberBeyondSafeIntegerIsALossyNumber pins the decided wire mapping:
+// every numeric kind is a JavaScript number, so a member past 2^53 rounds
+// rather than being refused. The Go constant is exact, so the value still
+// round-trips.
+func TestEnumMemberBeyondSafeIntegerIsALossyNumber(t *testing.T) {
+	value := sample()
+	value.Shade = model.ShadeVivid
+	object := encode(t, value)
+	shade, _ := object.Get("shade")
+	number, ok := shade.(float64)
+	if !ok {
+		t.Fatalf("shade = %#v, want a number", shade)
+	}
+	// 9007199254740993 has no float64, so the wire carries 9007199254740992:
+	// the precision loss the package documents rather than an encode error.
+	if number != 9007199254740992 {
+		t.Fatalf("shade = %v, want the rounded 9007199254740992", number)
+	}
+	if int64(number) == int64(model.ShadeVivid) {
+		t.Fatal("test is vacuous: the member was exactly representable")
+	}
+	got, err := DecodeEnvelope(object)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Shade != model.ShadeVivid {
+		t.Fatalf("shade = %d, want ShadeVivid (%d)", got.Shade, model.ShadeVivid)
+	}
 }
 
 func TestDecodeRejectsUnknownProperty(t *testing.T) {

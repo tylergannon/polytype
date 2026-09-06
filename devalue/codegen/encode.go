@@ -96,12 +96,17 @@ func (e *emitter) encodeElements(element typegrammar.Type, dst, src, at string) 
 func (e *emitter) encodeEnum(n *typegrammar.Enum, src, at, out string) (string, error) {
 	e.writef("var %s any", out)
 	e.writef("switch {")
+	emitted := make(map[string]bool, len(n.Members))
 	for _, member := range n.Members {
-		operand, err := e.g.enumGoLiteral(n, member)
-		if err != nil {
-			return "", e.errorf("enum member %s: %v", member.Name, err)
+		wire := e.g.enumWireLiteral(n, member)
+		if emitted[wire] {
+			// An alias: a later member with a value an earlier one already
+			// carries. Its case would compare identically and never be
+			// reached, so the earlier member's case stands for both.
+			continue
 		}
-		wire, err := e.g.enumWireLiteral(n, member)
+		emitted[wire] = true
+		operand, err := e.g.enumGoLiteral(n, member)
 		if err != nil {
 			return "", e.errorf("enum member %s: %v", member.Name, err)
 		}
@@ -247,15 +252,15 @@ func (g *generator) enumGoLiteral(n *typegrammar.Enum, member typegrammar.EnumMe
 }
 
 // enumWireLiteral renders the value a member takes on the wire, honoring Mode.
-func (g *generator) enumWireLiteral(n *typegrammar.Enum, member typegrammar.EnumMember) (string, error) {
+// Every numeric kind is a JavaScript number, so a member beyond 2^53 rounds to
+// the nearest representable one exactly as a scalar field of the same kind
+// does. The conversion is not an error; it is the decided wire mapping.
+func (g *generator) enumWireLiteral(n *typegrammar.Enum, member typegrammar.EnumMember) string {
 	if n.Mode == typegrammar.EnumNames {
-		return strconv.Quote(member.Name), nil
+		return strconv.Quote(member.Name)
 	}
 	if n.Kind == typegrammar.String {
-		return strconv.Quote(constant.StringVal(member.Value)), nil
+		return strconv.Quote(constant.StringVal(member.Value))
 	}
-	if _, exact := constant.Float64Val(constant.ToFloat(member.Value)); !exact {
-		return "", fmt.Errorf("integer %s is not exactly representable as a wire number", member.Value.ExactString())
-	}
-	return fmt.Sprintf("float64(%s)", member.Value.ExactString()), nil
+	return fmt.Sprintf("float64(%s)", member.Value.ExactString())
 }

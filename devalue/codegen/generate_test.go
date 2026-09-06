@@ -1,10 +1,14 @@
 package codegen_test
 
 import (
+	"go/ast"
+	"go/parser"
 	"go/token"
 	"go/types"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -166,6 +170,61 @@ func assertCoversEveryNodeKind(t *testing.T, defs typegrammar.Definitions) {
 	for _, kind := range want {
 		if !seen[kind] {
 			t.Errorf("fixture no longer covers %s", kind)
+		}
+	}
+}
+
+// TestSanitizedNameCollisionInOnePackage covers the collision the TypeScript
+// backend already admits as a projection edge case: 雪 sanitizes to _u96EA_,
+// which is itself a legal Go type name, so two definitions in one package can
+// reach the same base identifier. Qualifying by package path cannot separate
+// them, so each must take a distinct suffix or Generate emits duplicate
+// declarations.
+func TestSanitizedNameCollisionInOnePackage(t *testing.T) {
+	t.Parallel()
+
+	object := func() *typegrammar.Object {
+		return &typegrammar.Object{Fields: []typegrammar.Field{{
+			GoName: "Text", JSONName: "text", Value: &typegrammar.Required{Type: &typegrammar.Scalar{Kind: typegrammar.String}},
+		}}}
+	}
+	defs := typegrammar.Definitions{
+		{Name: typegrammar.Name{PackagePath: "example.com/model", Name: "雪"}, Type: object()},
+		{Name: typegrammar.Name{PackagePath: "example.com/model", Name: "_u96EA_"}, Type: object()},
+	}
+	source, err := codegen.Generate(defs, nil, codegen.Options{PackageName: "codec", ImportPath: "example.com/codec"})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	// Parsing is the real assertion: a duplicate func declaration is a
+	// redeclaration the type checker rejects, and go/parser gives us the
+	// names without building the fixture module.
+	file, err := parser.ParseFile(token.NewFileSet(), "codec_gen.go", source, 0)
+	if err != nil {
+		t.Fatalf("parse generated source: %v\n%s", err, source)
+	}
+	seen := map[string]bool{}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil {
+			continue
+		}
+		if seen[fn.Name.Name] {
+			t.Errorf("generated source declares %s twice", fn.Name.Name)
+		}
+		seen[fn.Name.Name] = true
+	}
+	// Both definitions still get a full family; neither was dropped.
+	for _, prefix := range []string{"Encode", "Decode", "Stringify", "Parse"} {
+		var count int
+		for name := range seen {
+			if strings.HasPrefix(name, prefix) {
+				count++
+			}
+		}
+		if count != len(defs) {
+			t.Errorf("%s functions = %d, want %d: %v", prefix, count, len(defs), slices.Sorted(maps.Keys(seen)))
 		}
 	}
 }

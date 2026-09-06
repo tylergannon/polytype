@@ -29,7 +29,12 @@ const (
 var primitives = []string{
 	"true", "false", "null",
 	"0", "1", "-1", "3.5", "-0.25", "1e21", "1e-7",
-	"9007199254740991", "1.7976931348623157e308", "5e-324",
+	"9007199254740991",
+	// Past 2^53, where the decided wire mapping is a lossy JavaScript number:
+	// an int64 one above the safe range, and the largest uint64. Recording
+	// them pins what devalue writes for the rounded double each becomes.
+	"9007199254740993", "18446744073709551615",
+	"1.7976931348623157e308", "5e-324",
 	jsString(""), jsString("a"), jsString(`"`), jsString(`\`), jsString("\n"), jsString("\t"),
 	jsString("\u0000"), jsString("\u0001"), jsString("\u2028"), jsString("\u2029"),
 	jsString("雪"), jsString("😀"), jsString("￿"), jsString("</script>"),

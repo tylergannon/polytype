@@ -145,22 +145,51 @@ func (g *generator) allocateNames(roots []typegrammar.Type) {
 			// identity so the choice is stable across runs and machines.
 			base += "_" + hex.EncodeToString([]byte(def.Name.PackagePath))
 		}
+		// Two names in one package can still sanitize onto one base, because
+		// the escape a non-ASCII rune takes is itself a legal Go name: 雪 and
+		// _u96EA_ both arrive here as _u96EA_. Take the next free suffix.
+		base = g.vacant(base)
 		g.bases[def.Name] = base
 		g.claim(base)
 	}
 	for i := range roots {
-		base := fmt.Sprintf("Root%d", i)
-		for g.used[base] {
-			base += "_"
-		}
+		base := g.vacant(fmt.Sprintf("Root%d", i))
 		g.rootBases = append(g.rootBases, base)
 		g.claim(base)
 	}
 }
 
+// vacant returns base, or the first base_2, base_3, ... whose whole family of
+// generated function names is unclaimed. Definitions are walked in the
+// grammar's order, so the choice is stable across runs.
+func (g *generator) vacant(base string) string {
+	candidate := base
+	for n := 2; g.taken(candidate); n++ {
+		candidate = fmt.Sprintf("%s_%d", base, n)
+	}
+	return candidate
+}
+
+// taken reports whether base, or any function name claim would derive from it,
+// is already spoken for.
+func (g *generator) taken(base string) bool {
+	if g.used[base] {
+		return true
+	}
+	for _, prefix := range namePrefixes {
+		if g.used[prefix+base] {
+			return true
+		}
+	}
+	return false
+}
+
+// namePrefixes are the prefixes every generated name for a definition carries.
+var namePrefixes = []string{"Encode", "Decode", "Stringify", "Parse", "enc", "dec"}
+
 func (g *generator) claim(base string) {
 	g.used[base] = true
-	for _, prefix := range []string{"Encode", "Decode", "Stringify", "Parse", "enc", "dec"} {
+	for _, prefix := range namePrefixes {
 		g.used[prefix+base] = true
 	}
 }

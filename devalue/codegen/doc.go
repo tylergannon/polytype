@@ -13,8 +13,10 @@
 // # Wire mapping
 //
 // Every Go numeric kind is a JavaScript number: the encoder converts to
-// float64 itself, so integers beyond 2^53 lose precision on the wire. There is
-// no BigInt. time.Time is the same string encoding/json produces, never a
+// float64 itself, so integers beyond 2^53 lose precision on the wire, whether
+// they arrive as a scalar field or as an integer enum member. There is
+// no BigInt. Enum members that share one underlying value are admitted: they
+// share one wire value, which decodes to the first member declaring it. time.Time is the same string encoding/json produces, never a
 // JavaScript Date. A required nil slice encodes as an empty array; a nil
 // pointer where a value is required is an encode error. An absent Optional is
 // no property at all; an absent Nullable is null. Unions encode as one object

@@ -23,6 +23,19 @@ func (Priority) String() string { return "not-the-wire-name" }
 
 func (Priority) enum() {}
 
+// Shade is an integer enum with an alias: Crimson repeats Red's value, which
+// the grammar admits in value mode. Vivid sits beyond 2^53, where the decided
+// wire mapping is a lossy JavaScript number, the same as a scalar of its kind.
+type Shade int64
+
+const (
+	ShadeRed     Shade = 1
+	ShadeCrimson Shade = 1
+	ShadeVivid   Shade = 9007199254740993
+)
+
+func (Shade) enum() {}
+
 // Status is a string enum.
 type Status string
 
@@ -82,6 +95,7 @@ type Envelope struct {
 	Priority  Priority                  `json:"priority"`
 	Ranked    Priority                  `json:"ranked"`
 	Status    Status                    `json:"status"`
+	Shade     Shade                     `json:"shade"`
 	Primary   Event                     `json:"primary"`
 	Events    []Event                   `json:"events"`
 	Alternate polytype.Optional[Event]  `json:"alternate,omitzero"`
