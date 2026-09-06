@@ -215,8 +215,10 @@ skgo can request one later), any SvelteKit knowledge, a CLI flag.
   `go run ./devalue/testdata/record` followed by `node`, documented in a
   three-line README there. `go test` never runs Node.
 - Tests over the golden: `Parse` accepts every entry;
-  `Stringify(Parse(bytes))` reproduces the bytes exactly; a `FuzzRoundTrip`
-  seeded from the entries holds the same property and requires that a
+  `Stringify(Parse(bytes))` reproduces the bytes exactly. A `FuzzRoundTrip`
+  seeded from the entries checks, for inputs `Parse` accepts, that
+  serialization reaches a fixed point after one canonicalization
+  (byte identity cannot hold for arbitrary mutated input), and that a
   rejected document is rejected without a panic. Existing skgo tests come
   along unchanged.
 - A few hundred cases, generated, not curated. Run the recorder once with
@@ -294,3 +296,8 @@ records the decisions and any friction. Then stop.
   type identity includes struct tags, which the grammar does not carry).
   An inline struct nested inside a Slice, Array or Pointer is refused by
   Generate with a diagnostic naming the path and asking for a named type.
+- Final review rulings (manager): enum members are deduplicated by wire
+  value in generated devalue switches; integer enum members beyond 2^53
+  emit the lossy number like scalars; the recorder includes int64/uint64
+  values beyond 2^53; same-package names sharing a sanitized base get a
+  unique suffix. The fuzz target's fixed-point property stands.
