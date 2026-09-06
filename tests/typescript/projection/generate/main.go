@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/tylergannon/polytype/internal/typegrammar"
+	"github.com/tylergannon/polytype/typegrammar"
 	"github.com/tylergannon/polytype/internal/typescript"
 )
 

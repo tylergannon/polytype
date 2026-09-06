@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	g "github.com/tylergannon/polytype/internal/typegrammar"
+	g "github.com/tylergannon/polytype/typegrammar"
 )
 
 func ExampleDefinitions_Validate() {

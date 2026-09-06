@@ -1,45 +1,42 @@
 # Next step
 
-Per the manager's step-size direction (2026-09-06): a step is a whole
-milestone unless the brief splits it. Milestone 1 (#106) is unsplit and has
-three items left. This step is all of them plus the commit.
+Milestone 1 (#106) is done, committed and reviewed (a3afd28). Milestone 2
+(#104) has not started. The brief splits #104 into two independent halves —
+moving the grammar package out of `internal/`, and the new exported `grammar`
+lowering package. This step is the first half only. It is mechanical, it
+changes no behavior, and the full gate suite demonstrates it.
 
-## Step: finish #106 and commit
+## Step: export `typegrammar` (first half of #104)
 
-1. **Regenerates-cleanly test.** The generated type-level enum codecs live in
-   a `!jsonschema` file, so the scanner — which loads with the `jsonschema`
-   tag — must not see them as production `MarshalJSON`/`UnmarshalJSON` and
-   trip the collision rejection added earlier this milestone
-   (`syntax.FindProductionJSONMethods`, used at
-   `internal/builder/gen_schema.go:449`/`:504`/`:1127`). Add one test that
-   generates an enum-bearing fixture package, then generates the *same
-   directory* a second time with the first run's `jsonschema_gen.go` still on
-   disk, and asserts the second run succeeds and produces byte-identical
-   output. Use whatever generation entry point the existing builder tests
-   already drive; do not add a helper for one caller. Verify the test bites
-   by temporarily making the scanner load without the tag (or by hand-adding
-   the same methods to a tagged-visible file) and seeing it fail.
+1. `git mv internal/typegrammar typegrammar`. Keep the package name
+   `typegrammar`; only the import path changes to
+   `github.com/tylergannon/polytype/typegrammar`.
 
-2. **Spec row.** In `docs/spec/v1.md`, amend the row at line 34 (marked value
-   -mode enums, currently "Standard Go JSON") to name the generated
-   type-level codec and its membership guarantee, and add one sentence to the
-   amendment log at the top of the file. One row, one sentence, nothing more.
+2. Rewrite the import path in the four Go files that reference it —
+   `internal/typescript/generate.go`, `internal/typescript/generate_test.go`,
+   `internal/builder/typegrammar.go`,
+   `internal/builder/typegrammar_adapter_test.go` — plus
+   `typegrammar/grammar_test.go` and `tests/typescript/projection/generate/main.go`.
+   (`tests/typescript/` is deleted in milestone 4, but it must compile now.)
+   Do not touch the `ephemeral/` files that mention the old path; they are
+   historical records.
 
-3. **Enum guide sentence.** In
-   `website/src/content/docs/features/enums.md`, one sentence saying that
-   only enum types declared in the generation target package receive the
-   generated codec; enum types from other packages are not guarded.
+3. Add one paragraph to the package doc in `typegrammar/grammar.go`: new node
+   kinds may be added in minor versions, so consumers must not treat type
+   switches over the node types as exhaustive.
 
-4. **Commit** on this branch with a message naming `Closes #106`. Do not
+4. Commit on this branch, message naming `#104` and stating that this is the
+   package move only (`Closes #104` waits for the `grammar` package). Do not
    push, do not open a PR. Update
    `ephemeral/worklog/202609061434-issues-104-107.md` with decisions,
    corrections and friction only.
 
-Nothing from #104, #105 or #107 is in scope, including reading their research
-notes.
+Nothing else from #104 is in scope: no `grammar` package, no `Load`, no
+`Lower`, no root bridge, no scanner change, no new tests. Nothing from #105
+or #107.
 
 ## Demonstrated by
 
-`go test ./internal/builder/... -run 'TestBasic'` and the new regeneration
-test by name, then the gates: `go test ./...`, `go vet ./...`,
-`just build-tagged`, and `git log -1` showing the milestone commit.
+`grep -rn "internal/typegrammar" --exclude-dir=.git --exclude-dir=ephemeral .`
+returning nothing, then the gates: `go test ./...`, `go vet ./...`,
+`just build-tagged`, and `git log -1` showing the commit.

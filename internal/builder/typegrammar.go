@@ -11,7 +11,7 @@ import (
 	"github.com/dave/dst"
 	"github.com/tylergannon/polytype/internal/common"
 	"github.com/tylergannon/polytype/internal/syntax"
-	"github.com/tylergannon/polytype/internal/typegrammar"
+	"github.com/tylergannon/polytype/typegrammar"
 )
 
 // TypeDefinitions lowers the builder's selected roots and their reachable

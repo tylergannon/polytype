@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tylergannon/polytype/internal/typegrammar"
+	"github.com/tylergannon/polytype/typegrammar"
 )
 
 const testPackage = "example.com/model"

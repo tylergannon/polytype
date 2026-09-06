@@ -12,7 +12,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/tylergannon/polytype/internal/typegrammar"
+	"github.com/tylergannon/polytype/typegrammar"
 )
 
 // GeneratedHeader identifies files owned by this generator.

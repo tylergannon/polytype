@@ -19,6 +19,10 @@
 // mappings must be diagnosed by lowering, not replaced with a permissive node.
 // Backends must define their projection explicitly: for example TypeScript's
 // number cannot enforce all Go ranges, and its object types are not validators.
+//
+// New node kinds may be added in minor versions. Consumers must not treat a
+// type switch over the node types as exhaustive: always provide a default
+// case that reports an unrecognized kind rather than silently ignoring it.
 package typegrammar
 
 import (
