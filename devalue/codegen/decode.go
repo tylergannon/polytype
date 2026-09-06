@@ -193,6 +193,18 @@ func (e *emitter) decodeEnum(n *typegrammar.Enum, raw, at, out string) (string, 
 }
 
 func (e *emitter) decodeObject(n *typegrammar.Object, goType, raw, at string) (string, error) {
+	out := e.name("dec")
+	e.writef("var %s %s", out, goType)
+	if err := e.decodeObjectInto(n, out, raw, at); err != nil {
+		return "", err
+	}
+	return out, nil
+}
+
+// decodeObjectInto fills the Go value expression target from raw. It never
+// spells the object's type, only selects fields off target, which is how an
+// anonymous struct field is decoded: target is a selector on the parent value.
+func (e *emitter) decodeObjectInto(n *typegrammar.Object, target, raw, at string) error {
 	object := e.name("obj")
 	e.writef("%s, err := dvObject(%s, %s)", object, raw, at)
 	e.check()
@@ -208,14 +220,27 @@ func (e *emitter) decodeObject(n *typegrammar.Object, goType, raw, at string) (s
 	}
 	e.writef("}")
 
-	out := e.name("dec")
-	e.writef("var %s %s", out, goType)
 	for _, field := range n.Fields {
-		if err := e.decodeField(field, object, out, at); err != nil {
-			return "", err
+		if err := e.decodeField(field, object, target, at); err != nil {
+			return err
 		}
 	}
-	return out, nil
+	return nil
+}
+
+// assign emits the decoding of node into the Go value expression target. An
+// anonymous object is filled in place through selectors on target because its
+// type cannot be spelled; everything else decodes to a temporary first.
+func (e *emitter) assign(node typegrammar.Type, target, raw, at string) error {
+	if object, ok := node.(*typegrammar.Object); ok {
+		return e.decodeObjectInto(object, target, raw, at)
+	}
+	decoded, err := e.decode(node, raw, at)
+	if err != nil {
+		return err
+	}
+	e.writef("%s = %s", target, decoded)
+	return nil
 }
 
 func joinPrefixed(values []string) string {
@@ -249,22 +274,14 @@ func (e *emitter) decodeField(field typegrammar.Field, object, out, at string) e
 
 	switch n := field.Value.(type) {
 	case *typegrammar.Required:
-		value := required()
-		decoded, err := e.decode(n.Type, value, fieldPath)
-		if err != nil {
-			return err
-		}
-		e.writef("%s = %s", target, decoded)
-		return nil
+		return e.assign(n.Type, target, required(), fieldPath)
 
 	case *typegrammar.Optional:
 		value := optional()
-		decoded, err := e.decode(n.Type, value, fieldPath)
-		if err != nil {
+		e.writef("%s.Present = true", target)
+		if err := e.assign(n.Type, target+".Value", value, fieldPath); err != nil {
 			return err
 		}
-		e.writef("%s.Present = true", target)
-		e.writef("%s.Value = %s", target, decoded)
 		e.writef("}")
 		return nil
 
@@ -272,12 +289,10 @@ func (e *emitter) decodeField(field typegrammar.Field, object, out, at string) e
 		value := required()
 		// null is the absent case; anything else must decode as the operand.
 		e.writef("if %s != nil {", value)
-		decoded, err := e.decode(n.Type, value, fieldPath)
-		if err != nil {
+		e.writef("%s.Present = true", target)
+		if err := e.assign(n.Type, target+".Value", value, fieldPath); err != nil {
 			return err
 		}
-		e.writef("%s.Present = true", target)
-		e.writef("%s.Value = %s", target, decoded)
 		e.writef("}")
 		return nil
 

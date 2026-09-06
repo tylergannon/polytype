@@ -87,4 +87,18 @@ type Envelope struct {
 	Alternate polytype.Optional[Event]  `json:"alternate,omitzero"`
 	Nickname  polytype.Optional[string] `json:"nickname,omitzero"`
 	Owner     polytype.Nullable[Detail] `json:"owner"`
+	// Inline is an anonymous struct field. The generated codecs reach it
+	// through selectors on the Envelope value, never by spelling its type.
+	Inline struct {
+		Text  string `json:"text"`
+		Depth int    `json:"depth"`
+	} `json:"inline"`
+	// Extra and Marker wrap an anonymous struct in the presence types, the
+	// other two positions the emitter can reach by selector.
+	Extra polytype.Optional[struct {
+		Note string `json:"note"`
+	}] `json:"extra,omitzero"`
+	Marker polytype.Nullable[struct {
+		Seen bool `json:"seen"`
+	}] `json:"marker"`
 }

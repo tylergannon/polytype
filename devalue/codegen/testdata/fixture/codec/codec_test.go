@@ -13,7 +13,7 @@ import (
 )
 
 func sample() model.Envelope {
-	return model.Envelope{
+	envelope := model.Envelope{
 		Label:   "hello",
 		Numbers: model.Numbers{Flag: true, Float32: 1.5, Float64: -2.25, Int: -7, Int8: -8, Int16: 16, Int32: -32, Int64: 64, Uint: 7, Uint8: 8, Uint16: 16, Uint32: 32, Uint64: 64},
 		When:    time.Date(2024, 3, 1, 12, 0, 0, 0, time.UTC),
@@ -26,6 +26,51 @@ func sample() model.Envelope {
 		Status:   model.StatusDone,
 		Primary:  model.Created{Name: "created"},
 		Events:   []model.Event{model.Created{Name: "one"}, &model.Deleted{ID: "two"}},
+	}
+	envelope.Inline.Text = "inline"
+	envelope.Inline.Depth = 2
+	return envelope
+}
+
+// TestInlineObjectRoundTrips covers the anonymous struct field, which the
+// emitter can only reach through selectors on the Envelope value.
+func TestInlineObjectRoundTrips(t *testing.T) {
+	object := encode(t, sample())
+	inline, ok := object.Get("inline")
+	if !ok {
+		t.Fatal("inline property is absent")
+	}
+	nested, ok := inline.(*devalue.Object)
+	if !ok {
+		t.Fatalf("inline = %#v, want *devalue.Object", inline)
+	}
+	if text, _ := nested.Get("text"); text != "inline" {
+		t.Fatalf("inline.text = %#v, want \"inline\"", text)
+	}
+	nested.Set("depth", "two")
+	_, err := DecodeEnvelope(object)
+	assertErrorContains(t, err, "/inline/depth", "expected a number")
+}
+
+// TestInlineObjectUnderPresenceWrappers covers the other two positions an
+// anonymous struct can occupy: the operand of an Optional and of a Nullable.
+func TestInlineObjectUnderPresenceWrappers(t *testing.T) {
+	want := sample()
+	want.Extra.Present = true
+	want.Extra.Value.Note = "extra"
+	want.Marker.Present = true
+	want.Marker.Value.Seen = true
+
+	object := encode(t, want)
+	if marker, _ := encode(t, sample()).Get("marker"); marker != nil {
+		t.Fatalf("absent nullable marker = %#v, want null", marker)
+	}
+	got, err := DecodeEnvelope(object)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Extra != want.Extra || got.Marker != want.Marker {
+		t.Fatalf("extra = %#v, marker = %#v", got.Extra, got.Marker)
 	}
 }
 

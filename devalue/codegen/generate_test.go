@@ -132,6 +132,12 @@ func assertCoversEveryNodeKind(t *testing.T, defs typegrammar.Definitions) {
 		switch n := value.(type) {
 		case *typegrammar.Required:
 			seen["Required"] = true
+			// An inline object is a distinct backend path: it is reached
+			// through selectors on the parent because its type cannot be
+			// spelled. Object alone is satisfied by the named definitions.
+			if _, inline := n.Type.(*typegrammar.Object); inline {
+				seen["Object/inline"] = true
+			}
 			walk(n.Type)
 		case *typegrammar.Optional:
 			seen["Optional"] = true
@@ -151,7 +157,7 @@ func assertCoversEveryNodeKind(t *testing.T, defs typegrammar.Definitions) {
 		walk(def.Type)
 	}
 	want := []string{
-		"Time", "Enum", "Enum/names", "Object", "Pointer", "Slice", "Array", "Ref",
+		"Time", "Enum", "Enum/names", "Object", "Object/inline", "Pointer", "Slice", "Array", "Ref",
 		"Required", "Optional", "Nullable", "Union", "OptionalUnion", "UnionSlice",
 		"Scalar/bool", "Scalar/string", "Scalar/int", "Scalar/int8", "Scalar/int16",
 		"Scalar/int32", "Scalar/int64", "Scalar/uint", "Scalar/uint8", "Scalar/uint16",
@@ -197,6 +203,21 @@ func TestGenerateRefusals(t *testing.T) {
 			roots:   []typegrammar.Type{&typegrammar.Scalar{Kind: "complex128"}},
 			options: options,
 			want:    "roots[0]",
+		},
+		{
+			name: "anonymous struct under a slice",
+			defs: typegrammar.Definitions{{
+				Name: typegrammar.Name{PackagePath: "example.com/model", Name: "Note"},
+				Type: &typegrammar.Object{Fields: []typegrammar.Field{{
+					GoName: "Lines", JSONName: "lines", Value: &typegrammar.Required{Type: &typegrammar.Slice{
+						Element: &typegrammar.Object{Fields: []typegrammar.Field{{
+							GoName: "Text", JSONName: "text", Value: &typegrammar.Required{Type: &typegrammar.Scalar{Kind: typegrammar.String}},
+						}}},
+					}},
+				}}},
+			}},
+			options: options,
+			want:    "example.com/model.Note.Lines.items: an anonymous struct type",
 		},
 		{
 			name: "anonymous struct root",

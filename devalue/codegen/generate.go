@@ -47,6 +47,9 @@ func Generate(defs typegrammar.Definitions, roots []typegrammar.Type, opts Optio
 	if err := defs.ValidateWithRoots(roots); err != nil {
 		return nil, fmt.Errorf("generate devalue codecs: %w", err)
 	}
+	if err := checkAnonymousObjects(defs, roots); err != nil {
+		return nil, err
+	}
 
 	g := &generator{
 		opts:    opts,
@@ -234,7 +237,9 @@ func (g *generator) goType(t typegrammar.Type) (string, error) {
 		element, err := g.goType(n.Element)
 		return "[" + strconv.FormatInt(n.Length, 10) + "]" + element, err
 	case *typegrammar.Object:
-		return "", fmt.Errorf("generate devalue codecs: an anonymous struct type is supported only as a definition's own type")
+		// Unreachable once checkAnonymousObjects has run; kept as a backstop
+		// so a new caller of goType cannot silently spell a struct literal.
+		return "", fmt.Errorf("generate devalue codecs: %s", anonymousObjectDiagnostic)
 	default:
 		return "", fmt.Errorf("generate devalue codecs: unsupported type constructor %T", t)
 	}
@@ -405,4 +410,63 @@ func (e *emitter) loop(sub *emitter, index, item, src string) {
 // position held by the index variable.
 func (e *emitter) indexPath(at, index string) string {
 	return at + ` + "/" + strconv.Itoa(` + index + ")"
+}
+
+// anonymousObjectDiagnostic is the refusal shared by every position that would
+// have to spell an anonymous struct type. Go type identity includes struct
+// tags, and the grammar does not carry them, so a spelled type would not be
+// assignable to the field it came from.
+const anonymousObjectDiagnostic = "an anonymous struct type is supported only as a definition's own type " +
+	"or the direct value of a Required, Optional or Nullable field; declare a named type"
+
+// checkAnonymousObjects refuses an anonymous object anywhere the emitter
+// cannot reach it through a field selector on its parent Go value. The two
+// reachable positions are a definition's own type and a field's direct value;
+// under a Slice, Array or Pointer the emitter would need a variable of the
+// anonymous type, which it cannot declare.
+func checkAnonymousObjects(defs typegrammar.Definitions, roots []typegrammar.Type) error {
+	var walk func(t typegrammar.Type, at string, objectOK bool) error
+	walkField := func(value typegrammar.FieldValue, at string) error {
+		switch n := value.(type) {
+		case *typegrammar.Required:
+			return walk(n.Type, at, true)
+		case *typegrammar.Optional:
+			return walk(n.Type, at, true)
+		case *typegrammar.Nullable:
+			return walk(n.Type, at, true)
+		}
+		// Union field values reach their variants by name, never inline.
+		return nil
+	}
+	walk = func(t typegrammar.Type, at string, objectOK bool) error {
+		switch n := t.(type) {
+		case *typegrammar.Object:
+			if !objectOK {
+				return fmt.Errorf("generate devalue codecs: %s: %s", at, anonymousObjectDiagnostic)
+			}
+			for _, field := range n.Fields {
+				if err := walkField(field.Value, at+"."+field.GoName); err != nil {
+					return err
+				}
+			}
+		case *typegrammar.Pointer:
+			return walk(n.Element, at+".pointer", false)
+		case *typegrammar.Slice:
+			return walk(n.Element, at+".items", false)
+		case *typegrammar.Array:
+			return walk(n.Element, at+".items", false)
+		}
+		return nil
+	}
+	for _, def := range defs {
+		if err := walk(def.Type, def.Name.String(), true); err != nil {
+			return err
+		}
+	}
+	for i, root := range roots {
+		if err := walk(root, fmt.Sprintf("roots[%d]", i), false); err != nil {
+			return err
+		}
+	}
+	return nil
 }

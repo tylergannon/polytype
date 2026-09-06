@@ -33,7 +33,11 @@
 //
 // # Limitations
 //
-// An anonymous struct type is only supported as a definition's own type. An
-// inline struct used as a field or as a root is refused, because the emitted
-// package cannot spell that Go type with confidence.
+// An anonymous struct type is supported as a definition's own type and as the
+// direct value of a Required, Optional or Nullable field — positions the
+// emitted code reaches through field selectors on the parent value. Anywhere
+// else — under a slice, an array or a pointer, or as a root — it is refused
+// with a diagnostic naming the grammar path, because the emitter would have to
+// declare a variable of that type: Go type identity includes struct tags, and
+// the grammar does not carry them, so a spelled type would not be assignable.
 package codegen
