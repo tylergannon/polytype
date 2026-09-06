@@ -224,3 +224,17 @@ skgo can request one later), any SvelteKit knowledge, a CLI flag.
 All four issues' acceptance lists hold, `go test ./...`, `go vet ./...`,
 and `just build-tagged` pass, each milestone is committed, and the worklog
 records the decisions and any friction. Then stop.
+
+## Addenda from research (manager)
+
+- #104: `Scan.deps` is populated only by marker-seeded traversal
+  (internal/syntax/scan_result.go). A root whose named type lives in a
+  package other than the loaded directory must trigger the same dependency
+  load the marker path uses, from inside `Lower`, before `named()` runs.
+  Do this on demand per package; do not pre-load the whole module.
+  `SchemaBuilder.loadScanResult` panics on an unloaded package
+  (internal/builder/gen_schema.go:807); convert that to an error on the
+  `Lower` path rather than letting a caller's process die.
+- #104: the fixture helpers `loadTypeGrammarFixture`/`writeTypeGrammarFixture`
+  in internal/builder/typegrammar_adapter_test.go are unexported. Copy the
+  few lines the `grammar` tests need; do not create a shared test package.
