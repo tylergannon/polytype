@@ -25,3 +25,7 @@ Not done (separable per the issue): `grammar.LoadPattern` for a root declared in
 correction: Never open a PR whose checks are not clean. `just lint` failing on pre-existing ST1005 findings in `devalue/` was not acceptable to report and leave; it had to be fixed in this branch. Source: user, after PR #112 was opened.
 
 decision: Fixed with `devalue/staticcheck.conf` (`checks = ["inherit", "-ST1005"]`) scoped to the port, because the messages are devalue's own and the tests assert them verbatim; rewording would have broken the port's fidelity claim. `just lint` now passes end to end.
+
+discovery: `origin/docs/reenvision-projection` was already merged to main as PR #99 (squash `0e2f2b9`); the two commits the worktree branch carried were the pre-squash originals. Nothing to rebase. Branch and backup tag deleted at closeout.
+
+Final state: PR #112 (https://github.com/tylergannon/polytype/pull/112), both CI workflows green, squash-merged at closeout; worktree and branch removed.
