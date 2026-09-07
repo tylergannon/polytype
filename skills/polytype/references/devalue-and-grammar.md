@@ -1,9 +1,10 @@
 # devalue Transport and Custom Backends
 
-Read this when a Go service must speak SvelteKit's devalue wire format, or
-when you need polytype's type grammar to write a new projection. Both are Go
-library packages in the `github.com/tylergannon/polytype` module; the CLI
-does not drive them.
+Read this when a Go service must speak SvelteKit's devalue wire format, when
+a generator you are writing should emit `types.ts` without the CLI's schema
+files, or when you need polytype's type grammar to write a new projection.
+All are Go library packages in the `github.com/tylergannon/polytype` module;
+the CLI does not drive them.
 
 ## The devalue runtime — `devalue`
 
@@ -119,6 +120,48 @@ index. Pair `EncodeT` with `devalue.StringifyWith` and `DecodeT` with
 
 Complete module covering every node kind, with tests:
 `devalue/codegen/testdata/fixture` in the repository.
+
+## TypeScript from a Go program — `typescript`
+
+`--typescript` is the CLI face of `github.com/tylergannon/polytype/typescript`.
+A generator that already knows its roots (a SvelteKit tool that has picked
+the remote-function argument and result types, say) calls the backend
+directly and writes no `//go:build jsonschema` file, no `Declare`, and no
+schema output into the package that declares the types:
+
+```go
+pkg, err := grammar.Load("./model")
+scope := pkg.Types().Scope()
+defs, roots, err := pkg.Lower([]grammar.Root{
+    {Type: scope.Lookup("Order").Type()},
+})
+result, err := typescript.Generate(defs, typescript.Options{Barrel: true})
+for _, file := range result.Files { // types.ts, then index.ts when Barrel
+    os.WriteFile(filepath.Join("web/src/generated", file.Name), file.Content, 0o644)
+}
+name := result.Names[typegrammar.Name{PackagePath: "example.com/app/model", Name: "Order"}]
+```
+
+Rules:
+
+- For the same roots the bytes are identical to the CLI's; the CLI runs this
+  package on the same lowering.
+- `Names` is the emitted identifier per definition. It is the Go name unless
+  that is a reserved word, not a legal identifier, or claimed by a same-named
+  type in another package; write `import type { ... } from './types'` from
+  it, never from the Go name.
+- Only definitions get an alias. An anonymous root such as `[]Order` lowers
+  for devalue and gets no TypeScript declaration.
+- The same `defs` feed `codegen.Generate`; lower once for both.
+- A tagged file is not required, but if the package carries one its
+  `.StringerEnum` and `SealedUnion` registrations apply here too, as they do
+  for every other backend.
+- Write the files yourself. The CLI's header-guarded overwrite and
+  `--no-changes` checks belong to the CLI path.
+
+The acceptance fixture `typescript/testdata/fixture` in the repository holds
+a package with no polytype files at all; its test proves the library output
+matches the CLI's byte for byte.
 
 ## Your own projection — `grammar` and `typegrammar`
 

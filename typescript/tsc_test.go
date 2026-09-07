@@ -57,8 +57,9 @@ func edgeDefinitions() typegrammar.Definitions {
 func TestGenerateEdgeCasesCompile(t *testing.T) {
 	t.Parallel()
 
-	files, err := Generate(edgeDefinitions(), Options{Barrel: true})
+	result, err := Generate(edgeDefinitions(), Options{Barrel: true})
 	require.NoError(t, err)
+	files := result.Files
 	require.Len(t, files, 2)
 
 	types := string(files[0].Content)

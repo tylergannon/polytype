@@ -7,7 +7,7 @@ import (
 
 	"github.com/dave/dst/decorator"
 	"github.com/tylergannon/polytype/internal/syntax"
-	"github.com/tylergannon/polytype/internal/typescript"
+	"github.com/tylergannon/polytype/typescript"
 )
 
 type BuilderArgs struct {
@@ -107,11 +107,11 @@ func Run(args BuilderArgs) (err error) {
 		if definitionsErr != nil {
 			return fmt.Errorf("generate TypeScript definitions: %w", definitionsErr)
 		}
-		files, generateErr := typescript.Generate(definitions, typescript.Options{Barrel: args.TypeScriptBarrel})
+		result, generateErr := typescript.Generate(definitions, typescript.Options{Barrel: args.TypeScriptBarrel})
 		if generateErr != nil {
 			return fmt.Errorf("generate TypeScript output: %w", generateErr)
 		}
-		typeScriptPlan, err = prepareTypeScriptOutput(args.TypeScriptDir, files, args.TypeScriptBarrel)
+		typeScriptPlan, err = prepareTypeScriptOutput(args.TypeScriptDir, result.Files, args.TypeScriptBarrel)
 		if err != nil {
 			return err
 		}

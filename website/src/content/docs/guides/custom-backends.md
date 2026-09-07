@@ -6,7 +6,9 @@ description: Lower Go types into polytype's type grammar and write your own proj
 Every backend in polytype, the JSON Schema generator, the TypeScript
 generator, and the devalue codec generator, consumes the same closed type
 grammar. Two packages expose that grammar so another tool can add a
-projection without going through the CLI or reading schema files.
+projection without going through the CLI or reading schema files, and the
+TypeScript backend is itself a package, so a tool that already knows its
+roots can emit `types.ts` the same way.
 
 ## `typegrammar`: the grammar
 
@@ -63,6 +65,31 @@ Registrations in the package's build-tagged file still apply: `.StringerEnum`
 switches an enum field to name mode, `SealedUnion[I](name)` sets a union's
 discriminator, and `func (T) enum()` markers and sealing methods are read from
 the untagged source.
+
+## `typescript`: the TypeScript backend as a library
+
+`github.com/tylergannon/polytype/typescript` is what `--typescript` runs. A
+generator that has already decided which types it wants calls it on the
+lowered definitions and writes the files itself:
+
+```go
+result, err := typescript.Generate(defs, typescript.Options{Barrel: true})
+for _, file := range result.Files { // types.ts, then index.ts when Barrel is set
+    os.WriteFile(filepath.Join("web/src/generated", file.Name), file.Content, 0o644)
+}
+order := result.Names[typegrammar.Name{PackagePath: "example.com/app/model", Name: "Order"}]
+```
+
+- For the same roots the output is byte-identical to the CLI's, and the
+  package that declares the types receives no `//go:build jsonschema` file,
+  no `Declare`, and no schema output.
+- `Names` maps each definition to the identifier it was declared under. It
+  is the Go name unless that is a TypeScript reserved word, not a legal
+  identifier, or claimed by a same-named type in another package, so a tool
+  that writes `import type { Order } from './types'` reads it from here.
+- Only definitions are declared. An anonymous root such as `[]Order` lowers
+  for devalue but has no alias of its own.
+- The same `defs` feed `devalue/codegen`; lower once.
 
 ## Writing the backend
 
