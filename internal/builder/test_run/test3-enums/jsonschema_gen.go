@@ -4,10 +4,13 @@
 package basictypes
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 //go:embed jsonschema
@@ -20,10 +23,179 @@ var errNoDiscriminator = errors.New("no discriminator property 'type' found")
 // the generator requires.
 var (
 	_ interface{ enum() } = EnumVal1
+	_ interface{ enum() } = ZeroCodeNone
+	_ interface{ enum() } = ZeroValueEmpty
 )
+
+// MarshalJSON encodes EnumType as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue EnumType) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case EnumVal1:
+		return []byte("\"val1\""), nil
+	case EnumVal2:
+		return []byte("\"val2\""), nil
+	case EnumVal3:
+		return []byte("\"val3\""), nil
+	case EnumVal4:
+		return []byte("\"val4\""), nil
+	}
+	return nil, fmt.Errorf("polytype: %q is not a declared member of enum EnumType", string(__enumValue))
+}
+
+// UnmarshalJSON decodes EnumType, accepting only the values of its
+// declared constants.
+func (__enumValue *EnumType) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *string
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum EnumType: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum EnumType cannot be JSON null")
+	}
+	switch EnumType(*__wire) {
+	case EnumVal1:
+	case EnumVal2:
+	case EnumVal3:
+	case EnumVal4:
+	default:
+		return fmt.Errorf("polytype: %q is not a declared member of enum EnumType", *__wire)
+	}
+	*__enumValue = EnumType(*__wire)
+	return nil
+}
+
+// MarshalJSON encodes ZeroCodeEnum as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue ZeroCodeEnum) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case ZeroCodeNone:
+		return []byte("0"), nil
+	case ZeroCodeOne:
+		return []byte("1"), nil
+	}
+	return nil, fmt.Errorf("polytype: %v is not a declared member of enum ZeroCodeEnum", int(__enumValue))
+}
+
+// UnmarshalJSON decodes ZeroCodeEnum, accepting only the values of its
+// declared constants.
+func (__enumValue *ZeroCodeEnum) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *int
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum ZeroCodeEnum: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum ZeroCodeEnum cannot be JSON null")
+	}
+	switch ZeroCodeEnum(*__wire) {
+	case ZeroCodeNone:
+	case ZeroCodeOne:
+	default:
+		return fmt.Errorf("polytype: %v is not a declared member of enum ZeroCodeEnum", *__wire)
+	}
+	*__enumValue = ZeroCodeEnum(*__wire)
+	return nil
+}
+
+// MarshalJSON encodes ZeroValueEnum as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue ZeroValueEnum) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case ZeroValueEmpty:
+		return []byte("\"\""), nil
+	case ZeroValueSet:
+		return []byte("\"set\""), nil
+	}
+	return nil, fmt.Errorf("polytype: %q is not a declared member of enum ZeroValueEnum", string(__enumValue))
+}
+
+// UnmarshalJSON decodes ZeroValueEnum, accepting only the values of its
+// declared constants.
+func (__enumValue *ZeroValueEnum) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *string
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum ZeroValueEnum: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum ZeroValueEnum cannot be JSON null")
+	}
+	switch ZeroValueEnum(*__wire) {
+	case ZeroValueEmpty:
+	case ZeroValueSet:
+	default:
+		return fmt.Errorf("polytype: %q is not a declared member of enum ZeroValueEnum", *__wire)
+	}
+	*__enumValue = ZeroValueEnum(*__wire)
+	return nil
+}
 
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
+}
+
+// Compiled JSON schemas for validation, initialized once at startup.
+var (
+	__gen_jsonschema_compiled_EnumType                   *jsonschema.Schema
+	__gen_jsonschema_compiled_SliceOfEnumType            *jsonschema.Schema
+	__gen_jsonschema_compiled_SliceOfRemoteEnumType      *jsonschema.Schema
+	__gen_jsonschema_compiled_SliceOfPointerToRemoteEnum *jsonschema.Schema
+	__gen_jsonschema_compiled_EnumHolder                 *jsonschema.Schema
+)
+
+func init() {
+	compile := func(typeName string, schemaData json.RawMessage) *jsonschema.Schema {
+		doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(schemaData))
+		if err != nil {
+			panic(fmt.Sprintf("polytype: failed to parse schema for %s: %s", typeName, err))
+		}
+		c := jsonschema.NewCompiler()
+		url := typeName + ".json"
+		if err := c.AddResource(url, doc); err != nil {
+			panic(fmt.Sprintf("polytype: failed to add schema resource for %s: %s", typeName, err))
+		}
+		sch, err := c.Compile(url)
+		if err != nil {
+			panic(fmt.Sprintf("polytype: failed to compile schema for %s: %s", typeName, err))
+		}
+		return sch
+	}
+
+	{
+		var __zero EnumType
+		__gen_jsonschema_compiled_EnumType = compile("EnumType", __zero.Schema())
+	}
+
+	{
+		var __zero SliceOfEnumType
+		__gen_jsonschema_compiled_SliceOfEnumType = compile("SliceOfEnumType", __zero.Schema())
+	}
+
+	{
+		var __zero SliceOfRemoteEnumType
+		__gen_jsonschema_compiled_SliceOfRemoteEnumType = compile("SliceOfRemoteEnumType", __zero.Schema())
+	}
+
+	{
+		var __zero SliceOfPointerToRemoteEnum
+		__gen_jsonschema_compiled_SliceOfPointerToRemoteEnum = compile("SliceOfPointerToRemoteEnum", __zero.Schema())
+	}
+
+	{
+		var __zero EnumHolder
+		__gen_jsonschema_compiled_EnumHolder = compile("EnumHolder", __zero.Schema())
+	}
 }
 
 func (EnumType) Schema() json.RawMessage {
@@ -60,4 +232,58 @@ func (SliceOfPointerToRemoteEnum) Schema() json.RawMessage {
 		__gen_jsonschema_panic(fileName, err)
 	}
 	return data
+}
+
+func (EnumHolder) Schema() json.RawMessage {
+	const fileName = "jsonschema/EnumHolder.json"
+	data, err := __gen_jsonschema_fs.ReadFile(fileName)
+	if err != nil {
+		__gen_jsonschema_panic(fileName, err)
+	}
+	return data
+}
+
+// ValidateJSON validates the given JSON bytes against the schema for EnumType.
+func (EnumType) ValidateJSON(data []byte) error {
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	return __gen_jsonschema_compiled_EnumType.Validate(inst)
+}
+
+// ValidateJSON validates the given JSON bytes against the schema for SliceOfEnumType.
+func (SliceOfEnumType) ValidateJSON(data []byte) error {
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	return __gen_jsonschema_compiled_SliceOfEnumType.Validate(inst)
+}
+
+// ValidateJSON validates the given JSON bytes against the schema for SliceOfRemoteEnumType.
+func (SliceOfRemoteEnumType) ValidateJSON(data []byte) error {
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	return __gen_jsonschema_compiled_SliceOfRemoteEnumType.Validate(inst)
+}
+
+// ValidateJSON validates the given JSON bytes against the schema for SliceOfPointerToRemoteEnum.
+func (SliceOfPointerToRemoteEnum) ValidateJSON(data []byte) error {
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	return __gen_jsonschema_compiled_SliceOfPointerToRemoteEnum.Validate(inst)
+}
+
+// ValidateJSON validates the given JSON bytes against the schema for EnumHolder.
+func (EnumHolder) ValidateJSON(data []byte) error {
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	return __gen_jsonschema_compiled_EnumHolder.Validate(inst)
 }

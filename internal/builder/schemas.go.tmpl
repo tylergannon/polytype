@@ -43,6 +43,46 @@ var (
 	_ interface{ enum() } = {{.Constant}}
 {{- end }}
 )
+{{ range .EnumMarkers }}
+{{- if .Members }}
+// MarshalJSON encodes {{.TypeName}} as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue {{.TypeName}}) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	{{- range .Members }}
+	case {{.Constant}}:
+		return []byte({{printf "%q" .Wire}}), nil
+	{{- end }}
+	}
+	return nil, fmt.Errorf("polytype: {{if .IsString}}%q{{else}}%v{{end}} is not a declared member of enum {{.TypeName}}", {{.Underlying}}(__enumValue))
+}
+
+// UnmarshalJSON decodes {{.TypeName}}, accepting only the values of its
+// declared constants.
+func (__enumValue *{{.TypeName}}) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *{{.Underlying}}
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum {{.TypeName}}: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum {{.TypeName}} cannot be JSON null")
+	}
+	switch {{.TypeName}}(*__wire) {
+	{{- range .Members }}
+	case {{.Constant}}:
+	{{- end }}
+	default:
+		return fmt.Errorf("polytype: {{if .IsString}}%q{{else}}%v{{end}} is not a declared member of enum {{.TypeName}}", *__wire)
+	}
+	*__enumValue = {{.TypeName}}(*__wire)
+	return nil
+}
+{{ end }}
+{{- end }}
 {{ end }}
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))

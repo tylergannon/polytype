@@ -1,20 +1,30 @@
 # polytype
 
-`polytype` projects Go types into the other typed representations a program
-needs at its boundaries: deterministic JSON Schema for LLM tool definitions and
-structured output, structural TypeScript declarations for a Go/TypeScript
-protocol, and Go JSON codecs for sealed unions and enums. The Go type is the
-single source of truth; projection happens statically, at `go generate` time,
-from the AST — not via runtime reflection. Properties follow Go field order,
-unknown properties are rejected, and Go doc comments become schema
-descriptions. The generator can also emit optional runtime validation and
-selected JSON codecs/YAML input methods. These are separate capabilities;
-schema generation does not promise general-purpose typed encode/decode round
-trips for every Go type. JSON is the canonical data model and the default
-format.
-`--formats=both` adds `go.yaml.in/yaml/v4` entry points that translate YAML to
-JSON before reusing the JSON validator and decoder. The default discriminator
-property is `type` in either syntax.
+`polytype` is a type projection tool for Go. It reads Go types statically at
+`go generate` time, lowers them into one closed, validated type grammar
+(package `typegrammar`), and projects that grammar into the other type systems
+a program speaks. The Go type is the single source of truth; nothing uses
+runtime reflection, and every projection refuses a shape it cannot represent
+faithfully instead of widening to `any`.
+
+Projections:
+
+- JSON Schema for LLM tool definitions and structured output, embedded in Go
+  (`go tool polytype`; always on). Properties follow Go field order, unknown
+  properties are rejected, doc comments become descriptions.
+- Validation methods over those schemas (`--validate`; `--formats=both` adds
+  YAML input through `go.yaml.in/yaml/v4`, translated to the JSON data model).
+- Go JSON codecs inferred from the types: membership-checked enums,
+  discriminated sealed unions, YAML adapters. No flag selects them.
+- Structural TypeScript declarations (`--typescript DIR`).
+- devalue transport: a Go port of the devalue runtime SvelteKit uses, plus
+  generated strict Go encoders/decoders for your types on that wire
+  (packages `devalue` and `devalue/codegen`).
+- Your own backend: load a package and lower any roots into the grammar
+  (package `grammar`), then walk the nodes.
+
+JSON is the canonical data model and the default format. The default union
+discriminator property is `type` in every projection.
 
 Repository: https://github.com/tylergannon/polytype
 Human documentation: https://go-gen-jsonschema.tylergannon.com
@@ -124,8 +134,9 @@ without `--typescript-barrel` removes a generated `index.ts` and preserves an
 application-owned one.
 
 This output is for static structural checking. It does not provide runtime
-decoding, validation, or definitive Go/TypeScript transport semantics; that
-work remains tracked separately in issue #71. Time values remain strings and
+decoding or validation on the JSON wire; issue #71 tracks that proof, and the
+devalue codecs (below) are the typed, runtime-checked Go/JavaScript transport
+polytype ships. Time values remain strings and
 numeric fields become `number`, so TypeScript does not enforce Go integer ranges
 or JSON Schema formats. Enum literals that cannot be represented exactly are
 rejected. Runtime schema providers, custom JSON/text codecs, and other
@@ -138,10 +149,10 @@ module release for both the tool and imported marker/runtime package, then use a
 single directive:
 
 ```bash
-go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.8
+go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.10
 ```
 
-This combined surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
+The `devalue`, `devalue/codegen`, and `grammar` packages require `v1.0.0-rc.10` or newer. The combined TypeScript and codec surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
 TypeScript declarations but predates generated owner codecs, and releases before
 `v1.0.0-rc.7` predate the marker-based enum and sealed-union registration. Pin
 the version explicitly.
@@ -315,6 +326,14 @@ instead (never the return values of `String()`).
 Migration: `.Enum(field)`, `WithEnum(field)`, and the package-level
 `NewEnumType[T]()` are removed; add `func (T) enum() {}` next to the type.
 `.StringerEnum`/`WithStringerEnum` are unchanged.
+
+Every marked enum type declared in the generation target package receives a
+type-level value-receiver `MarshalJSON` and pointer-receiver `UnmarshalJSON`
+that enforce membership in both directions: a value that is not a declared
+constant fails to encode or decode with an error naming the enum type and the
+value, and `null` is rejected. Marked enums imported from another package are
+not guarded. A production JSON method already declared on a marked type fails
+generation before any file is written.
 
 String-mode integer fields generate one composed owner codec for encoding and
 decoding, shared with any union adapters. Marshal the containing owner value
@@ -619,12 +638,100 @@ state, without modifying the TypeScript destination. Generation can still
 update `jsonschema_gen.go` when schemas and requested TypeScript files are
 unchanged.
 
+## devalue transport (Go ↔ JavaScript)
+
+devalue is the structured-value wire format SvelteKit uses for `load` data and
+remote functions. `github.com/tylergannon/polytype/devalue` is a Go port of its
+flat `stringify`/`parse` pair, byte-identical to devalue 5.9 for every shape it
+implements:
+
+```go
+import "github.com/tylergannon/polytype/devalue"
+
+s, err := devalue.Stringify(devalue.NewObject("name", "Ada", "tags", []any{"a"}))
+v, err := devalue.Parse(s, nil) // *devalue.Object; numbers are float64, null is nil
+```
+
+Value model: `*devalue.Object` (ordered; `map[string]any` accepted on encode
+with sorted keys), `[]any`, `string`, Go numeric kinds (float64 on parse),
+`bool`, `nil`, `devalue.Undefined`, `devalue.Hole`, and the tagged forms
+`Date`, `*Map`, `*Set`, `BigInt`, `RegExp`, `ArrayBuffer`, `*Boxed`.
+`StringifyWith(v, reducers)` and `Parse`'s `revivers` are the custom-type
+hooks. Typed arrays, `URL`, `URLSearchParams` and `Temporal` are not
+implemented and parse to an error.
+
+`github.com/tylergannon/polytype/devalue/codegen` emits strict, typed Go
+codecs for your types on that wire. Generation is a Go program you own,
+usually run from a `//go:generate` directive:
+
+```go
+pkg, err := grammar.Load("./model")            // same loader as the CLI
+scope := pkg.Types().Scope()
+defs, roots, err := pkg.Lower([]grammar.Root{
+    {Type: scope.Lookup("Envelope").Type()},
+    {Type: types.NewSlice(scope.Lookup("Envelope").Type()),
+     Position: token.Position{Filename: "gen.go", Line: 1}},
+})
+src, err := codegen.Generate(defs, roots, codegen.Options{
+    PackageName: "codec",
+    ImportPath:  "example.com/app/codec",
+})
+os.WriteFile("codec/codec_gen.go", src, 0o644)
+```
+
+Roots need no `Declare` marker and may be anonymous types; `Position` is used
+only in diagnostics. The emitted file belongs to a package of your choosing
+and uses only exported fields. For every definition `T` reachable from the
+roots it declares `EncodeT(model.T) (any, error)`, `DecodeT(any) (model.T,
+error)`, `StringifyT(model.T) (string, error)` and `ParseT(string) (model.T,
+error)`; anonymous roots get the same family named `Root0`, `Root1`, … by
+index. Run `go mod tidy` afterwards; the file imports the `devalue` runtime.
+
+Wire rules:
+
+- Every Go numeric kind is a JavaScript number; integers beyond 2^53 lose
+  precision. No BigInt.
+- `time.Time` is the `encoding/json` string, never a `Date`.
+- Absent `Optional` is no property; absent `Nullable` is null; nil required
+  slice is `[]`; nil pointer where a value is required is an encode error.
+- Enums honor their mode (values, or constant names under `.StringerEnum`)
+  and reject non-members both ways.
+- Unions are one object; the discriminator property holds the concrete type
+  name, as in every other projection.
+- Decoders reject missing/unknown properties, wrong kinds, `undefined`, wrong
+  array lengths, unknown tags and every devalue tagged form, with
+  JSON-pointer-style paths in errors.
+- Anonymous structs are admitted as a field's own type only, not under a
+  slice, array or pointer, and not as a root.
+
+Complete module: `devalue/codegen/testdata/fixture` in the repository.
+
+## Library entry point: `grammar` and `typegrammar`
+
+`github.com/tylergannon/polytype/typegrammar` is the closed grammar every
+backend consumes: `Scalar`, `Time`, `Enum`, `Object`, `Pointer`, `Slice`,
+`Array`, `Ref`; field values `Required`, `Optional`, `Nullable`, `Union`,
+`OptionalUnion`, `UnionSlice`. Objects are closed and ordered, references form
+a DAG, `Validate` is the admission boundary, and there is no `any`, map or
+open-union node. New node kinds may appear in minor versions, so a type switch
+must carry a `default` case that reports the unknown kind.
+
+`github.com/tylergannon/polytype/grammar` is the public lowering entry point:
+`Load(dir) (*Package, error)` reads a package with the `jsonschema` build tag
+the way the CLI does; `(*Package).Types()` is its type-checked scope;
+`(*Package).Lower([]Root) (typegrammar.Definitions, []typegrammar.Type, error)`
+returns the validated definition graph plus one node per root, refusing
+unsupported shapes with the CLI's diagnostics. A backend is a function over
+those values.
+
 ## Driving polytype from another generator
 
 polytype is a pure function of a package's Go source. A tool that has
 already decided which types need schemas or codecs drives it by writing one
-file and running one command; there is no library entry point, and none is
-needed.
+file and running one command. (A tool that wants the type grammar itself, or
+devalue codecs, uses the `grammar` and `devalue/codegen` packages above
+instead; the CLI owns only the schema, validation, JSON-codec and TypeScript
+outputs.)
 
 For each package that owns root types, emit one `//go:build jsonschema` file:
 
@@ -712,6 +819,9 @@ detects untracked generated files.
 - Interface containers are limited as described above.
 - TypeScript output is structural only and provides no runtime codec or
   transport-equivalence guarantee.
+- devalue codecs carry every numeric kind as a JavaScript number (lossy
+  beyond 2^53), never emit `Date` or `BigInt`, and refuse anonymous structs
+  under slices, arrays, pointers, or as roots.
 
 ## Troubleshooting
 
@@ -733,3 +843,4 @@ Compiling examples:
 - Enums: `examples/enums`, `examples/stringer_enums`
 - Provider rendering: `examples/providers_rendering`
 - Shared `$ref`/`$defs` via `Ref`: `examples/ref_types`
+- devalue codecs over every grammar node kind: `devalue/codegen/testdata/fixture`

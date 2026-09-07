@@ -137,6 +137,7 @@ func TestBasic(t *testing.T) {
 			testName:  "test3-enums",
 			runGinkgo: false,
 			files: []string{
+				"jsonschema/EnumHolder.json",
 				"jsonschema/EnumType.json",
 				"jsonschema/SliceOfEnumType.json",
 				"jsonschema/SliceOfPointerToRemoteEnum.json",

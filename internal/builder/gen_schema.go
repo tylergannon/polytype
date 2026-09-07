@@ -168,6 +168,9 @@ func NewForTypes(pkg *decorator.Package, typeNames []string) (SchemaBuilder, err
 	if err := builder.validateOwnerCodecMethods(); err != nil {
 		return builder, err
 	}
+	if err := builder.validateEnumCodecMethods(); err != nil {
+		return builder, err
+	}
 
 	return builder, nil
 }
@@ -386,6 +389,27 @@ type schemaTemplateData struct {
 type EnumMarker struct {
 	TypeName string
 	Constant string
+	// Underlying is the spelling of the type's underlying basic type
+	// ("string", "int", "uint8", ...). It is the decode target and the
+	// conversion used when an error reports a rejected value.
+	Underlying string
+	// IsString distinguishes the two admitted wire forms. A string enum is
+	// reported with %q in errors, an integer enum with %v.
+	IsString bool
+	// Members are the type's constants in declaration order, deduplicated
+	// by wire value: two constants sharing a value would be a duplicate
+	// case in the generated switch, and the first name wins.
+	// Empty when the type's underlying type is neither string nor integer,
+	// which is rejected only if a schema actually reaches the type; no
+	// codec is emitted in that case.
+	Members []EnumMember
+}
+
+// EnumMember is one enum constant together with the exact JSON text it
+// encodes to. Wire is JSON, not Go: the template quotes it for Go with %q.
+type EnumMember struct {
+	Constant string
+	Wire     string
 }
 
 func (s schemaTemplateData) HaveInterfaces() bool {
@@ -457,6 +481,37 @@ func (s SchemaBuilder) validateOwnerCodecMethods() error {
 				return ownerCodecCollision(owner, methodName, position)
 			}
 		}
+	}
+	return nil
+}
+
+// validateEnumCodecMethods rejects, before anything is written, a generation
+// target whose production code already declares MarshalJSON or UnmarshalJSON
+// on an enum-marked type that would receive a generated type-level codec.
+// Emitting the codec anyway leaves the package with a duplicate method
+// declaration, so the collision is reported the way an owner codec collision
+// is: as a pre-write diagnostic naming the type, the method and its position.
+func (s *SchemaBuilder) validateEnumCodecMethods() error {
+	var receivers []string
+	for _, marker := range s.enumMarkers() {
+		if len(marker.Members) > 0 {
+			receivers = append(receivers, marker.TypeName)
+		}
+	}
+	if len(receivers) == 0 {
+		return nil
+	}
+	methods, err := syntax.FindProductionJSONMethods(s.Scan.Pkg.Dir, receivers)
+	if err != nil {
+		return fmt.Errorf("discovering production JSON methods: %w", err)
+	}
+	if len(methods) > 0 {
+		return fmt.Errorf(
+			"cannot generate enum codec for %s: handwritten production %s already declared at %s",
+			methods[0].Receiver,
+			methods[0].Name,
+			methods[0].Position,
+		)
 	}
 	return nil
 }
@@ -748,12 +803,12 @@ func (s SchemaBuilder) AddSchema(t syntax.TypeID, schema JSONSchema) {
 // loadScanResult gets the scan result associated with the given syntax.TypeID
 func (s SchemaBuilder) loadScanResult(t syntax.TypeID) (syntax.ScanResult, error) {
 	if t.PkgPath == "" {
-		panic("empty package path in loadScanResult")
+		return syntax.ScanResult{}, fmt.Errorf("empty package path in loadScanResult")
 	}
 	if res, ok := s.Scan.GetPackage(t.PkgPath); ok {
 		return res, nil
 	}
-	panic("package was not loaded: " + t.PkgPath)
+	return syntax.ScanResult{}, fmt.Errorf("package was not loaded: %s", t.PkgPath)
 }
 
 func (s SchemaBuilder) find(t syntax.TypeID) (token.Position, error) {
@@ -1370,12 +1425,64 @@ func (s SchemaBuilder) sortedOwnerCodecNames() []string {
 func (s *SchemaBuilder) enumMarkers() []EnumMarker {
 	markers := make([]EnumMarker, 0, len(s.Scan.Constants))
 	for _, typeName := range slices.Sorted(maps.Keys(s.Scan.Constants)) {
-		markers = append(markers, EnumMarker{
+		enumSet := s.Scan.Constants[typeName]
+		marker := EnumMarker{
 			TypeName: typeName,
-			Constant: s.Scan.Constants[typeName].Values[0].Name,
-		})
+			Constant: enumSet.Values[0].Name,
+		}
+		marker.Underlying, marker.IsString, marker.Members = enumCodecMembers(enumSet)
+		markers = append(markers, marker)
 	}
 	return markers
+}
+
+// enumCodecMembers resolves the wire form of an enum-marked type: its
+// underlying basic type, whether that type is a string, and one member per
+// distinct wire value. It returns no members for anything it cannot encode
+// (a non-basic or non-string/integer underlying type, or a constant whose
+// evaluated value does not match its underlying kind), leaving the type
+// without generated codecs rather than emitting code that will not compile.
+func enumCodecMembers(enumSet *syntax.EnumSet) (underlying string, isString bool, members []EnumMember) {
+	object := enumSet.TypeSpec.Pkg().Types.Scope().Lookup(enumSet.TypeSpec.Name())
+	if object == nil {
+		return "", false, nil
+	}
+	basic, ok := object.Type().Underlying().(*types.Basic)
+	if !ok {
+		return "", false, nil
+	}
+	switch {
+	case basic.Info()&types.IsString != 0:
+		isString = true
+	case basic.Info()&types.IsInteger != 0:
+	default:
+		return "", false, nil
+	}
+	seen := make(map[string]bool, len(enumSet.Values))
+	for _, value := range enumSet.Values {
+		var wire string
+		if isString {
+			if value.Value.Kind() != constant.String {
+				return "", false, nil
+			}
+			encoded, err := json.Marshal(constant.StringVal(value.Value))
+			if err != nil {
+				return "", false, nil
+			}
+			wire = string(encoded)
+		} else {
+			if value.Value.Kind() != constant.Int {
+				return "", false, nil
+			}
+			wire = value.Value.ExactString()
+		}
+		if seen[wire] {
+			continue
+		}
+		seen[wire] = true
+		members = append(members, EnumMember{Constant: value.Name, Wire: wire})
+	}
+	return basic.Name(), isString, members
 }
 
 func (s *SchemaBuilder) RenderGoCode() (err error) {

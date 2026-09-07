@@ -23,6 +23,87 @@ var (
 	_ interface{ enum() } = SeverityInfo
 )
 
+// MarshalJSON encodes Priority as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue Priority) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case PriorityLow:
+		return []byte("\"low\""), nil
+	case PriorityMedium:
+		return []byte("\"medium\""), nil
+	case PriorityHigh:
+		return []byte("\"high\""), nil
+	}
+	return nil, fmt.Errorf("polytype: %q is not a declared member of enum Priority", string(__enumValue))
+}
+
+// UnmarshalJSON decodes Priority, accepting only the values of its
+// declared constants.
+func (__enumValue *Priority) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *string
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum Priority: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum Priority cannot be JSON null")
+	}
+	switch Priority(*__wire) {
+	case PriorityLow:
+	case PriorityMedium:
+	case PriorityHigh:
+	default:
+		return fmt.Errorf("polytype: %q is not a declared member of enum Priority", *__wire)
+	}
+	*__enumValue = Priority(*__wire)
+	return nil
+}
+
+// MarshalJSON encodes Severity as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue Severity) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case SeverityInfo:
+		return []byte("\"info\""), nil
+	case SeverityWarning:
+		return []byte("\"warning\""), nil
+	case SeverityError:
+		return []byte("\"error\""), nil
+	case SeverityCritical:
+		return []byte("\"critical\""), nil
+	}
+	return nil, fmt.Errorf("polytype: %q is not a declared member of enum Severity", string(__enumValue))
+}
+
+// UnmarshalJSON decodes Severity, accepting only the values of its
+// declared constants.
+func (__enumValue *Severity) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *string
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum Severity: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum Severity cannot be JSON null")
+	}
+	switch Severity(*__wire) {
+	case SeverityInfo:
+	case SeverityWarning:
+	case SeverityError:
+	case SeverityCritical:
+	default:
+		return fmt.Errorf("polytype: %q is not a declared member of enum Severity", *__wire)
+	}
+	*__enumValue = Severity(*__wire)
+	return nil
+}
+
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
 }

@@ -22,6 +22,45 @@ var (
 	_ interface{ enum() } = StatusPending
 )
 
+// MarshalJSON encodes Status as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue Status) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case StatusPending:
+		return []byte("\"pending\""), nil
+	case StatusActive:
+		return []byte("\"active\""), nil
+	case StatusComplete:
+		return []byte("\"complete\""), nil
+	}
+	return nil, fmt.Errorf("polytype: %q is not a declared member of enum Status", string(__enumValue))
+}
+
+// UnmarshalJSON decodes Status, accepting only the values of its
+// declared constants.
+func (__enumValue *Status) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *string
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum Status: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum Status cannot be JSON null")
+	}
+	switch Status(*__wire) {
+	case StatusPending:
+	case StatusActive:
+	case StatusComplete:
+	default:
+		return fmt.Errorf("polytype: %q is not a declared member of enum Status", *__wire)
+	}
+	*__enumValue = Status(*__wire)
+	return nil
+}
+
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
 }

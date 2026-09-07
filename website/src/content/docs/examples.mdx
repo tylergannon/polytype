@@ -24,10 +24,15 @@ repository examples when you need the complete package and generated output.
   <Card title="Provider schemas" icon="setting" href="/features/providers/">
     Supply field schemas at runtime when static generation is not enough.
   </Card>
+  <Card title="devalue transport" icon="laptop" href="/guides/devalue/">
+    Generate strict Go codecs for SvelteKit's devalue wire format from the same types.
+  </Card>
 </CardGrid>
 
 The repository also contains complete, executable packages under
-[`examples/`](https://github.com/tylergannon/polytype/tree/main/examples).
+[`examples/`](https://github.com/tylergannon/polytype/tree/main/examples), and a
+devalue codec module covering every grammar node kind under
+[`devalue/codegen/testdata/fixture`](https://github.com/tylergannon/polytype/tree/main/devalue/codegen/testdata/fixture).
 
 For a compact source-generated reference, see the installable skill's
 [`references/examples.md`](https://github.com/tylergannon/polytype/blob/main/skills/polytype/references/examples.md).

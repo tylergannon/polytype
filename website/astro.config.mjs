@@ -49,7 +49,14 @@ export default defineConfig({
 						label: 'Production use',
 						items: [
 							{ label: 'Validation and CI', link: '/guides/validation-ci/' },
+							{ label: 'devalue transport (SvelteKit)', link: '/guides/devalue/' },
 							{ label: 'CLI reference', link: '/reference/cli/' },
+						],
+					},
+					{
+						label: 'Extending',
+						items: [
+							{ label: 'Custom backends', link: '/guides/custom-backends/' },
 						],
 					},
 					{

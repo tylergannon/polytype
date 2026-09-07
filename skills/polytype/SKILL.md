@@ -1,27 +1,36 @@
 ---
 name: polytype
 description: >
-  Use when adding or maintaining JSON Schemas, typed-union JSON codecs, and YAML input for Go
-  structs.
+  Use when projecting Go types into JSON Schema, validation, Go JSON codecs, TypeScript
+  declarations, or devalue (SvelteKit) transport codecs, or when writing a custom backend on
+  polytype's type grammar.
 ---
 
 # polytype
 
-Projects Go types into the other typed representations a program needs at its
-boundaries: JSON Schema files plus Go accessors, structural TypeScript
-declarations, optional validation, and selectable JSON/YAML input. The Go type
-is the source of truth; projection is static (AST-driven at `go generate`
-time), not runtime reflection. Schema generation is separate from codecs:
-generated encoding/decoding is limited to the documented shapes, and no
-general-purpose typed encode/decode round-trip is implied.
-Built for LLM function calling:
-properties are emitted in struct field order (deterministic, prompt-controllable),
-`additionalProperties: false`, ordinary and nullable fields required,
-`Optional[T]` fields optional, and Go doc comments become the schema
-`description` fields.
+polytype is a type projection tool. It lowers Go types, statically at
+`go generate` time, into one closed type grammar and projects that grammar
+into the other type systems a program speaks:
 
-Import path: `github.com/tylergannon/polytype` (library markers) and
-`github.com/tylergannon/polytype/polytype` (CLI).
+- JSON Schema files plus Go accessors (the CLI's always-on output), tuned for
+  LLM function calling: struct field order, `additionalProperties: false`,
+  ordinary and nullable fields required, `Optional[T]` optional, doc comments
+  as descriptions.
+- Validation methods (`--validate`) and YAML input (`--formats=both`).
+- Go JSON codecs inferred from the types: membership-checked enums and
+  discriminated sealed unions. No flag selects them.
+- Structural TypeScript declarations (`--typescript DIR`).
+- devalue transport for SvelteKit: a Go runtime port plus generated strict
+  Go codecs (`devalue`, `devalue/codegen`), driven from a Go program.
+- A library entry point for your own backend (`grammar`, `typegrammar`).
+
+Every projection refuses a shape it cannot represent faithfully rather than
+widening to `any`. Generated encoding/decoding is limited to the documented
+shapes; no general-purpose typed round trip is implied.
+
+Import paths: `github.com/tylergannon/polytype` (markers and wrappers),
+`github.com/tylergannon/polytype/polytype` (CLI), and the library packages
+above under the same module.
 
 ## Mental model: two build-tagged files
 
@@ -82,7 +91,7 @@ predates generated owner codecs, and releases before `v1.0.0-rc.7` predate the
 marker-based enum and sealed-union registration:
 
 ```bash
-go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.8
+go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.10
 ```
 
 Generate the schema, validation, Go output, and TypeScript declarations in one
@@ -102,6 +111,15 @@ type-only `index.ts`, with no runtime decoder or validator. TypeScript consumers
 use `JSON.parse`/`JSON.stringify` and must validate untrusted runtime data in the
 application. Do not claim executed cross-language equivalence from TypeScript
 compilation alone; issue #71 owns the broader Go/JavaScript transport proof.
+
+## devalue transport and custom backends
+
+When the task is a Go ↔ JavaScript boundary on SvelteKit's devalue wire, or a
+new projection of the same types, read
+[references/devalue-and-grammar.md](references/devalue-and-grammar.md). It
+covers the `devalue` runtime, the generator program that emits typed codecs
+into a package you choose, the wire rules, and the `grammar`/`typegrammar`
+entry point. Those are library packages, not CLI flags.
 
 ## Minimal example
 
@@ -250,7 +268,7 @@ semantic equality for the shapes used by the consumer.
 
 - `go generate ./...` runs clean and a second run produces no diff.
 - `go build ./...` and `go test ./...` pass.
-- Generated `jsonschema/*.json`, `jsonschema_gen.go`, and any requested
-  TypeScript declarations are committed.
+- Generated `jsonschema/*.json`, `jsonschema_gen.go`, any requested
+  TypeScript declarations, and any generated devalue codec file are committed.
 - Field doc comments read as LLM-facing descriptions.
 - A pre-commit hook or CI check guards against schema drift.

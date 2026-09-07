@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/tylergannon/polytype/internal/syntax"
-	"github.com/tylergannon/polytype/internal/typegrammar"
+	"github.com/tylergannon/polytype/typegrammar"
 )
 
 func TestTypeDefinitionsPreservesRegisteredSourceGrammar(t *testing.T) {

@@ -25,6 +25,42 @@ var (
 	_ interface{ enum() } = ModeFast
 )
 
+// MarshalJSON encodes Mode as its declared constant's own value.
+// Any other value is rejected rather than written to the wire.
+func (__enumValue Mode) MarshalJSON() ([]byte, error) {
+	switch __enumValue {
+	case ModeFast:
+		return []byte("\"fast\""), nil
+	case ModeSafe:
+		return []byte("\"safe\""), nil
+	}
+	return nil, fmt.Errorf("polytype: %q is not a declared member of enum Mode", string(__enumValue))
+}
+
+// UnmarshalJSON decodes Mode, accepting only the values of its
+// declared constants.
+func (__enumValue *Mode) UnmarshalJSON(data []byte) error {
+	// The wire value is decoded through a pointer so that JSON null stays
+	// distinguishable from the zero value of the underlying type: decoding
+	// null into a bare value leaves it untouched, which would silently pass
+	// the membership check whenever the zero value is a declared member.
+	var __wire *string
+	if err := json.Unmarshal(data, &__wire); err != nil {
+		return fmt.Errorf("polytype: enum Mode: %w", err)
+	}
+	if __wire == nil {
+		return errors.New("polytype: enum Mode cannot be JSON null")
+	}
+	switch Mode(*__wire) {
+	case ModeFast:
+	case ModeSafe:
+	default:
+		return fmt.Errorf("polytype: %q is not a declared member of enum Mode", *__wire)
+	}
+	*__enumValue = Mode(*__wire)
+	return nil
+}
+
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
 }
