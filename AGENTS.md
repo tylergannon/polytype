@@ -73,7 +73,7 @@ Task runner is `just` (justfile), not `make`.
 - **`grammar/`** — Public lowering entry point: `Load(dir)`, `(*Package).Types()`, `(*Package).Lower(roots)`; thin bridge over `builder.SchemaBuilder.LowerRoots`
 - **`devalue/`** — Go port of the devalue flat `stringify`/`parse` runtime; goldens in `testdata/golden.json` recorded from devalue 5.9 by `testdata/record`
 - **`devalue/codegen/`** — Emits strict Go encoders/decoders (`EncodeT`/`DecodeT`/`StringifyT`/`ParseT`) for a lowered definition graph; compile-and-run fixture in `testdata/fixture`
-- **`internal/typescript/`** — TypeScript declaration backend over `typegrammar`
+- **`typescript/`** — Public TypeScript declaration backend over `typegrammar`; `Generate` returns the files plus the emitted identifier per definition. The marker-free fixture in `testdata/fixture` proves the library path matches `--typescript` byte for byte
 - **`internal/syntax/`** — AST parsing, package loading (uses `golang.org/x/tools/go/packages` with `jsonschema` build tag), type scanning, comment extraction
 - **`internal/builder/`** — Schema generation engine. `SchemaBuilder` orchestrates: type scanning → schema node construction → JSON output → Go code generation
 - **`internal/builder/model.go`** — Schema node types: `ObjectNode`, `PropertyNode`, `ArrayNode`, `UnionTypeNode`, `RefNode`, `TemplateHoleNode`
@@ -117,5 +117,5 @@ Pass `--validate` to generation, and add a panic stub such as `func (Person) Val
 - Unit tests alongside source files (`*_test.go`)
 - Integration test fixtures in `internal/builder/testfixtures/` and `internal/builder/test_run/`
 - Golden file comparisons via `internal/testutils/golden_file.go`
-- All tests are plain `go test`. Two consult Node tooling only when present and skip otherwise: `internal/typescript` compiles its edge-case output with `tsc`, and `devalue` compares against goldens recorded from devalue 5.9. `npm ci` at the repo root installs both pins; CI does this. Do not add TypeScript test code, ledgers, or provenance machinery
+- All tests are plain `go test`. Two consult Node tooling only when present and skip otherwise: `typescript` compiles its edge-case output with `tsc`, and `devalue` compares against goldens recorded from devalue 5.9. `npm ci` at the repo root installs both pins; CI does this. Do not add TypeScript test code, ledgers, or provenance machinery
 - Example directories each contain types, registration, and generated output

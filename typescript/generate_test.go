@@ -91,8 +91,9 @@ func TestGenerateProjectsCompleteGrammar(t *testing.T) {
 		{GoName: "Events", JSONName: "events", Value: &typegrammar.UnionSlice{Union: u}},
 	}})
 
-	files, err := Generate(typegrammar.Definitions{created, deleted, status, mode, exact, owner}, Options{Barrel: true})
+	result, err := Generate(typegrammar.Definitions{created, deleted, status, mode, exact, owner}, Options{Barrel: true})
 	require.NoError(t, err)
+	files := result.Files
 	require.Len(t, files, 2)
 	require.Equal(t, "types.ts", files[0].Name)
 	require.Equal(t, "index.ts", files[1].Name)
@@ -149,7 +150,20 @@ func TestGenerateUsesStableCollisionSafeNames(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, first, second)
 
-	types := string(first[0].Content)
+	// A caller writing `import type { X } from './types'` must learn the
+	// emitted identifier from the result, since every one of these was
+	// renamed away from its Go name.
+	require.Equal(t, map[typegrammar.Name]string{
+		left:                  "Shared$6578616d706c652e636f6d2f6c65667400536861726564",
+		right:                 "Shared$6578616d706c652e636f6d2f726967687400536861726564",
+		grammarName("object"): "object$type",
+		grammarName("Array"):  "Array$type",
+		grammarName("Omit"):   "Omit$type",
+		grammarName("\u96ea"): "_u96EA_",
+		grammarName("Owner"):  "Owner",
+	}, first.Names)
+
+	types := string(first.Files[0].Content)
 	require.Contains(t, types, "export type Shared$6578616d706c652e636f6d2f6c65667400536861726564 = object;")
 	require.Contains(t, types, "export type Shared$6578616d706c652e636f6d2f726967687400536861726564 = object;")
 	require.Contains(t, types, "export type object$type = object;")
@@ -171,8 +185,8 @@ func TestGenerateRejectsInexactNumericLiteral(t *testing.T) {
 			{Name: "NotExact", Value: integer("9007199254740993")},
 		},
 	})}
-	files, err := Generate(defs, Options{})
-	require.Nil(t, files)
+	result, err := Generate(defs, Options{})
+	require.Zero(t, result)
 	require.ErrorContains(t, err, "example.com/model.Large enum member NotExact")
 	require.ErrorContains(t, err, "9007199254740993 is not exactly representable")
 }
@@ -180,8 +194,8 @@ func TestGenerateRejectsInexactNumericLiteral(t *testing.T) {
 func TestGenerateRejectsInvalidGrammarBeforeProjection(t *testing.T) {
 	t.Parallel()
 
-	files, err := Generate(typegrammar.Definitions{definition("Broken", &typegrammar.Ref{Target: grammarName("Missing")})}, Options{})
-	require.Nil(t, files)
+	result, err := Generate(typegrammar.Definitions{definition("Broken", &typegrammar.Ref{Target: grammarName("Missing")})}, Options{})
+	require.Zero(t, result)
 	require.ErrorContains(t, err, "unresolved reference example.com/model.Missing")
 }
 
@@ -190,9 +204,10 @@ func TestGenerateEmptyDefinitionsAndOptionalBarrel(t *testing.T) {
 
 	without, err := Generate(nil, Options{})
 	require.NoError(t, err)
-	require.Equal(t, []File{{Name: "types.ts", Content: []byte(GeneratedHeader + "export {};\n")}}, without)
+	require.Equal(t, []File{{Name: "types.ts", Content: []byte(GeneratedHeader + "export {};\n")}}, without.Files)
+	require.Empty(t, without.Names)
 
 	with, err := Generate(nil, Options{Barrel: true})
 	require.NoError(t, err)
-	require.Equal(t, GeneratedHeader+"\nexport type {} from './types.js';\n", string(with[1].Content))
+	require.Equal(t, GeneratedHeader+"\nexport type {} from './types.js';\n", string(with.Files[1].Content))
 }

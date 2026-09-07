@@ -11,7 +11,7 @@ grammar into the other type systems your program has to speak:
 | **JSON Schema** | Deterministic schemas for LLM tool calls and structured output, embedded in Go | `go tool polytype` (always on) |
 | **Validation** | `ValidateJSON` / `ValidateYAML` methods backed by the schemas | `--validate`, `--formats=both` |
 | **Go JSON codecs** | Membership-checked enums, discriminated sealed unions, YAML input | Inferred from your types; no flag |
-| **TypeScript** | Structural `types.ts` declarations for the same shapes | `--typescript DIR` |
+| **TypeScript** | Structural `types.ts` declarations for the same shapes | `--typescript DIR`, or the `typescript` package |
 | **devalue transport** | Go encoders/decoders for the [devalue](https://github.com/sveltejs/devalue) wire format SvelteKit uses, plus a Go port of the runtime | `devalue` and `devalue/codegen` packages |
 | **Your own backend** | Load a package, lower any roots, walk the grammar | `grammar` and `typegrammar` packages |
 
@@ -480,6 +480,32 @@ static shapes, including runtime schema providers and custom JSON/text codecs,
 fail with a diagnostic. Generation itself has no Node, npm, or JavaScript-engine
 dependency.
 
+### From a Go program
+
+A generator that already knows which types it wants, such as a SvelteKit
+tool that has picked its remote-function argument and result types, does not
+need the CLI, a `//go:build jsonschema` file, or the schema outputs. The
+backend behind `--typescript` is the `typescript` package:
+
+```go
+pkg, err := grammar.Load("./orders")
+scope := pkg.Types().Scope()
+defs, _, err := pkg.Lower([]grammar.Root{{Type: scope.Lookup("Order").Type()}})
+result, err := typescript.Generate(defs, typescript.Options{Barrel: true})
+for _, file := range result.Files { // types.ts, index.ts
+    os.WriteFile(filepath.Join("web/src/generated", file.Name), file.Content, 0o644)
+}
+```
+
+The bytes are identical to the CLI's for the same roots. `result.Names` maps
+each definition to the identifier it was declared under, which is the Go
+name unless a reserved word, an illegal identifier, or a same-named type in
+another package forced a rename; a tool writing
+`import type { Order } from './types'` reads it from there. Nothing is
+written into the package that declares the types. See
+[Driving polytype from another generator](llms.txt) for both paths side by
+side.
+
 ### Adopt TypeScript declarations with Go JSON codecs
 
 Pin an explicit module release that contains both capabilities; the generator
@@ -489,7 +515,7 @@ and the imported marker/runtime package must use that same release:
 go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.10
 ```
 
-The `devalue`, `devalue/codegen`, and `grammar` packages require `v1.0.0-rc.10` or newer. The combined TypeScript and codec surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
+The `devalue`, `devalue/codegen`, and `grammar` packages require `v1.0.0-rc.10` or newer; the `typescript` package requires the release after it. The combined TypeScript and codec surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
 TypeScript declarations but predates generated owner codecs, and releases before
 `v1.0.0-rc.7` predate the marker-based enum and sealed-union registration. Pin
 the version explicitly.

@@ -16,7 +16,8 @@ Projections:
   YAML input through `go.yaml.in/yaml/v4`, translated to the JSON data model).
 - Go JSON codecs inferred from the types: membership-checked enums,
   discriminated sealed unions, YAML adapters. No flag selects them.
-- Structural TypeScript declarations (`--typescript DIR`).
+- Structural TypeScript declarations (`--typescript DIR`, or package
+  `typescript` from a Go program that already knows its roots).
 - devalue transport: a Go port of the devalue runtime SvelteKit uses, plus
   generated strict Go encoders/decoders for your types on that wire
   (packages `devalue` and `devalue/codegen`).
@@ -152,7 +153,7 @@ single directive:
 go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.10
 ```
 
-The `devalue`, `devalue/codegen`, and `grammar` packages require `v1.0.0-rc.10` or newer. The combined TypeScript and codec surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
+The `devalue`, `devalue/codegen`, and `grammar` packages require `v1.0.0-rc.10` or newer; the `typescript` package requires the release after it. The combined TypeScript and codec surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
 TypeScript declarations but predates generated owner codecs, and releases before
 `v1.0.0-rc.7` predate the marker-based enum and sealed-union registration. Pin
 the version explicitly.
@@ -174,6 +175,11 @@ or validator. Type annotations do not validate untrusted runtime input, so the
 application must validate that boundary. Issue #71 owns the broader executed
 JavaScript transport proof and does not turn these declarations into runtime
 codecs.
+
+A Go program that already knows which types it wants can skip the CLI and its
+schema outputs: `github.com/tylergannon/polytype/typescript` is the same
+backend as a library. See "Library entry points" and "Driving polytype from
+another generator" below.
 
 ## Build-tag model
 
@@ -706,7 +712,7 @@ Wire rules:
 
 Complete module: `devalue/codegen/testdata/fixture` in the repository.
 
-## Library entry point: `grammar` and `typegrammar`
+## Library entry points: `grammar`, `typegrammar` and `typescript`
 
 `github.com/tylergannon/polytype/typegrammar` is the closed grammar every
 backend consumes: `Scalar`, `Time`, `Enum`, `Object`, `Pointer`, `Slice`,
@@ -724,14 +730,39 @@ returns the validated definition graph plus one node per root, refusing
 unsupported shapes with the CLI's diagnostics. A backend is a function over
 those values.
 
+`github.com/tylergannon/polytype/typescript` is the TypeScript backend the
+CLI uses, importable:
+`Generate(defs typegrammar.Definitions, Options{Barrel bool}) (Result, error)`.
+`Result.Files` holds `types.ts` and, with `Barrel`, `index.ts`, each a
+`File{Name, Content}` the caller writes wherever it likes; `Result.Names`
+maps every definition to the identifier its alias was emitted under, which is
+the Go name unless renaming was needed for a reserved word, an illegal
+identifier, or a same-named type in another package. For the same
+definitions the bytes are those `--typescript` writes.
+
 ## Driving polytype from another generator
 
 polytype is a pure function of a package's Go source. A tool that has
-already decided which types need schemas or codecs drives it by writing one
-file and running one command. (A tool that wants the type grammar itself, or
-devalue codecs, uses the `grammar` and `devalue/codegen` packages above
-instead; the CLI owns only the schema, validation, JSON-codec and TypeScript
-outputs.)
+already decided which types need projecting drives it one of two ways.
+
+A package that owns its own schema takes the CLI path: the tool writes one
+`//go:build jsonschema` file into each package that declares root types and
+runs `go tool polytype` against it. The schema JSON, sums, and
+`jsonschema_gen.go` land in that package and belong to it. This is the only
+path to the schema, validation, and Go JSON codec outputs.
+
+A generator that already knows its roots and wants the type grammar, devalue
+codecs, or TypeScript takes the library path: `grammar.Load` and
+`(*Package).Lower` produce the definitions, and `devalue/codegen.Generate`
+or `typescript.Generate` project them. It needs no tagged file and no
+`Declare`, writes nothing into the package that declares the types, and owns
+every output path. For the same roots, `typescript.Generate` emits the bytes
+`--typescript` would. Both paths read `func (T) enum()` markers and sealing
+methods from the untagged source, and both honor a `SealedUnion` or
+`.StringerEnum` registration when the package happens to carry a tagged
+file; the library path just does not require one.
+
+### The CLI path
 
 For each package that owns root types, emit one `//go:build jsonschema` file:
 
@@ -782,6 +813,29 @@ Rules a driving tool must respect:
   stub, or a `T{}.Field` that does not exist fails as a Go compile error.
 - Shape rules (maps, recursion, unsealed interface fields, Nullable
   placement) are checked only at generation time.
+
+### The library path
+
+```go
+pkg, err := grammar.Load("./orders")
+scope := pkg.Types().Scope()
+defs, roots, err := pkg.Lower([]grammar.Root{
+    {Type: scope.Lookup("Order").Type()},
+    {Type: scope.Lookup("Invoice").Type()},
+})
+ts, err := typescript.Generate(defs, typescript.Options{Barrel: true})
+for _, file := range ts.Files {
+    os.WriteFile(filepath.Join("web/src/generated", file.Name), file.Content, 0o644)
+}
+order := ts.Names[typegrammar.Name{PackagePath: "example.com/app/orders", Name: "Order"}]
+// order is the identifier to write in `import type { ... } from './types'`
+codecs, err := codegen.Generate(defs, roots, codegen.Options{PackageName: "codec", ImportPath: "example.com/app/codec"})
+```
+
+One `Lower` call feeds every backend. A root may come from any package the
+loaded one imports, so several packages' types can share one `types.ts`.
+Anonymous roots (`[]Order`) lower for devalue but get no TypeScript alias;
+only definitions are declared.
 
 ## Keep generated output current
 

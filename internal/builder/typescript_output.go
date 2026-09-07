@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/tylergannon/polytype/internal/typescript"
+	"github.com/tylergannon/polytype/typescript"
 )
 
 const (

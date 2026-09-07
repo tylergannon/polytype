@@ -55,7 +55,7 @@ type grammar and projects it into whatever the boundary needs:
 | JSON Schema, embedded in Go, for LLM tool calls and structured output | `go tool polytype` (always on) |
 | `ValidateJSON` / `ValidateYAML` methods | `--validate`, `--formats=both` |
 | Go JSON codecs: membership-checked enums, discriminated sealed unions, YAML input | Inferred from the types; no flag |
-| Structural TypeScript declarations | `--typescript DIR` |
+| Structural TypeScript declarations | `--typescript DIR`, or the `typescript` package |
 | devalue transport: Go runtime port plus generated typed codecs | `devalue`, `devalue/codegen` packages |
 | Your own backend | `grammar`, `typegrammar` packages |
 

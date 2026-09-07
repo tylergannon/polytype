@@ -19,7 +19,8 @@ into the other type systems a program speaks:
 - Validation methods (`--validate`) and YAML input (`--formats=both`).
 - Go JSON codecs inferred from the types: membership-checked enums and
   discriminated sealed unions. No flag selects them.
-- Structural TypeScript declarations (`--typescript DIR`).
+- Structural TypeScript declarations (`--typescript DIR`, or the `typescript`
+  package from a Go program that already knows its roots).
 - devalue transport for SvelteKit: a Go runtime port plus generated strict
   Go codecs (`devalue`, `devalue/codegen`), driven from a Go program.
 - A library entry point for your own backend (`grammar`, `typegrammar`).
@@ -118,8 +119,10 @@ When the task is a Go ↔ JavaScript boundary on SvelteKit's devalue wire, or a
 new projection of the same types, read
 [references/devalue-and-grammar.md](references/devalue-and-grammar.md). It
 covers the `devalue` runtime, the generator program that emits typed codecs
-into a package you choose, the wire rules, and the `grammar`/`typegrammar`
-entry point. Those are library packages, not CLI flags.
+into a package you choose, the wire rules, the `typescript` backend for a
+generator that already knows its roots and wants no schema files, and the
+`grammar`/`typegrammar` entry point. Those are library packages, not CLI
+flags.
 
 ## Minimal example
 
