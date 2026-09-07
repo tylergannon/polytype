@@ -91,7 +91,7 @@ predates generated owner codecs, and releases before `v1.0.0-rc.7` predate the
 marker-based enum and sealed-union registration:
 
 ```bash
-go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.8
+go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.10
 ```
 
 Generate the schema, validation, Go output, and TypeScript declarations in one

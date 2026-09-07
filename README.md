@@ -486,10 +486,10 @@ Pin an explicit module release that contains both capabilities; the generator
 and the imported marker/runtime package must use that same release:
 
 ```bash
-go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.8
+go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.10
 ```
 
-This combined surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
+The `devalue`, `devalue/codegen`, and `grammar` packages require `v1.0.0-rc.10` or newer. The combined TypeScript and codec surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
 TypeScript declarations but predates generated owner codecs, and releases before
 `v1.0.0-rc.7` predate the marker-based enum and sealed-union registration. Pin
 the version explicitly.

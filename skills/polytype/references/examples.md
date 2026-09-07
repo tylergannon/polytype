@@ -37,7 +37,7 @@ var _ = polytype.Declare(Config.Schema)
 
 ## Enums
 
-Use field-level enum options when a containing schema should expose named constants as allowed values.
+Mark a named type with func (T) enum() so its typed constants become the allowed values everywhere it appears; add .StringerEnum on a field to emit an integer enum's constant names instead of its values.
 
 Source: [`examples/stringer_enums/types.go`](../../../examples/stringer_enums/types.go)
 
@@ -142,7 +142,7 @@ var _ = polytype.Declare(Example.Schema).
 
 ## Interfaces and discriminators
 
-Use explicit interface options to enumerate implementations and choose the discriminator property for an interface field.
+Seal an interface with an unexported method so a field of that type becomes a discriminated union of the same-package structs declaring it; set a non-default discriminator once with SealedUnion[I](name).
 
 Source: [`examples/interfaces_options/types.go`](../../../examples/interfaces_options/types.go)
 
