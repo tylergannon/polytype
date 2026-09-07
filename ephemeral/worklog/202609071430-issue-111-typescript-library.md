@@ -21,3 +21,7 @@ doc_bug: llms.txt §"Driving polytype from another generator" said there is no l
 Proof: `go test ./...` green before and after; `golangci-lint run ./...` 0 issues; `goimports -l` and `gofmt -l` empty; `just build-tagged` clean; `govulncheck` reports nothing reachable. `website/package.json` prebuild now feeds `../typescript` to gomarkdoc so the API reference page gains the package on the next site build (not run locally).
 
 Not done (separable per the issue): `grammar.LoadPattern` for a root declared in a dependency.
+
+correction: Never open a PR whose checks are not clean. `just lint` failing on pre-existing ST1005 findings in `devalue/` was not acceptable to report and leave; it had to be fixed in this branch. Source: user, after PR #112 was opened.
+
+decision: Fixed with `devalue/staticcheck.conf` (`checks = ["inherit", "-ST1005"]`) scoped to the port, because the messages are devalue's own and the tests assert them verbatim; rewording would have broken the port's fidelity claim. `just lint` now passes end to end.
