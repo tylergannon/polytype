@@ -708,6 +708,19 @@ func (r *ScanResult) EnsureRemoteType(pkgPath, typeName string) error {
 	return r.resolveTypes()
 }
 
+// EnsureType resolves a caller-selected named type and all of its reachable
+// source dependencies. Unlike marker-seeded loading, it also handles a root
+// selected programmatically from the package currently being scanned.
+func (r *ScanResult) EnsureType(pkgPath, typeName string) error {
+	if pkgPath == "" || pkgPath == r.Pkg.PkgPath {
+		if err := r.requestType(typeName); err != nil {
+			return err
+		}
+		return r.resolveTypes()
+	}
+	return r.EnsureRemoteType(pkgPath, typeName)
+}
+
 func (r *ScanResult) requestType(typeName string) error {
 	if named, ok := r.LocalNamedTypes[typeName]; ok {
 		alreadyQueued := slices.ContainsFunc(r.resolveQueue, func(queued TypeSpec) bool {

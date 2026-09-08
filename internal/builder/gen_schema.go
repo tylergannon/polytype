@@ -45,6 +45,11 @@ func NewForTypes(pkg *decorator.Package, typeNames []string) (SchemaBuilder, err
 	if err != nil {
 		return SchemaBuilder{}, err
 	}
+	return newFromScan(data, typeNames, true)
+}
+
+func newFromScan(data syntax.ScanResult, typeNames []string, mapSchemas bool) (SchemaBuilder, error) {
+	var err error
 	var builder = SchemaBuilder{
 		Scan:              data,
 		schemas:           schemaMap{},
@@ -59,6 +64,7 @@ func NewForTypes(pkg *decorator.Package, typeNames []string) (SchemaBuilder, err
 		Rendered:          map[string]bool{},
 		RefTypes:          map[syntax.TypeID]bool{},
 		RefDefs:           map[string]refDef{},
+		GenerateSchemas:   true,
 	}
 	// First, collect providers so they're available during mapping
 	collectOpts := func(recv syntax.TypeID, opts []syntax.SchemaMethodOptionInfo) {
@@ -148,28 +154,32 @@ func NewForTypes(pkg *decorator.Package, typeNames []string) (SchemaBuilder, err
 		}
 		builder.TypeProviders = append(builder.TypeProviders, TypeProviders{TypeName: typeName, Providers: providers})
 	}
-	// Now map types
-	for _, m := range data.SchemaMethods {
-		if !selectedRoot(typeNames, m.Receiver.TypeName) {
-			continue
+	if mapSchemas {
+		// Map schema nodes and derive the generated Go codec plans only for
+		// outputs that need them. Grammar-only backends never enter the JSON
+		// Schema projection.
+		for _, m := range data.SchemaMethods {
+			if !selectedRoot(typeNames, m.Receiver.TypeName) {
+				continue
+			}
+			if err = builder.mapType(m.Receiver, syntax.SeenTypes{}); err != nil {
+				return builder, err
+			}
 		}
-		if err = builder.mapType(m.Receiver, syntax.SeenTypes{}); err != nil {
+		for _, f := range data.SchemaFuncs {
+			if !selectedRoot(typeNames, f.Receiver.TypeName) {
+				continue
+			}
+			if err = builder.mapType(f.Receiver, syntax.SeenTypes{}); err != nil {
+				return builder, err
+			}
+		}
+		if err := builder.validateOwnerCodecMethods(); err != nil {
 			return builder, err
 		}
-	}
-	for _, f := range data.SchemaFuncs {
-		if !selectedRoot(typeNames, f.Receiver.TypeName) {
-			continue
-		}
-		if err = builder.mapType(f.Receiver, syntax.SeenTypes{}); err != nil {
+		if err := builder.validateEnumCodecMethods(); err != nil {
 			return builder, err
 		}
-	}
-	if err := builder.validateOwnerCodecMethods(); err != nil {
-		return builder, err
-	}
-	if err := builder.validateEnumCodecMethods(); err != nil {
-		return builder, err
 	}
 
 	return builder, nil
@@ -279,6 +289,9 @@ type SchemaBuilder struct {
 	BuildTag          string
 	UnmarshalFormats  UnmarshalFormats
 	DiscriminatorProp string
+	// GenerateSchemas controls schema accessors and embedding in generated Go
+	// code. Codec-only generation leaves it false and writes no schema assets.
+	GenerateSchemas bool
 
 	// Field provider options per type (by receiver type name)
 	TypeProvidersMap map[string][]FieldProvider
@@ -304,6 +317,13 @@ func (s SchemaBuilder) GeneratesJSONUnmarshalers() bool {
 
 func (s SchemaBuilder) GeneratesYAMLUnmarshalers() bool {
 	return s.UnmarshalFormats.generatesYAML()
+}
+
+// HasGeneratedJSONCode reports whether the configured roots require enum or
+// owner codecs. A GoJSON-only request for plain structs therefore performs no
+// write instead of emitting an otherwise empty generated file.
+func (s SchemaBuilder) HasGeneratedJSONCode() bool {
+	return len(s.enumMarkers()) > 0 || len(s.sortedOwnerCodecNames()) > 0
 }
 
 // refDef pairs a $defs entry's schema with the TypeID it was generated from,
@@ -736,7 +756,8 @@ func (s SchemaBuilder) SchemaMethods() []syntax.SchemaMethod {
 // its signature and break callers (or collide if the same builder function
 // is reused for two invalid-receiver types).
 func isBuilderMarker(fn syntax.SchemaFunction) bool {
-	return fn.MarkerCall.CallExpr.MustIdentifyFunc().TypeName == syntax.MarkerFuncNewJSONSchemaBuilder
+	id, ok := fn.MarkerCall.CallExpr.IdentifyFunc()
+	return ok && id.TypeName == syntax.MarkerFuncNewJSONSchemaBuilder
 }
 
 // SchemaFreeFuncs returns free-function-root registrations (NewJSONSchemaFunc

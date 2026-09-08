@@ -88,9 +88,9 @@ const legacyProviderRegistration = `polytype.NewJSONSchemaMethod(
 )`
 
 const fluentProviderRegistration = `polytype.Declare(Example.Schema).
-	Accessor(Example{}.A, Example.ASchema).
-	Method(Example{}.B, Example.BSchema).
-	Function(Example{}.C, BoolSchemaFunc).
+	Accessor(polytype.Field[Example]("A"), Example.ASchema).
+	Method(polytype.Field[Example]("B"), Example.BSchema).
+	Function(polytype.Field[Example]("C"), BoolSchemaFunc).
 	RenderProviders()`
 
 // TestFluentProviderParityWithLegacy proves that Accessor/Method/Function/
