@@ -144,21 +144,37 @@ func freeFuncReceiver(fn *dst.FuncDecl, pkg *decorator.Package, file *dst.File) 
 	return parseFuncFromExpr(NewExpr(fn.Type.Params.List[0].Type, pkg, file)), nil
 }
 
-// fieldNameForReceiver extracts the field name from an
-// `exampleStruct{}.FieldX` selector expression, verifying that the
-// composite literal's type matches receiver. Returns ok=false when arg
-// isn't that shape at all, or names a different receiver type.
+// fieldNameForReceiver extracts the field name from a
+// `polytype.Field[Owner, Value]("FieldX")` reference or the legacy
+// `exampleStruct{}.FieldX` selector expression, verifying that its owner
+// matches receiver. Returns ok=false for other shapes or owners.
 func fieldNameForReceiver(arg dst.Expr, receiver TypeID) (string, bool) {
 	if call, ok := arg.(*dst.CallExpr); ok {
-		index, ok := call.Fun.(*dst.IndexExpr)
-		if !ok || len(call.Args) != 1 {
+		var (
+			fieldFuncExpr dst.Expr
+			ownerExpr     dst.Expr
+		)
+		switch index := call.Fun.(type) {
+		case *dst.IndexExpr:
+			fieldFuncExpr = index.X
+			ownerExpr = index.Index
+		case *dst.IndexListExpr:
+			if len(index.Indices) != 2 {
+				return "", false
+			}
+			fieldFuncExpr = index.X
+			ownerExpr = index.Indices[0]
+		default:
 			return "", false
 		}
-		fieldFunc, ok := index.X.(*dst.Ident)
+		if len(call.Args) != 1 {
+			return "", false
+		}
+		fieldFunc, ok := fieldFuncExpr.(*dst.Ident)
 		if !ok || fieldFunc.Name != "Field" || fieldFunc.Path != SchemaPackagePath {
 			return "", false
 		}
-		owner, ok := index.Index.(*dst.Ident)
+		owner, ok := ownerExpr.(*dst.Ident)
 		if !ok || owner.Name != receiver.TypeName {
 			return "", false
 		}

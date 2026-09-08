@@ -72,7 +72,7 @@ type Config struct {
 }
 
 var _ = polytype.Declare(Config.Schema).
-    StringerEnum(Config{}.LogLevel)
+    StringerEnum(polytype.Field[Config, LogLevel]("LogLevel"))
 ```
 
 `.StringerEnum` also works on an unmarked integer type; the marker is only

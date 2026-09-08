@@ -18,4 +18,4 @@ func (Example) BSchema(int) json.Marshaler {
 
 // Field A is a string, but BSchema takes an int: the field and provider
 // must jointly infer the same F, so this must fail to compile.
-var _ = polytype.Declare(Example.Schema).Method(Example{}.A, Example.BSchema)
+var _ = polytype.Declare(Example.Schema).Method(polytype.Field[Example, string]("A"), Example.BSchema)

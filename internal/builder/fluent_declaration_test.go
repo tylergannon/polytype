@@ -88,9 +88,9 @@ const legacyProviderRegistration = `polytype.NewJSONSchemaMethod(
 )`
 
 const fluentProviderRegistration = `polytype.Declare(Example.Schema).
-	Accessor(polytype.Field[Example]("A"), Example.ASchema).
-	Method(polytype.Field[Example]("B"), Example.BSchema).
-	Function(polytype.Field[Example]("C"), BoolSchemaFunc).
+	Accessor(polytype.Field[Example, string]("A"), Example.ASchema).
+	Method(polytype.Field[Example, int]("B"), Example.BSchema).
+	Function(polytype.Field[Example, bool]("C"), BoolSchemaFunc).
 	RenderProviders()`
 
 // TestFluentProviderParityWithLegacy proves that Accessor/Method/Function/
@@ -139,8 +139,8 @@ const legacyPointerProviderRegistration = `polytype.NewJSONSchemaMethod(
 )`
 
 const fluentPointerProviderRegistration = `polytype.Declare((*Example).Schema).
-	Accessor(Example{}.A, (*Example).ASchema).
-	Method(Example{}.B, (*Example).BSchema)`
+	Accessor(polytype.Field[Example, string]("A"), (*Example).ASchema).
+	Method(polytype.Field[Example, int]("B"), (*Example).BSchema)`
 
 // TestFluentPointerRootProviderParityWithLegacy proves that a pointer-root
 // fluent chain (Declare((*T).Schema).Accessor/.Method with pointer method
@@ -200,7 +200,7 @@ type Widget struct {
 func (Widget) Schema() json.RawMessage { panic("not implemented") }
 
 var _ = polytype.Declare(Widget.Schema).
-	StringerEnum(Widget{}.ViaStringer)
+	StringerEnum(polytype.Field[Widget, Level]("ViaStringer"))
 `
 
 // TestEnumMarkerEmitsConstantValuesAndIgnoresStringer proves that a type
@@ -295,7 +295,7 @@ func (Example) Schema() json.RawMessage { panic("not implemented") }
 func freeAccessorSchema(Example) json.Marshaler { panic("not implemented") }
 
 var _ = polytype.Declare(Example.Schema).
-	Accessor(Example{}.A, freeAccessorSchema).
+	Accessor(polytype.Field[Example, string]("A"), freeAccessorSchema).
 	RenderProviders()
 `
 	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(source), 0o644))
@@ -352,7 +352,7 @@ type Example struct {
 func (Example) Schema() json.RawMessage { panic("not implemented") }
 
 var _ = polytype.Declare(Example.Schema).
-	Function(Example{}.H, Passthrough.PassthroughSchema).
+	Function(polytype.Field[Example, Passthrough]("H"), Passthrough.PassthroughSchema).
 	RenderProviders()
 `
 	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(source), 0o644))

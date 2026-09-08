@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Declaration is an executable description of one generated schema root.
+// Declaration is an executable description of one code-generation root.
 // It is both the value used by build-tagged declaration files and the value
 // accepted by the programmatic code-generation API.
 type Declaration[T any] struct {
@@ -61,7 +61,7 @@ func (d *Declaration[T]) withRule(rule RuleSpec, err error) *Declaration[T] {
 
 // Accessor registers a provider for field that is a struct method taking
 // only the receiver T (equivalent to WithStructAccessorMethod).
-func (d *Declaration[T]) Accessor(field any, provider func(T) json.Marshaler) *Declaration[T] {
+func (d *Declaration[T]) Accessor[F any](field FieldRef[F], provider func(T) json.Marshaler) *Declaration[T] {
 	ref, err := resolveField[T](field)
 	if err != nil {
 		return d.withRule(RuleSpec{}, err)
@@ -74,7 +74,7 @@ func (d *Declaration[T]) Accessor(field any, provider func(T) json.Marshaler) *D
 // the field's own value F (equivalent to WithStructFunctionMethod). field and
 // provider must agree on F: passing a field of one type alongside a provider
 // expecting another fails to compile.
-func (d *Declaration[T]) Method[F any](field any, provider func(T, F) json.Marshaler) *Declaration[T] {
+func (d *Declaration[T]) Method[F any](field FieldRef[F], provider func(T, F) json.Marshaler) *Declaration[T] {
 	ref, err := resolveField[T](field)
 	if err != nil {
 		return d.withRule(RuleSpec{}, err)
@@ -87,7 +87,7 @@ func (d *Declaration[T]) Method[F any](field any, provider func(T, F) json.Marsh
 // only the field's own value F (equivalent to WithFunction). field and
 // provider must agree on F: passing a field of one type alongside a provider
 // expecting another fails to compile.
-func (d *Declaration[T]) Function[F any](field any, provider func(F) json.Marshaler) *Declaration[T] {
+func (d *Declaration[T]) Function[F any](field FieldRef[F], provider func(F) json.Marshaler) *Declaration[T] {
 	ref, err := resolveField[T](field)
 	if err != nil {
 		return d.withRule(RuleSpec{}, err)
@@ -98,7 +98,7 @@ func (d *Declaration[T]) Function[F any](field any, provider func(F) json.Marsha
 
 // StringerEnum marks field as an enum whose values are compared via
 // fmt.Stringer (equivalent to WithStringerEnum).
-func (d *Declaration[T]) StringerEnum(field any) *Declaration[T] {
+func (d *Declaration[T]) StringerEnum[F any](field FieldRef[F]) *Declaration[T] {
 	ref, err := resolveField[T](field)
 	return d.withRule(RuleSpec{Kind: RuleStringerEnum, Field: ref}, err)
 }

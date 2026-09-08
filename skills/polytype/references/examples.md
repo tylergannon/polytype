@@ -98,8 +98,8 @@ Source: [`examples/stringer_enums/schema.go`](../../../examples/stringer_enums/s
 
 ```go
 var _ = polytype.Declare(ApplicationConfig.Schema).
-	StringerEnum(ApplicationConfig{}.LogLevel).
-	StringerEnum(ApplicationConfig{}.DefaultPriority)
+	StringerEnum(polytype.Field[ApplicationConfig, LogLevel]("LogLevel")).
+	StringerEnum(polytype.Field[ApplicationConfig, Priority]("DefaultPriority"))
 ```
 
 ## Provider-rendered fields
@@ -134,9 +134,9 @@ Source: [`examples/providers_rendering/schema.go`](../../../examples/providers_r
 ```go
 // v1: RenderProviders() generates RenderedSchema() that executes providers.
 var _ = polytype.Declare(Example.Schema).
-	Accessor(Example{}.A, (Example).ASchema).
-	Method(Example{}.B, (Example).BSchema).
-	Function(Example{}.C, BoolSchema).
+	Accessor(polytype.Field[Example, string]("A"), (Example).ASchema).
+	Method(polytype.Field[Example, int]("B"), (Example).BSchema).
+	Function(polytype.Field[Example, bool]("C"), BoolSchema).
 	RenderProviders()
 ```
 

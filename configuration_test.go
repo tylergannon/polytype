@@ -16,7 +16,7 @@ func (configuredPerson) Schema() json.RawMessage { return nil }
 
 func TestDeclareReturnsExecutableConfiguration(t *testing.T) {
 	config := Declare(configuredPerson.Schema).
-		StringerEnum(Field[configuredPerson]("Status")).
+		StringerEnum(Field[configuredPerson, int]("Status")).
 		Ref()
 
 	spec, err := ResolveConfiguration(config)
@@ -37,7 +37,7 @@ func TestDeclareWithoutEntrypointDoesNotImplySchema(t *testing.T) {
 	require.Empty(t, spec.Declarations[0].EntrypointName)
 }
 
-func TestEvaluatedFieldExplainsHowToRetainIdentity(t *testing.T) {
-	_, err := ResolveConfiguration(Declare[configuredPerson]().StringerEnum(configuredPerson{}.Status))
-	require.ErrorContains(t, err, `polytype.Field[configuredPerson]("FieldName")`)
+func TestFieldRejectsWrongValueType(t *testing.T) {
+	_, err := ResolveConfiguration(Declare[configuredPerson]().StringerEnum(Field[configuredPerson, string]("Status")))
+	require.ErrorContains(t, err, "field Status has type int")
 }

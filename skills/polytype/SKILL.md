@@ -29,7 +29,8 @@ Every projection refuses a shape it cannot represent faithfully rather than
 widening to `any`. Generated encoding/decoding is limited to the documented
 shapes; no general-purpose typed round trip is implied.
 
-Import paths: `github.com/tylergannon/polytype` (markers and wrappers),
+Import paths: `github.com/tylergannon/polytype` (configuration and wrappers),
+`github.com/tylergannon/polytype/codegen` (programmatic generation),
 `github.com/tylergannon/polytype/polytype` (CLI), and the library packages
 above under the same module.
 

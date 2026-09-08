@@ -12,7 +12,7 @@ func BoolSchema(_ bool) json.Marshaler {
 }
 
 var _ = polytype.Declare(Config.Schema).
-    Function(Config{}.Enabled, BoolSchema).
+    Function(polytype.Field[Config, bool]("Enabled"), BoolSchema).
     RenderProviders()
 ```
 
@@ -25,7 +25,7 @@ Available provider chain methods are:
 
 Migration: `NewJSONSchemaMethod(Config.Schema, WithFunction(Config{}.Enabled,
 BoolSchema), WithRenderProviders())` is now `Declare(Config.Schema).Function(
-Config{}.Enabled, BoolSchema).RenderProviders()`. The legacy
+polytype.Field[Config, bool]("Enabled"), BoolSchema).RenderProviders()`. The legacy
 `NewJSONSchemaMethod`/`NewJSONSchemaFunc` with `WithFunction`,
 `WithStructAccessorMethod`, `WithStructFunctionMethod`, and
 `WithRenderProviders` remain supported and source-compatible; each carries a

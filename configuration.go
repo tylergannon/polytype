@@ -34,38 +34,50 @@ type TypeSpec struct {
 	Pointer     bool
 }
 
-// FieldRef identifies a field by owner and Go field name. It replaces
-// evaluated expressions such as Person{}.Status, whose value does not retain
-// the identity of the field it came from.
-type FieldRef struct {
+// FieldSpec identifies a field by owner and Go field name.
+type FieldSpec struct {
 	Owner TypeSpec
 	Name  string
+}
+
+// FieldRef retains a field's identity and value type after a declaration is
+// evaluated. The value type keeps provider bindings type-safe.
+type FieldRef[F any] struct {
+	field FieldSpec
 	err   error
 }
 
 // Field returns a stable reference to a field of T.
-func Field[T any](name string) FieldRef {
+func Field[T, F any](name string) FieldRef[F] {
 	typ, err := namedType[T]()
 	if err != nil {
-		return FieldRef{err: err}
+		return FieldRef[F]{err: err}
 	}
 	base := reflect.TypeFor[T]()
 	for base.Kind() == reflect.Pointer {
 		base = base.Elem()
 	}
 	if base.Kind() != reflect.Struct {
-		return FieldRef{Owner: typ, Name: name, err: fmt.Errorf("polytype.Field[%s]: %s is not a struct", typ.Name, typ.Name)}
+		return FieldRef[F]{field: FieldSpec{Owner: typ, Name: name}, err: fmt.Errorf("polytype.Field[%s]: %s is not a struct", typ.Name, typ.Name)}
 	}
-	if _, ok := base.FieldByName(name); !ok {
-		return FieldRef{Owner: typ, Name: name, err: fmt.Errorf("polytype.Field[%s]: no field named %q", typ.Name, name)}
+	structField, ok := base.FieldByName(name)
+	if !ok {
+		return FieldRef[F]{field: FieldSpec{Owner: typ, Name: name}, err: fmt.Errorf("polytype.Field[%s]: no field named %q", typ.Name, name)}
 	}
-	return FieldRef{Owner: typ, Name: name}
+	fieldType := reflect.TypeFor[F]()
+	if structField.Type != fieldType {
+		return FieldRef[F]{
+			field: FieldSpec{Owner: typ, Name: name},
+			err:   fmt.Errorf("polytype.Field[%s, %s]: field %s has type %s", typ.Name, fieldType, name, structField.Type),
+		}
+	}
+	return FieldRef[F]{field: FieldSpec{Owner: typ, Name: name}}
 }
 
 // RuleSpec is one executable declaration rule.
 type RuleSpec struct {
 	Kind             RuleKind
-	Field            FieldRef
+	Field            FieldSpec
 	ProviderName     string
 	ProviderIsMethod bool
 }
@@ -182,26 +194,18 @@ func callableIdentity(fn any) (string, string, error) {
 	return name, fullName, nil
 }
 
-func resolveField[T any](field any) (FieldRef, error) {
+func resolveField[T, F any](field FieldRef[F]) (FieldSpec, error) {
 	owner, err := namedType[T]()
 	if err != nil {
-		return FieldRef{}, err
+		return FieldSpec{}, err
 	}
-	switch field := field.(type) {
-	case FieldRef:
-		if field.err != nil {
-			return FieldRef{}, field.err
-		}
-		if field.Owner.PackagePath != owner.PackagePath || field.Owner.Name != owner.Name {
-			return FieldRef{}, fmt.Errorf("polytype: field %s.%s does not belong to declaration %s", field.Owner.Name, field.Name, owner.Name)
-		}
-		return field, nil
-	case string:
-		ref := Field[T](field)
-		return ref, ref.err
-	default:
-		return FieldRef{}, fmt.Errorf("polytype: an evaluated field value does not retain its field identity; use polytype.Field[%s](\"FieldName\")", owner.Name)
+	if field.err != nil {
+		return FieldSpec{}, field.err
 	}
+	if field.field.Owner.PackagePath != owner.PackagePath || field.field.Owner.Name != owner.Name {
+		return FieldSpec{}, fmt.Errorf("polytype: field %s.%s does not belong to declaration %s", field.field.Owner.Name, field.field.Name, owner.Name)
+	}
+	return field.field, nil
 }
 
 func validateDiscriminator(name string) error {

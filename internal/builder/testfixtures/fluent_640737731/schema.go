@@ -26,7 +26,7 @@ func BoolSchemaFunc(_ bool) json.Marshaler {
 }
 
 var _ = polytype.Declare(Example.Schema).
-	Accessor(Example{}.A, Example.ASchema).
-	Method(Example{}.B, Example.BSchema).
-	Function(Example{}.C, BoolSchemaFunc).
+	Accessor(polytype.Field[Example, string]("A"), Example.ASchema).
+	Method(polytype.Field[Example, int]("B"), Example.BSchema).
+	Function(polytype.Field[Example, bool]("C"), BoolSchemaFunc).
 	RenderProviders()

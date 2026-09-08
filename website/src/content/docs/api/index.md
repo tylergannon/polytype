@@ -15,14 +15,22 @@ import "github.com/tylergannon/polytype"
 
 ## Index
 
+- [type Configuration](<#Configuration>)
+  - [func Compose\(configs ...Configuration\) Configuration](<#Compose>)
+- [type ConfigurationSpec](<#ConfigurationSpec>)
+  - [func ResolveConfiguration\(configs ...Configuration\) \(ConfigurationSpec, error\)](<#ResolveConfiguration>)
 - [type Declaration](<#Declaration>)
-  - [func Declare\[T any\]\(fn func\(T\) json.RawMessage\) \*Declaration\[T\]](<#Declare>)
-  - [func \(d \*Declaration\[T\]\) Accessor\(field any, provider func\(T\) json.Marshaler\) \*Declaration\[T\]](<#Declaration[T].Accessor>)
-  - [func \(d \*Declaration\[T\]\) Function\[F any\]\(field F, provider func\(F\) json.Marshaler\) \*Declaration\[T\]](<#Declaration[T].Function>)
-  - [func \(d \*Declaration\[T\]\) Method\[F any\]\(field F, provider func\(T, F\) json.Marshaler\) \*Declaration\[T\]](<#Declaration[T].Method>)
+  - [func Declare\[T any\]\(entrypoint ...func\(T\) json.RawMessage\) \*Declaration\[T\]](<#Declare>)
+  - [func \(d \*Declaration\[T\]\) Accessor\[F any\]\(field FieldRef\[F\], provider func\(T\) json.Marshaler\) \*Declaration\[T\]](<#Declaration[T].Accessor>)
+  - [func \(d \*Declaration\[T\]\) Function\[F any\]\(field FieldRef\[F\], provider func\(F\) json.Marshaler\) \*Declaration\[T\]](<#Declaration[T].Function>)
+  - [func \(d \*Declaration\[T\]\) Method\[F any\]\(field FieldRef\[F\], provider func\(T, F\) json.Marshaler\) \*Declaration\[T\]](<#Declaration[T].Method>)
   - [func \(d \*Declaration\[T\]\) Ref\(\) \*Declaration\[T\]](<#Declaration[T].Ref>)
   - [func \(d \*Declaration\[T\]\) RenderProviders\(\) \*Declaration\[T\]](<#Declaration[T].RenderProviders>)
-  - [func \(d \*Declaration\[T\]\) StringerEnum\(field any\) \*Declaration\[T\]](<#Declaration[T].StringerEnum>)
+  - [func \(d \*Declaration\[T\]\) StringerEnum\[F any\]\(field FieldRef\[F\]\) \*Declaration\[T\]](<#Declaration[T].StringerEnum>)
+- [type DeclarationSpec](<#DeclarationSpec>)
+- [type FieldRef](<#FieldRef>)
+  - [func Field\[T, F any\]\(name string\) FieldRef\[F\]](<#Field>)
+- [type FieldSpec](<#FieldSpec>)
 - [type Nullable](<#Nullable>)
   - [func \(Nullable\[T\]\) IsZero\(\) bool](<#Nullable[T].IsZero>)
   - [func \(n Nullable\[T\]\) MarshalJSON\(\) \(\[\]byte, error\)](<#Nullable[T].MarshalJSON>)
@@ -31,6 +39,8 @@ import "github.com/tylergannon/polytype"
   - [func \(o Optional\[T\]\) IsZero\(\) bool](<#Optional[T].IsZero>)
   - [func \(o Optional\[T\]\) MarshalJSON\(\) \(\[\]byte, error\)](<#Optional[T].MarshalJSON>)
   - [func \(o \*Optional\[T\]\) UnmarshalJSON\(data \[\]byte\) error](<#Optional[T].UnmarshalJSON>)
+- [type RuleKind](<#RuleKind>)
+- [type RuleSpec](<#RuleSpec>)
 - [type SchemaFunction](<#SchemaFunction>)
 - [type SchemaMarker](<#SchemaMarker>)
   - [func NewJSONSchemaBuilder\[T any\]\(SchemaFunction\) SchemaMarker](<#NewJSONSchemaBuilder>)
@@ -47,33 +57,84 @@ import "github.com/tylergannon/polytype"
 - [type SchemaMethodOptionObj](<#SchemaMethodOptionObj>)
 - [type SealedUnionMarker](<#SealedUnionMarker>)
   - [func SealedUnion\[I any\]\(discriminator string\) SealedUnionMarker](<#SealedUnion>)
+- [type SealedUnionSpec](<#SealedUnionSpec>)
+- [type TypeSpec](<#TypeSpec>)
 
+
+<a name="Configuration"></a>
+## type Configuration
+
+Configuration is the common value accepted by polytype generators. Declarations, sealed\-union settings, and Compose results implement it.
+
+```go
+type Configuration interface {
+    // contains filtered or unexported methods
+}
+```
+
+<a name="Compose"></a>
+### func Compose
+
+```go
+func Compose(configs ...Configuration) Configuration
+```
+
+Compose combines declarations and union settings into one configuration.
+
+<a name="ConfigurationSpec"></a>
+## type ConfigurationSpec
+
+ConfigurationSpec is the resolved meaning of one or more configuration values. Generators obtain it with ResolveConfiguration.
+
+```go
+type ConfigurationSpec struct {
+    Declarations []DeclarationSpec
+    SealedUnions []SealedUnionSpec
+    // contains filtered or unexported fields
+}
+```
+
+<a name="ResolveConfiguration"></a>
+### func ResolveConfiguration
+
+```go
+func ResolveConfiguration(configs ...Configuration) (ConfigurationSpec, error)
+```
+
+ResolveConfiguration returns the complete meaning of configs and validates identities that must agree before source loading begins.
 
 <a name="Declaration"></a>
 ## type Declaration
 
-Declaration is the typed fluent builder for registering a schema entrypoint. Like every other marker type in this package, it exists only inside \`//go:build jsonschema\` files: it performs no work at runtime, is never called, and exists solely to type\-check and to give the scanner a recognizable AST shape.
+Declaration is an executable description of one code\-generation root. It is both the value used by build\-tagged declaration files and the value accepted by the programmatic code\-generation API.
 
 ```go
-type Declaration[T any] struct{}
+type Declaration[T any] struct {
+    // contains filtered or unexported fields
+}
 ```
 
 <a name="Declare"></a>
 ### func Declare
 
 ```go
-func Declare[T any](fn func(T) json.RawMessage) *Declaration[T]
+func Declare[T any](entrypoint ...func(T) json.RawMessage) *Declaration[T]
 ```
 
-Declare registers fn as the schema entrypoint for T. fn may be either a method expression \(e.g. Example.Schema\) or a free function taking T as its sole parameter \(e.g. BuildExampleSchema\); both forms infer T from fn's signature. Chain the returned \*Declaration\[T\] with Accessor, Method, Function, StringerEnum, Ref, and RenderProviders to add options, matching the equivalent WithXxx options on NewJSONSchemaMethod.
+Declare selects T as a generation root. With no argument it does not imply JSON Schema or an accessor method. Passing a method expression or free function records its name for schema\-accessor generation.
 
-Enum types and sealed unions need no declaration. A named type that declares the marker method \`func \(T\) enum\(\)\` is emitted as an enum wherever it is used. An interface that declares an unexported method is a sealed union whose variants are the same\-package struct types declaring that method directly; see SealedUnion for its discriminator property.
+Both forms produce an ordinary configuration value:
+
+```
+config := polytype.Declare[Person]()
+config := polytype.Declare(Person.Schema)
+```
 
 <a name="Declaration[T].Accessor"></a>
 ### func \(\*Declaration\[T\]\) Accessor
 
 ```go
-func (d *Declaration[T]) Accessor(field any, provider func(T) json.Marshaler) *Declaration[T]
+func (d *Declaration[T]) Accessor[F any](field FieldRef[F], provider func(T) json.Marshaler) *Declaration[T]
 ```
 
 Accessor registers a provider for field that is a struct method taking only the receiver T \(equivalent to WithStructAccessorMethod\).
@@ -82,7 +143,7 @@ Accessor registers a provider for field that is a struct method taking only the 
 ### func \(\*Declaration\[T\]\) Function
 
 ```go
-func (d *Declaration[T]) Function[F any](field F, provider func(F) json.Marshaler) *Declaration[T]
+func (d *Declaration[T]) Function[F any](field FieldRef[F], provider func(F) json.Marshaler) *Declaration[T]
 ```
 
 Function registers a provider for field that is a free function taking only the field's own value F \(equivalent to WithFunction\). field and provider must agree on F: passing a field of one type alongside a provider expecting another fails to compile.
@@ -91,7 +152,7 @@ Function registers a provider for field that is a free function taking only the 
 ### func \(\*Declaration\[T\]\) Method
 
 ```go
-func (d *Declaration[T]) Method[F any](field F, provider func(T, F) json.Marshaler) *Declaration[T]
+func (d *Declaration[T]) Method[F any](field FieldRef[F], provider func(T, F) json.Marshaler) *Declaration[T]
 ```
 
 Method registers a provider for field that is a struct method also taking the field's own value F \(equivalent to WithStructFunctionMethod\). field and provider must agree on F: passing a field of one type alongside a provider expecting another fails to compile.
@@ -118,10 +179,56 @@ RenderProviders requests generation of RenderedSchema\(\) and provider execution
 ### func \(\*Declaration\[T\]\) StringerEnum
 
 ```go
-func (d *Declaration[T]) StringerEnum(field any) *Declaration[T]
+func (d *Declaration[T]) StringerEnum[F any](field FieldRef[F]) *Declaration[T]
 ```
 
 StringerEnum marks field as an enum whose values are compared via fmt.Stringer \(equivalent to WithStringerEnum\).
+
+<a name="DeclarationSpec"></a>
+## type DeclarationSpec
+
+DeclarationSpec is the generator\-facing form of a Declaration.
+
+```go
+type DeclarationSpec struct {
+    Type           TypeSpec
+    EntrypointName string
+    EntrypointFunc bool
+    Rules          []RuleSpec
+}
+```
+
+<a name="FieldRef"></a>
+## type FieldRef
+
+FieldRef retains a field's identity and value type after a declaration is evaluated. The value type keeps provider bindings type\-safe.
+
+```go
+type FieldRef[F any] struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="Field"></a>
+### func Field
+
+```go
+func Field[T, F any](name string) FieldRef[F]
+```
+
+Field returns a stable reference to a field of T.
+
+<a name="FieldSpec"></a>
+## type FieldSpec
+
+FieldSpec identifies a field by owner and Go field name.
+
+```go
+type FieldSpec struct {
+    Owner TypeSpec
+    Name  string
+}
+```
 
 <a name="Nullable"></a>
 ## type Nullable
@@ -201,6 +308,42 @@ func (o *Optional[T]) UnmarshalJSON(data []byte) error
 
 UnmarshalJSON decodes a present non\-null value without mutating the receiver when decoding fails.
 
+<a name="RuleKind"></a>
+## type RuleKind
+
+RuleKind identifies one declaration rule.
+
+```go
+type RuleKind string
+```
+
+<a name="RuleAccessor"></a>
+
+```go
+const (
+    RuleAccessor        RuleKind = "accessor"
+    RuleMethod          RuleKind = "method"
+    RuleFunction        RuleKind = "function"
+    RuleStringerEnum    RuleKind = "stringer-enum"
+    RuleRef             RuleKind = "ref"
+    RuleRenderProviders RuleKind = "render-providers"
+)
+```
+
+<a name="RuleSpec"></a>
+## type RuleSpec
+
+RuleSpec is one executable declaration rule.
+
+```go
+type RuleSpec struct {
+    Kind             RuleKind
+    Field            FieldSpec
+    ProviderName     string
+    ProviderIsMethod bool
+}
+```
+
 <a name="SchemaFunction"></a>
 ## type SchemaFunction
 
@@ -248,7 +391,7 @@ func NewJSONSchemaMethod[T any](SchemaMethod[T], ...SchemaMethodOption) SchemaMa
 
 NewJSONSchemaMethod registers a struct method as a stub that will be implemented with a proper json schema and, as needed, unmarshaler functionality.
 
-Deprecated: use Declare\(T.Schema\) instead. For example, NewJSONSchemaMethod\(Task.Schema, WithStringerEnum\(Task\{\}.Level\)\) becomes Declare\(Task.Schema\).StringerEnum\(Task\{\}.Level\).
+Deprecated: use Declare\(T.Schema\) instead. For example, NewJSONSchemaMethod\(Task.Schema, WithStringerEnum\(Task\{\}.Level\)\) becomes Declare\(Task.Schema\).StringerEnum\(Field\[Task, Level\]\("Level"\)\).
 
 <a name="SchemaMethod"></a>
 ## type SchemaMethod
@@ -288,7 +431,7 @@ Deprecated: use Declare\(T.Schema\).Ref\(\) instead.
 func WithFunction[T any](val T, f func(T) json.Marshaler) SchemaMethodOption
 ```
 
-Deprecated: use Declare\(T.Schema\).Function\(field, fn\) instead.
+Deprecated: use Declare\(T.Schema\).Function\(Field\[T, F\]\("Field"\), fn\) instead.
 
 <a name="WithRenderProviders"></a>
 ### func WithRenderProviders
@@ -310,7 +453,7 @@ func WithStringerEnum[T any](field T) SchemaMethodOption
 
 Enum options \(v1\) \- stubs for scanning/type\-checking; parsed by scanner
 
-Deprecated: use Declare\(T.Schema\).StringerEnum\(field\) instead.
+Deprecated: use Declare\(T.Schema\).StringerEnum\(Field\[T, F\]\("Field"\)\) instead.
 
 <a name="WithStructAccessorMethod"></a>
 ### func WithStructAccessorMethod
@@ -319,7 +462,7 @@ Deprecated: use Declare\(T.Schema\).StringerEnum\(field\) instead.
 func WithStructAccessorMethod[T, U any](val T, f func(U) json.Marshaler) SchemaMethodOption
 ```
 
-Deprecated: use Declare\(T.Schema\).Accessor\(field, T.method\) instead.
+Deprecated: use Declare\(T.Schema\).Accessor\(Field\[T, F\]\("Field"\), T.method\) instead.
 
 <a name="WithStructFunctionMethod"></a>
 ### func WithStructFunctionMethod
@@ -328,7 +471,7 @@ Deprecated: use Declare\(T.Schema\).Accessor\(field, T.method\) instead.
 func WithStructFunctionMethod[T, U any](val U, f func(T, U) json.Marshaler) SchemaMethodOption
 ```
 
-Deprecated: use Declare\(T.Schema\).Method\(field, T.method\) instead.
+Deprecated: use Declare\(T.Schema\).Method\(Field\[T, F\]\("Field"\), T.method\) instead.
 
 <a name="SchemaMethodOptionObj"></a>
 ## type SchemaMethodOptionObj
@@ -342,10 +485,12 @@ type SchemaMethodOptionObj struct{}
 <a name="SealedUnionMarker"></a>
 ## type SealedUnionMarker
 
-SealedUnionMarker is the no\-op result of SealedUnion. Like every other marker type in this package it exists only inside \`//go:build jsonschema\` files and performs no work at runtime.
+SealedUnionMarker is executable configuration for one sealed interface.
 
 ```go
-type SealedUnionMarker struct{}
+type SealedUnionMarker struct {
+    // contains filtered or unexported fields
+}
 ```
 
 <a name="SealedUnion"></a>
@@ -364,6 +509,202 @@ var _ = polytype.SealedUnion[Animal]("kind")
 ```
 
 A declaration in another package, a duplicate declaration, a declaration for a non\-sealed interface or a non\-interface type, a non\-literal argument, or an invalid property name is a generation error naming the interface.
+
+<a name="SealedUnionSpec"></a>
+## type SealedUnionSpec
+
+SealedUnionSpec configures the discriminator property of one inferred sealed interface.
+
+```go
+type SealedUnionSpec struct {
+    Type          TypeSpec
+    Discriminator string
+}
+```
+
+<a name="TypeSpec"></a>
+## type TypeSpec
+
+TypeSpec identifies a named Go type without retaining a runtime value.
+
+```go
+type TypeSpec struct {
+    PackagePath string
+    Name        string
+    Pointer     bool
+}
+```
+
+# codegen
+
+```go
+import "github.com/tylergannon/polytype/codegen"
+```
+
+Package codegen runs polytype generation from executable configuration values. It does not require a schema.go registration file in the target package.
+
+## Index
+
+- [func Gen\(config polytype.Configuration, options ...Option\) error](<#Gen>)
+- [func Generate\(config polytype.Configuration, opts Options\) error](<#Generate>)
+- [type DevalueOptions](<#DevalueOptions>)
+- [type Option](<#Option>)
+  - [func Devalue\(file, packageName, importPath string\) Option](<#Devalue>)
+  - [func GoJSON\(\) Option](<#GoJSON>)
+  - [func JSONSchema\(\) Option](<#JSONSchema>)
+  - [func Pretty\(\) Option](<#Pretty>)
+  - [func Target\(dir string\) Option](<#Target>)
+  - [func TypeScript\(dir string, barrel ...bool\) Option](<#TypeScript>)
+  - [func Validation\(\) Option](<#Validation>)
+  - [func YAML\(\) Option](<#YAML>)
+- [type Options](<#Options>)
+- [type TypeScriptOptions](<#TypeScriptOptions>)
+
+
+<a name="Gen"></a>
+## func Gen
+
+```go
+func Gen(config polytype.Configuration, options ...Option) error
+```
+
+Gen runs generation with functional options. With no options, Declare\(T.Schema\) preserves the traditional schema\-and\-accessor behavior. A declaration without an entrypoint must select at least one output.
+
+<a name="Generate"></a>
+## func Generate
+
+```go
+func Generate(config polytype.Configuration, opts Options) error
+```
+
+Generate runs the selected backends from the same declaration value used by build\-tagged bindings.
+
+<a name="DevalueOptions"></a>
+## type DevalueOptions
+
+DevalueOptions selects generated devalue Go codecs.
+
+```go
+type DevalueOptions struct {
+    File        string
+    PackageName string
+    ImportPath  string
+}
+```
+
+<a name="Option"></a>
+## type Option
+
+Option modifies the convenience Gen request.
+
+```go
+type Option func(*Options)
+```
+
+<a name="Devalue"></a>
+### func Devalue
+
+```go
+func Devalue(file, packageName, importPath string) Option
+```
+
+Devalue writes strict devalue codecs to file.
+
+<a name="GoJSON"></a>
+### func GoJSON
+
+```go
+func GoJSON() Option
+```
+
+GoJSON selects generated MarshalJSON and UnmarshalJSON support required by configured enums and sealed unions, without selecting JSON Schema.
+
+<a name="JSONSchema"></a>
+### func JSONSchema
+
+```go
+func JSONSchema() Option
+```
+
+JSONSchema selects JSON Schema files. If the declaration carries an entrypoint, its Go accessor is emitted as well.
+
+<a name="Pretty"></a>
+### func Pretty
+
+```go
+func Pretty() Option
+```
+
+Pretty formats JSON Schema output with indentation.
+
+<a name="Target"></a>
+### func Target
+
+```go
+func Target(dir string) Option
+```
+
+Target loads and writes the configured package at dir.
+
+<a name="TypeScript"></a>
+### func TypeScript
+
+```go
+func TypeScript(dir string, barrel ...bool) Option
+```
+
+TypeScript writes structural TypeScript declarations to dir.
+
+<a name="Validation"></a>
+### func Validation
+
+```go
+func Validation() Option
+```
+
+Validation selects JSON Schema, its Go accessors, and generated validators.
+
+<a name="YAML"></a>
+### func YAML
+
+```go
+func YAML() Option
+```
+
+YAML also emits the supported YAML decoding and validation entrypoints.
+
+<a name="Options"></a>
+## type Options
+
+Options selects outputs for Generate. JSON Schema is optional: TypeScript, devalue, and generated Go JSON codecs can be requested independently.
+
+```go
+type Options struct {
+    TargetDir string
+    Pretty    bool
+    Force     bool
+
+    JSONSchema bool
+    GoCode     bool
+    Validate   bool
+    YAML       bool
+
+    TypeScript *TypeScriptOptions
+    Devalue    *DevalueOptions
+}
+```
+
+<a name="TypeScriptOptions"></a>
+## type TypeScriptOptions
+
+TypeScriptOptions selects structural TypeScript output.
+
+```go
+type TypeScriptOptions struct {
+    Dir    string
+    Barrel bool
+}
+```
 
 # jsonschema
 
@@ -1155,6 +1496,87 @@ type Variant struct {
     Source         token.Position
 }
 ```
+
+# typescript
+
+```go
+import "github.com/tylergannon/polytype/typescript"
+```
+
+Package typescript projects the validated Go type grammar into TypeScript structural type declarations.
+
+The input is a validated [github.com/tylergannon/polytype/typegrammar](<https://pkg.go.dev/github.com/tylergannon/polytype/typegrammar/>) definition graph, as produced by github.com/tylergannon/polytype/grammar or by the CLI's own lowering. The output is a types.ts module declaring one exported type alias per definition, and optionally an index.ts type\-only barrel. The declarations are structural: there is no runtime decoder or validator, and consumers must validate untrusted data themselves.
+
+The CLI's \-\-typescript flag and a Go program calling [Generate](<#Generate>) on the same definitions produce the same bytes. A generator that already knows its roots therefore needs no Declare marker and no //go:build jsonschema file: it lowers them with grammar.Load and \(\*grammar.Package\).Lower and hands the definitions to Generate. Every root a caller wants named in the output must be a definition; an anonymous root has no alias of its own.
+
+Emitted identifiers are collision\-safe and may differ from the Go type name, so a caller writing its own imports reads them from [Result.Names](<#Result>) rather than assuming the Go name.
+
+## Index
+
+- [Constants](<#constants>)
+- [type File](<#File>)
+- [type Options](<#Options>)
+- [type Result](<#Result>)
+  - [func Generate\(defs typegrammar.Definitions, options Options\) \(Result, error\)](<#Generate>)
+
+
+## Constants
+
+<a name="GeneratedHeader"></a>GeneratedHeader identifies files owned by this generator.
+
+```go
+const GeneratedHeader = "// Code generated by polytype. DO NOT EDIT.\n"
+```
+
+<a name="File"></a>
+## type File
+
+File is one generated output, named relative to whatever directory the caller writes it to.
+
+```go
+type File struct {
+    Name    string
+    Content []byte
+}
+```
+
+<a name="Options"></a>
+## type Options
+
+Options selects the optional outputs.
+
+```go
+type Options struct {
+    // Barrel adds an index.ts that re-exports every declared type, type-only.
+    Barrel bool
+}
+```
+
+<a name="Result"></a>
+## type Result
+
+Result is the output of one Generate call.
+
+```go
+type Result struct {
+    // Files holds types.ts first, then index.ts when Options.Barrel is set.
+    Files []File
+    // Names maps every definition to the identifier its alias was emitted
+    // under. The identifier is the Go type name unless that name is not a
+    // legal TypeScript identifier, is reserved, or is claimed by a definition
+    // of the same name in another package.
+    Names map[typegrammar.Name]string
+}
+```
+
+<a name="Generate"></a>
+### func Generate
+
+```go
+func Generate(defs typegrammar.Definitions, options Options) (Result, error)
+```
+
+Generate validates defs and renders all declarations before returning any files. It never mutates defs.
 
 # devalue
 

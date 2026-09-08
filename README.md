@@ -125,7 +125,7 @@ retains its identity after evaluation:
 
 ```go
 config := polytype.Declare[Order]().
-    StringerEnum(polytype.Field[Order]("Status"))
+    StringerEnum(polytype.Field[Order, OrderStatus]("Status"))
 ```
 
 Combine roots and sealed-union settings with `polytype.Compose`. JSON Schema,
@@ -309,7 +309,7 @@ type Task struct {
 ```go
 // schema.go (//go:build jsonschema)
 var _ = polytype.Declare(Task.Schema).
-    StringerEnum(Task{}.LogLevel) // ["LogDebug", "LogInfo", "LogError"]
+    StringerEnum(polytype.Field[Task, LogLevel]("LogLevel")) // ["LogDebug", "LogInfo", "LogError"]
 ```
 
 The marker must be `func (T) enum()` exactly: a pointer receiver, parameters,
@@ -800,7 +800,7 @@ onto the returned `*Declaration[T]`:
 var _ = polytype.Declare(Person.Schema)
 
 var _ = polytype.Declare(Task.Schema).
-    StringerEnum(Task{}.LogLevel)
+    StringerEnum(polytype.Field[Task, LogLevel]("LogLevel"))
 ```
 
 Enum types and sealed unions are not declared here at all: a type with
@@ -809,8 +809,8 @@ unexported method is a union of the same-package structs that declare it.
 The only per-union setting is its discriminator property, declared once with
 `polytype.SealedUnion[I](name)` in the interface's own package.
 
-These markers are no-ops at runtime — the generator reads them from the AST of
-your build-tagged `schema.go`.
+These declarations are executable configuration values. The CLI also reads
+the same calls from the AST of a build-tagged `schema.go`.
 
 `NewJSONSchemaMethod`/`NewJSONSchemaFunc` with their remaining `With*`
 options remain supported for source compatibility; each carries a `Deprecated:` godoc comment naming its
