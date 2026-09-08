@@ -8,7 +8,7 @@ grammar into the other type systems your program has to speak:
 
 | Projection | What you get | How |
 |---|---|---|
-| **JSON Schema** | Deterministic schemas for LLM tool calls and structured output, embedded in Go | `go tool polytype` (always on) |
+| **JSON Schema** | Deterministic schemas for LLM tool calls and structured output, optionally embedded in Go | `go tool polytype`, or `codegen.JSONSchema()` |
 | **Validation** | `ValidateJSON` / `ValidateYAML` methods backed by the schemas | `--validate`, `--formats=both` |
 | **Go JSON codecs** | Membership-checked enums, discriminated sealed unions, YAML input | Inferred from your types; no flag |
 | **TypeScript** | Structural `types.ts` declarations for the same shapes | `--typescript DIR`, or the `typescript` package |
@@ -74,6 +74,62 @@ Then just ask your agent to "add polytype to this project."
 
 Commit everything the generator writes: `jsonschema_gen.go` and the
 `jsonschema/` directory (schemas plus `.json.sum` checksums).
+
+### Programmatic generation
+
+The declaration API constructs real configuration values. A generator program
+can select outputs directly, with no `schema.go` registration file and no
+schema method:
+
+```go
+config := polytype.Declare[model.Envelope]()
+
+err := codegen.Gen(config,
+    codegen.Target("./model"),
+    codegen.TypeScript("./web/generated", true),
+    codegen.Devalue(
+        "./transport/codec_gen.go",
+        "transport",
+        "example.com/project/transport",
+    ),
+)
+```
+
+That request writes TypeScript and devalue codecs only. It does not create a
+JSON Schema directory or a schema accessor. Select the projections you need:
+
+```go
+// JSON Schema files, without requiring a Schema method.
+codegen.Gen(config, codegen.Target("./model"), codegen.JSONSchema())
+
+// Generated MarshalJSON/UnmarshalJSON support for enums and sealed unions,
+// without JSON Schema.
+codegen.Gen(config, codegen.Target("./model"), codegen.GoJSON())
+```
+
+The traditional binding and the programmatic API use the same declaration
+expression. Passing a schema function records the accessor name, so the
+zero-option `Gen` call preserves the schema-and-Go behavior:
+
+```go
+// In schema.go:
+var _ = polytype.Declare(Person.Schema).Ref()
+
+// In a generator program:
+config := polytype.Declare(Person.Schema).Ref()
+err := codegen.Gen(config, codegen.Target("./contacts"))
+```
+
+Rules that name a field use an explicit field reference so the configuration
+retains its identity after evaluation:
+
+```go
+config := polytype.Declare[Order]().
+    StringerEnum(polytype.Field[Order, OrderStatus]("Status"))
+```
+
+Combine roots and sealed-union settings with `polytype.Compose`. JSON Schema,
+Go JSON, TypeScript, and devalue all consume the resulting configuration.
 
 ## 🔍 Why this tool
 
@@ -253,7 +309,7 @@ type Task struct {
 ```go
 // schema.go (//go:build jsonschema)
 var _ = polytype.Declare(Task.Schema).
-    StringerEnum(Task{}.LogLevel) // ["LogDebug", "LogInfo", "LogError"]
+    StringerEnum(polytype.Field[Task, LogLevel]("LogLevel")) // ["LogDebug", "LogInfo", "LogError"]
 ```
 
 The marker must be `func (T) enum()` exactly: a pointer receiver, parameters,
@@ -744,7 +800,7 @@ onto the returned `*Declaration[T]`:
 var _ = polytype.Declare(Person.Schema)
 
 var _ = polytype.Declare(Task.Schema).
-    StringerEnum(Task{}.LogLevel)
+    StringerEnum(polytype.Field[Task, LogLevel]("LogLevel"))
 ```
 
 Enum types and sealed unions are not declared here at all: a type with
@@ -753,8 +809,8 @@ unexported method is a union of the same-package structs that declare it.
 The only per-union setting is its discriminator property, declared once with
 `polytype.SealedUnion[I](name)` in the interface's own package.
 
-These markers are no-ops at runtime — the generator reads them from the AST of
-your build-tagged `schema.go`.
+These declarations are executable configuration values. The CLI also reads
+the same calls from the AST of a build-tagged `schema.go`.
 
 `NewJSONSchemaMethod`/`NewJSONSchemaFunc` with their remaining `With*`
 options remain supported for source compatibility; each carries a `Deprecated:` godoc comment naming its

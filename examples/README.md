@@ -157,9 +157,9 @@ var _ = polytype.SealedUnion[Shape]("kind") // optional; default property is "ty
 ### Provider-Based Schema Generation
 ```go
 var _ = polytype.Declare(Example.Schema).
-    Accessor(Example{}.A, (Example).ASchema).
-    Method(Example{}.B, (Example).BSchema).
-    Function(Example{}.C, BoolSchema).
+    Accessor(polytype.Field[Example, string]("A"), (Example).ASchema).
+    Method(polytype.Field[Example, int]("B"), (Example).BSchema).
+    Function(polytype.Field[Example, bool]("C"), BoolSchema).
     RenderProviders()
 ```
 

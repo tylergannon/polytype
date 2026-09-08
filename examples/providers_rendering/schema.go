@@ -12,7 +12,7 @@ func (Example) Schema() json.RawMessage { panic("not implemented") }
 
 // v1: RenderProviders() generates RenderedSchema() that executes providers.
 var _ = polytype.Declare(Example.Schema).
-	Accessor(Example{}.A, (Example).ASchema).
-	Method(Example{}.B, (Example).BSchema).
-	Function(Example{}.C, BoolSchema).
+	Accessor(polytype.Field[Example, string]("A"), (Example).ASchema).
+	Method(polytype.Field[Example, int]("B"), (Example).BSchema).
+	Function(polytype.Field[Example, bool]("C"), BoolSchema).
 	RenderProviders()

@@ -1,9 +1,11 @@
 package polytype
 
-// SealedUnionMarker is the no-op result of SealedUnion. Like every other
-// marker type in this package it exists only inside `//go:build jsonschema`
-// files and performs no work at runtime.
-type SealedUnionMarker struct{}
+// SealedUnionMarker is executable configuration for one sealed interface.
+type SealedUnionMarker struct {
+	spec ConfigurationSpec
+}
+
+func (m SealedUnionMarker) polytypeConfiguration() ConfigurationSpec { return m.spec }
 
 // SealedUnion declares the discriminator property for the sealed interface
 // I. A sealed interface is one whose own body declares an unexported method;
@@ -23,6 +25,12 @@ type SealedUnionMarker struct{}
 // for a non-sealed interface or a non-interface type, a non-literal argument,
 // or an invalid property name is a generation error naming the interface.
 func SealedUnion[I any](discriminator string) SealedUnionMarker {
-	_ = discriminator
-	return SealedUnionMarker{}
+	typ, err := namedType[I]()
+	if err == nil {
+		err = validateDiscriminator(discriminator)
+	}
+	return SealedUnionMarker{spec: ConfigurationSpec{
+		SealedUnions: []SealedUnionSpec{{Type: typ, Discriminator: discriminator}},
+		err:          err,
+	}}
 }

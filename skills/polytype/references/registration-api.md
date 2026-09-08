@@ -72,7 +72,7 @@ const (
 )
 
 var _ = polytype.Declare(Config.Schema).
-    StringerEnum(Config{}.LogLevel)
+    StringerEnum(polytype.Field[Config, LogLevel]("LogLevel"))
 ```
 
 String mode generates codecs on the containing owner, composing with any

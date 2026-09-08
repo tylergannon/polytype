@@ -8,11 +8,13 @@ import (
     {{- if or .Validate (and .HaveEnumCodecs .GeneratesJSONUnmarshalers) }}
     "bytes"
     {{- end }}
+    {{- if .GenerateSchemas }}
     "embed"
+    {{- end }}
     "encoding/json"
 	"errors"
     "fmt"
-	{{- if gt (len .RenderedTypes) 0 }}
+	{{- if and .GenerateSchemas (gt (len .RenderedTypes) 0) }}
 	"text/template"
 	{{- end }}
 	{{- if .GeneratesYAMLUnmarshalers }}
@@ -22,15 +24,17 @@ import (
 	{{ range .Imports}}
 	{{.}}
 	{{ end -}}
-	{{- if .Validate }}
+	{{- if and .GenerateSchemas .Validate }}
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 	{{- end }}
 )
 {{ $subdir := .Subdir -}}
 {{ $discriminatorProp := .DiscriminatorProp}}
+{{ if .GenerateSchemas -}}
 //go:embed {{$subdir}}
 var __gen_jsonschema_fs embed.FS
+{{ end }}
 
 var errNoDiscriminator = errors.New("no discriminator property '{{$discriminatorProp}}' found")
 
@@ -84,9 +88,11 @@ func (__enumValue *{{.TypeName}}) UnmarshalJSON(data []byte) error {
 {{ end }}
 {{- end }}
 {{ end }}
+{{ if .GenerateSchemas -}}
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
 }
+{{ end }}
 
 {{ if .GeneratesYAMLUnmarshalers -}}
 func __gen_jsonschema_yamlNodeToJSON(node *yaml.Node) ([]byte, error) {
@@ -108,7 +114,7 @@ func __gen_jsonschema_yamlToJSON(data []byte) ([]byte, error) {
 {{ end -}}
 {{ end -}}
 
-{{ if and .Validate .HasNonRenderedTypes -}}
+{{ if and .GenerateSchemas .Validate .HasNonRenderedTypes -}}
 // Compiled JSON schemas for validation, initialized once at startup.
 var (
 {{- range .SchemaMethods }}
@@ -136,18 +142,22 @@ func init() {
 		return sch
 	}
 {{ range .SchemaMethods }}
+{{ if .SchemaMethodName }}
 	{{- if not (index $.Rendered .Receiver.TypeName) }}
 	{{- $recvName := .Receiver.TypeName }}
 	{
 		var __zero {{$recvName}}
 		__gen_jsonschema_compiled_{{$recvName}} = compile("{{$recvName}}", __zero.{{.SchemaMethodName}}())
 	}
-	{{- end }}
+		{{- end }}
+{{ end -}}
 {{ end -}}
 }
 {{ end -}}
 
+{{ if .GenerateSchemas -}}
 {{ range .SchemaMethods }}
+{{ if .SchemaMethodName }}
 {{/* If providers exist, name the receiver to call helper; else keep prior signature shape */}}
     {{ $recvName := .Receiver.TypeName -}}
     {{ $methName := .SchemaMethodName -}}
@@ -177,11 +187,13 @@ func ({{if .IsPointer}}*{{end}}{{.Receiver.TypeName}}) {{.SchemaMethodName}}() j
 }
     {{ end -}}
 {{ end -}}
+{{ end -}}
 
 {{/* Free-function roots whose receiver's underlying type is a pointer or
      interface can't have a method, so generate a free function matching
      the original registration's name and signature instead. */}}
 {{ range .SchemaFreeFuncs -}}
+{{ if .SchemaMethodName -}}
 func {{.SchemaMethodName}}({{.Receiver.TypeName}}) json.RawMessage {
 	const fileName = "{{$subdir}}/{{.Receiver.TypeName}}.json"
 	data, err := __gen_jsonschema_fs.ReadFile(fileName)
@@ -191,9 +203,12 @@ func {{.SchemaMethodName}}({{.Receiver.TypeName}}) json.RawMessage {
 	return data
 }
 {{ end -}}
+{{ end -}}
+{{ end -}}
 
 {{/* Generate ValidateJSON for non-rendered types when validation is enabled */}}
-{{ if .Validate -}}
+{{ if and .GenerateSchemas .Validate -}}
+{{ if .GenerateSchemas -}}
 {{ range .SchemaMethods -}}
 {{ $recvName := .Receiver.TypeName -}}
 {{ if not (index $.Rendered $recvName) -}}
@@ -220,6 +235,7 @@ func ({{$recvName}}) ValidateYAML(data []byte) error {
 	}
 	return __gen_jsonschema_compiled_{{$recvName}}.Validate(inst)
 }
+{{ end -}}
 {{ end -}}
 {{ end -}}
 {{ end -}}
@@ -573,6 +589,7 @@ func __jsonschema__decodeDiscriminator(discriminator json.RawMessage) (string, e
 {{ end -}}
 
 {{/* Generate RenderedSchema() for types that requested it */}}
+{{ if .GenerateSchemas -}}
 {{ range .SchemaMethods -}}
 {{ $recv := .Receiver.TypeName -}}
 {{ if index $.Rendered $recv -}}
@@ -611,5 +628,6 @@ func (t {{if .IsPointer}}*{{end}}{{.Receiver.TypeName}}) RenderedSchema() (json.
 	if err := tpl.Execute(&buf, ctx); err != nil { return nil, err }
 	return json.RawMessage(buf.Bytes()), nil
 }
+{{ end -}}
 {{ end -}}
 {{ end -}}

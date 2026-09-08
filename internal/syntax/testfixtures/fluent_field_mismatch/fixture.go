@@ -26,4 +26,4 @@ type Other struct {
 func (Owner) Schema() json.RawMessage { panic("not implemented") }
 
 var _ = polytype.Declare(Owner.Schema).
-	StringerEnum(Other{}.X)
+	StringerEnum(polytype.Field[Other, string]("X"))

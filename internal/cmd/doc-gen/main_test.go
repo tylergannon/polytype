@@ -56,14 +56,14 @@ func TestExtractSelectsFluentChainRegistration(t *testing.T) {
 
 type Task struct { Status string }
 func (Task) Schema() []byte { return nil }
-var _ = polytype.Declare(Task.Schema).StringerEnum(Task{}.Status)
+var _ = polytype.Declare(Task.Schema).StringerEnum(polytype.Field[Task, Status]("Status"))
 `)
 	got, err := extract(path, section{Source: "example.go", Registrations: []string{"Task.Schema"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	joined := string(bytes.Join(got, []byte("\n")))
-	if !strings.Contains(joined, "polytype.Declare(Task.Schema).StringerEnum(Task{}.Status)") {
+	if !strings.Contains(joined, "polytype.Declare(Task.Schema).StringerEnum(polytype.Field[Task, Status](\"Status\"))") {
 		t.Errorf("output missing fluent chain:\n%s", joined)
 	}
 }

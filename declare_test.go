@@ -28,13 +28,12 @@ func (*declarePointerExample) xSchema() json.Marshaler        { return nil }
 
 var (
 	// Method-expression root, every chain method, provider type inference
-	// for both Accessor (no method type param needed) and Method/Function
-	// (generic method jointly inferring field type against provider type).
+	// for Accessor, Method, and Function from typed field references.
 	_ = Declare(declareValueExample.exampleSchema).
-		Accessor(declareValueExample{}.A, declareValueExample.aSchema).
-		Method(declareValueExample{}.B, declareValueExample.bSchema).
-		Function(declareValueExample{}.C, declareBoolSchema).
-		StringerEnum(declareValueExample{}.A).
+		Accessor(Field[declareValueExample, string]("A"), declareValueExample.aSchema).
+		Method(Field[declareValueExample, int]("B"), declareValueExample.bSchema).
+		Function(Field[declareValueExample, bool]("C"), declareBoolSchema).
+		StringerEnum(Field[declareValueExample, string]("A")).
 		Ref().
 		RenderProviders()
 
@@ -44,5 +43,5 @@ var (
 
 	// Pointer-receiver root and pointer-receiver Accessor provider.
 	_ = Declare((*declarePointerExample).exampleSchema).
-		Accessor(declarePointerExample{}.X, (*declarePointerExample).xSchema)
+		Accessor(Field[declarePointerExample, string]("X"), (*declarePointerExample).xSchema)
 )

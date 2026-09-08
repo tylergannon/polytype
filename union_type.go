@@ -56,17 +56,17 @@ func (exampleStruct) JSONSchema() json.RawMessage {
 	panic("not implemented")
 }
 
-// Deprecated: use Declare(T.Schema).Function(field, fn) instead.
+// Deprecated: use Declare(T.Schema).Function(Field[T, F]("Field"), fn) instead.
 func WithFunction[T any](val T, f func(T) json.Marshaler) SchemaMethodOption {
 	return SchemaMethodOptionObj{}
 }
 
-// Deprecated: use Declare(T.Schema).Method(field, T.method) instead.
+// Deprecated: use Declare(T.Schema).Method(Field[T, F]("Field"), T.method) instead.
 func WithStructFunctionMethod[T, U any](val U, f func(T, U) json.Marshaler) SchemaMethodOption {
 	return SchemaMethodOptionObj{}
 }
 
-// Deprecated: use Declare(T.Schema).Accessor(field, T.method) instead.
+// Deprecated: use Declare(T.Schema).Accessor(Field[T, F]("Field"), T.method) instead.
 func WithStructAccessorMethod[T, U any](val T, f func(U) json.Marshaler) SchemaMethodOption {
 	return SchemaMethodOptionObj{}
 }
@@ -77,7 +77,7 @@ func (SchemaMethodOptionObj) implementsSchemaMethodOption() {}
 
 // Enum options (v1) - stubs for scanning/type-checking; parsed by scanner
 //
-// Deprecated: use Declare(T.Schema).StringerEnum(field) instead.
+// Deprecated: use Declare(T.Schema).StringerEnum(Field[T, F]("Field")) instead.
 func WithStringerEnum[T any](field T) SchemaMethodOption { return SchemaMethodOptionObj{} }
 
 // NewJSONSchemaMethod registers a struct method as a stub that will be implemented
@@ -85,7 +85,7 @@ func WithStringerEnum[T any](field T) SchemaMethodOption { return SchemaMethodOp
 //
 // Deprecated: use Declare(T.Schema) instead. For example,
 // NewJSONSchemaMethod(Task.Schema, WithStringerEnum(Task{}.Level)) becomes
-// Declare(Task.Schema).StringerEnum(Task{}.Level).
+// Declare(Task.Schema).StringerEnum(Field[Task, Level]("Level")).
 func NewJSONSchemaMethod[T any](SchemaMethod[T], ...SchemaMethodOption) SchemaMarker {
 	return SchemaMarker{}
 }

@@ -83,10 +83,10 @@ Task runner is `just` (justfile), not `make`.
 
 ### Registration System
 
-Schema types are registered via no-op marker functions in build-tagged `schema.go` files. The scanner reads these as AST call expressions. `Declare(fn)` — a method expression (`T.Schema`) or a free function taking `T` — is the primary entry point; chain options onto the returned `*Declaration[T]`:
+Declarations are executable configuration values. The CLI also reads the same calls as AST expressions from build-tagged `schema.go` files. `Declare(fn)` — a method expression (`T.Schema`) or a free function taking `T` — is the traditional entry point; `Declare[T]()` selects a root without requiring JSON Schema. Chain options onto the returned `*Declaration[T]`:
 
 - `Declare(T.Schema)` — primary registration
-- `.StringerEnum(T{}.Field)` — emit an integer enum field's constant names as strings
+- `.StringerEnum(Field[T, F]("Field"))` — emit an integer enum field's constant names as strings
 - `.Accessor(...)` / `.Method(...)` / `.Function(...)` / `.RenderProviders()` — provider-based template rendering
 - `.Ref()` — render this type as `"$ref"` wherever it's referenced
 

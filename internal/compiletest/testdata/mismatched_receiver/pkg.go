@@ -12,4 +12,4 @@ type B struct{ Y int }
 func (A) Schema() json.RawMessage    { panic("x") }
 func (B) YSchema(int) json.Marshaler { panic("x") }
 
-var _ = polytype.Declare(A.Schema).Method(A{}.X, B.YSchema)
+var _ = polytype.Declare(A.Schema).Method(polytype.Field[A, string]("X"), B.YSchema)

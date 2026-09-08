@@ -14,5 +14,5 @@ func (Composition) Schema() json.RawMessage { panic("not implemented") }
 
 var _ = polytype.Declare(Detail.Schema).Ref()
 var _ = polytype.Declare(Composition.Schema)
-var _ = polytype.Declare(Envelope.Schema).StringerEnum(Envelope{}.PriorityName)
+var _ = polytype.Declare(Envelope.Schema).StringerEnum(polytype.Field[Envelope, Priority]("PriorityName"))
 var _ = polytype.SealedUnion[Event]("!kind")

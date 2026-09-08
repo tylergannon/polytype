@@ -12,8 +12,8 @@ import (
 func (ApplicationConfig) Schema() json.RawMessage { panic("not implemented") }
 
 var _ = polytype.Declare(ApplicationConfig.Schema).
-	StringerEnum(ApplicationConfig{}.LogLevel).
-	StringerEnum(ApplicationConfig{}.DefaultPriority)
+	StringerEnum(polytype.Field[ApplicationConfig, LogLevel]("LogLevel")).
+	StringerEnum(polytype.Field[ApplicationConfig, Priority]("DefaultPriority"))
 
 // Task uses the same enum types in value mode: Priority and LogLevel declare
 // `func (T) enum()` in types.go, so their fields emit integer values with no
