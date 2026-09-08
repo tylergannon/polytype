@@ -1,0 +1,14 @@
+# Usability deep dive
+
+decision: Review current construction, presentation, and functionality; rank three material usability findings. User specifically proposes programmatic generation without marker registration files. No product implementation is requested.
+decision: Continue the supplied clean task worktree at 964f778 on codex/usability-deep-dive. Keep review probes and evidence under ephemeral/.
+proof: Required baseline `go test ./...` passed before exploration. Repeat after review and use focused executable probes for findings; do not change production tests solely for a read-only review.
+finding: Public grammar.Load/Lower, typescript.Generate, and devalue/codegen.Generate exist. Declaration[T] is empty and fluent marker calls discard arguments. Scope the missing library API to JSON Schema, generated Go methods, and unified generation/configuration rather than claiming all programmatic generation is absent.
+finding: README:661 and custom-backend guide claim every backend consumes typegrammar, but default schema rendering uses a separate model. The CLI calls TypeDefinitions only for requested TypeScript output. Portable admission and schema rendering differ.
+proof: Five characterization tests under ephemeral/usability-deep-dive passed. Consumer execution proves uint8 slice schema rejects Go's base64 JSON; fixed-array schema admits extra elements that json.Unmarshal silently drops; --no-changes rewrites altered/missing schema while returning success; a Go output-path collision fails after JSON and sum writes. Marker-free TypeScript and devalue generation works.
+correction: Initial byte-slice probe used []byte, which fails schema generation earlier with "mapNamedType: type byte not found". Changed probe to []uint8, an equivalent Go byte-slice spelling that reaches the accepted-but-wrong schema path. Do not report []byte itself as successfully generated.
+decision: Favor a shared configuration and render-result API with marker scanning as an input adapter. Merely retaining current marker arguments cannot recover field identity from evaluated zero values; explicit source symbols or field names are necessary.
+proof: `just build-tagged` passed. Final findings and replayable probes are under ephemeral/usability-deep-dive/. No production changes or issue/PR publication.
+proof: Final repository `go test ./...` passed. All five characterization probes passed separately; they deliberately assert observed defects and are not production regression tests.
+decision: Closeout on codex/usability-deep-dive with a local checkpoint containing only review findings, evidence, the standalone probe module, and this worklog. No push, PR, or product implementation.
+proof: Local checkpoint pre-commit golangci-lint passed with 0 issues. Evidence log trailing whitespace normalized without changing diagnostic text.

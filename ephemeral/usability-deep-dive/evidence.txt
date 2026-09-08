@@ -1,0 +1,30 @@
+=== RUN   TestMarkerFreeLibraryGenerationExists
+    review_test.go:99: grammar.Load/Lower generated TypeScript and devalue Go source without schema.go or writes to the model package
+--- PASS: TestMarkerFreeLibraryGenerationExists (0.05s)
+=== RUN   TestByteSliceSchemaDisagreesWithGoAndTypeScript
+    review_test.go:121: === RUN   TestWire
+            consumer_test.go:8: json.Marshal={"data":"AQI="}; generated ValidateJSON rejects it: jsonschema validation failed with 'file:///Users/tyler/.codex/worktrees/2bd1/polytype/ephemeral/usability-deep-dive/tmp/TestByteSliceSchemaDisagreesWithGoAndTypeScript3884607453/001/Order.json#'
+                - at '/data': got string, want array
+        --- PASS: TestWire (0.00s)
+        PASS
+        ok  	example.com/fixture	0.233s
+
+    review_test.go:126: adding --typescript fails: 2026/09/07 19:51:46 generate TypeScript definitions: validate type definitions: /Users/tyler/.codex/worktrees/2bd1/polytype/ephemeral/usability-deep-dive/tmp/TestByteSliceSchemaDisagreesWithGoAndTypeScript3884607453/001/types.go:2:26: example.com/fixture.Order.Data: byte-like slices have a base64 wire mapping outside this grammar
+--- PASS: TestByteSliceSchemaDisagreesWithGoAndTypeScript (1.04s)
+=== RUN   TestFixedArrayValidationAcceptsTruncation
+    review_test.go:149: === RUN   TestWire
+            consumer_test.go:9: ValidateJSON accepted {"values":[1,2,3]}; json.Unmarshal silently retained only [1 2]
+        --- PASS: TestWire (0.00s)
+        PASS
+        ok  	example.com/fixture	0.222s
+
+--- PASS: TestFixedArrayValidationAcceptsTruncation (0.73s)
+=== RUN   TestNoChangesSilentlyRepairsTamperedAndMissingSchema
+    review_test.go:166: --no-changes exited 0 and rewrote altered Order.json while its .sum was unchanged
+    review_test.go:174: --no-changes exited 0 and recreated missing Order.json while its .sum remained
+--- PASS: TestNoChangesSilentlyRepairsTamperedAndMissingSchema (0.78s)
+=== RUN   TestFailureLeavesPartialOutput
+    review_test.go:191: generation failed after writing schema and sum: 2026/09/07 19:51:47 open /Users/tyler/.codex/worktrees/2bd1/polytype/ephemeral/usability-deep-dive/tmp/TestFailureLeavesPartialOutput120340227/001/jsonschema_gen.go: is a directory
+--- PASS: TestFailureLeavesPartialOutput (0.31s)
+PASS
+ok  	example.com/polytype-usability-review	3.183s
