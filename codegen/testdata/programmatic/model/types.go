@@ -16,8 +16,8 @@ func (State) enum() {}
 
 type Event interface{ event() }
 
-type Created struct {
+type HTTPEventCreated struct {
 	ID string `json:"id"`
 }
 
-func (Created) event() {}
+func (HTTPEventCreated) event() {}

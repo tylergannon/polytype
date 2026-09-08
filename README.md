@@ -361,8 +361,8 @@ unchanged.
 ## 🔄 Union types (sealed interfaces)
 
 A field whose type is a **sealed interface** becomes an `anyOf` union of the
-interface's variants, discriminated by a `"type"` property whose value is the
-concrete type name. An interface is sealed when its own body declares an
+interface's variants, discriminated by a `"type"` property whose value defaults
+to the PascalCase concrete type name. An interface is sealed when its own body declares an
 unexported method; its variants are inferred: every named struct type in the
 same package that declares that method directly. The receiver of the sealing
 method decides the variant kind: a value receiver is a value variant, a
@@ -412,7 +412,7 @@ property that collides with the discriminator property. Variants behind
 other build tags are not discovered: the scanner loads with the `jsonschema`
 tag.
 
-### Custom discriminator: `SealedUnion[I](name)`
+### Custom discriminator: `SealedUnion[I](name, inflector?)`
 
 The discriminator property is a property of the union, never of a field. A
 union has one codec, so it has one discriminator. The default `"type"` needs
@@ -422,22 +422,24 @@ file of the package that declares the interface:
 ```go
 //go:build jsonschema
 
-var _ = polytype.SealedUnion[PaymentMethod]("kind")
+var _ = polytype.SealedUnion[PaymentMethod]("kind", polytype.Snake)
 ```
 
 Every use of `PaymentMethod` in every generated schema, codec, and TypeScript
-output now discriminates on `"kind"`; nothing changes at any field, and the
-values are still the concrete type names. The argument must be a string
-literal naming a nonempty property. A declaration in another package, a
+output now discriminates on `"kind"`, with values such as `"credit_card"`.
+`polytype.Pascal` is the default; build-tagged declarations may instead name
+`polytype.Snake` or `polytype.Camel`. Executable configuration passed to the
+`codegen` package may supply any non-nil `func(string) string`. The property
+argument must be a string literal naming a nonempty property. A declaration in another package, a
 duplicate declaration, a declaration for a non-sealed interface or a
 non-interface type, a non-literal argument, an invalid property name, or a
 variant payload property colliding with the declared name is a generation
 error naming the interface.
 
-**Wire-contract hazard:** the discriminator value is the concrete type name,
-so renaming a variant type changes its wire value, and adding a qualifying
-implementation changes membership. Review generated schema diffs
-accordingly.
+**Wire-contract hazard:** the discriminator value is derived from the concrete
+type name, so renaming a variant type or changing its inflector changes the
+wire value, and adding a qualifying implementation changes membership. Review
+generated schema diffs accordingly.
 
 Opt into YAML alongside the default JSON unmarshaler in the generation
 directive:
@@ -477,9 +479,9 @@ Migration: `Declare(T.Schema).Interface(field, Discriminator(...), Impl(...))`,
 `WithInterface`, `WithInterfaceImpls`, `WithDiscriminator`, `Impl`,
 `Discriminator`, and the package-level `NewInterfaceImpl[I](...)` are removed.
 Give the interface an unexported method, declare it directly on every
-variant, and delete the field-level declaration. Wire values are now always
-the concrete type names; a custom discriminator property moves from the
-field to one `SealedUnion[I](name)` declaration in the interface's package.
+variant, and delete the field-level declaration. Wire values default to the
+PascalCase concrete type names; a custom property or value inflection moves to
+one `SealedUnion[I](name, inflector?)` declaration in the interface's package.
 
 The generator emits a value-receiver `MarshalJSON` and pointer-receiver
 `UnmarshalJSON` on the containing struct. Encoding the owner adds each union
@@ -806,8 +808,8 @@ var _ = polytype.Declare(Task.Schema).
 Enum types and sealed unions are not declared here at all: a type with
 `func (T) enum()` is an enum everywhere it appears, and an interface with an
 unexported method is a union of the same-package structs that declare it.
-The only per-union setting is its discriminator property, declared once with
-`polytype.SealedUnion[I](name)` in the interface's own package.
+Per-union discriminator property and value inflection are declared once with
+`polytype.SealedUnion[I](name, inflector?)` in the interface's own package.
 
 These declarations are executable configuration values. The CLI also reads
 the same calls from the AST of a build-tagged `schema.go`.

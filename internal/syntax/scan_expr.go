@@ -13,7 +13,7 @@ const (
 	MarkerFuncNewJSONSchemaMethod  = "NewJSONSchemaMethod"  // NewJSONSchemaMethod
 	MarkerFuncNewJSONSchemaFunc    = "NewJSONSchemaFunc"    // NewJSONSchemaFunc
 	MarkerFuncDeclare              = "Declare"              // Declare (v1 fluent entrypoint)
-	MarkerFuncSealedUnion          = "SealedUnion"          // SealedUnion[I](discriminator)
+	MarkerFuncSealedUnion          = "SealedUnion"          // SealedUnion[I](discriminator, inflector?)
 )
 
 // TypeID is our structured representation of a type. It can represent named types,

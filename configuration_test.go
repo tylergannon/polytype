@@ -41,3 +41,29 @@ func TestFieldRejectsWrongValueType(t *testing.T) {
 	_, err := ResolveConfiguration(Declare[configuredPerson]().StringerEnum(Field[configuredPerson, string]("Status")))
 	require.ErrorContains(t, err, "field Status has type int")
 }
+
+type configuredEvent interface{ configuredEvent() }
+
+func TestSealedUnionAcceptsCustomInflection(t *testing.T) {
+	config := Compose(
+		Declare[configuredPerson](),
+		SealedUnion[configuredEvent]("kind", func(name string) string { return "event:" + name }),
+	)
+	spec, err := ResolveConfiguration(config)
+	require.NoError(t, err)
+	require.Equal(t, "event:Created", spec.SealedUnions[0].Inflect("Created"))
+}
+
+func TestSealedUnionRejectsInvalidInflectionArguments(t *testing.T) {
+	_, err := ResolveConfiguration(Compose(
+		Declare[configuredPerson](),
+		SealedUnion[configuredEvent]("kind", nil),
+	))
+	require.ErrorContains(t, err, "inflection function must not be nil")
+
+	_, err = ResolveConfiguration(Compose(
+		Declare[configuredPerson](),
+		SealedUnion[configuredEvent]("kind", Snake, Camel),
+	))
+	require.ErrorContains(t, err, "accepts at most one")
+}

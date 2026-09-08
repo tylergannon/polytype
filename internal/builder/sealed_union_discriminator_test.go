@@ -62,6 +62,21 @@ func TestSealedUnionDiscriminatorAppliesToEveryUse(t *testing.T) {
 	require.NotContains(t, string(shelter), `"type":{"type":"string","const"`)
 }
 
+func TestSealedUnionNamedInflectionAppliesToEveryUse(t *testing.T) {
+	targetDir := writeSealedUnionDiscriminatorFixture(t, sealedTwoOwnerTypes, `var _ = polytype.SealedUnion[Animal]("kind", polytype.Snake)`)
+	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
+	require.Equal(t, []string{"cat", "dog"}, unionDiscriminators(t, targetDir, "Zoo", "resident", "kind"))
+	shelter, err := os.ReadFile(filepath.Join(targetDir, "jsonschema", "Shelter.json"))
+	require.NoError(t, err)
+	require.Contains(t, string(shelter), `"const":"cat"`)
+	require.Contains(t, string(shelter), `"const":"dog"`)
+
+	generated, err := os.ReadFile(filepath.Join(targetDir, "jsonschema_gen.go"))
+	require.NoError(t, err)
+	require.Contains(t, string(generated), `case "cat":`)
+	require.Contains(t, string(generated), `case "dog":`)
+}
+
 // TestSealedUnionDiscriminatorDiagnosticsNameTheInterface covers every
 // negative rule from issue #88 that lives in one package.
 func TestSealedUnionDiscriminatorDiagnosticsNameTheInterface(t *testing.T) {
@@ -102,6 +117,12 @@ type Open interface { Speak() string }
 			types:        sealedTwoOwnerTypes,
 			declarations: `var _ = polytype.SealedUnion[Animal]("")`,
 			want:         []string{"polytype.SealedUnion[Animal] at ", "nonempty valid UTF-8 property name"},
+		},
+		{
+			name:         "unsupported source inflector",
+			types:        sealedTwoOwnerTypes + "\nfunc custom(name string) string { return name }\n",
+			declarations: `var _ = polytype.SealedUnion[Animal]("kind", custom)`,
+			want:         []string{"polytype.SealedUnion[Animal] at ", "arbitrary functions are supported by executable codegen configuration"},
 		},
 		{
 			name: "payload collision with the custom name",

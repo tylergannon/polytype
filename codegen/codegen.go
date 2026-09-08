@@ -250,7 +250,7 @@ func builderConfig(spec polytype.ConfigurationSpec) (builder.ProgrammaticConfig,
 	}
 	for _, union := range spec.SealedUnions {
 		out.SealedUnions = append(out.SealedUnions, builder.ConfiguredUnion{
-			PackagePath: union.Type.PackagePath, TypeName: union.Type.Name, Discriminator: union.Discriminator,
+			PackagePath: union.Type.PackagePath, TypeName: union.Type.Name, Discriminator: union.Discriminator, Inflect: union.Inflect,
 		})
 	}
 	return out, hasEntrypoint, nil

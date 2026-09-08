@@ -886,6 +886,7 @@ func (s SchemaBuilder) mapInterface(iface syntax.IfaceImplementations, seen synt
 				return fmt.Errorf("variant %s of sealed interface %s has a payload property %q that collides with the discriminator property at %s", opt.TypeName, iface.TypeSpec.Name(), discriminator, pos)
 			}
 		}
+		obj.Discriminator = iface.DiscriminatorValue(opt)
 		node.Options = append(node.Options, obj)
 	}
 	s.AddSchema(iface.TypeSpec.ID(), node)
@@ -1550,7 +1551,7 @@ func (s *SchemaBuilder) RenderGoCode() (err error) {
 				}
 				opts = append(opts, InterfaceOptionInfo{
 					TypeNameWithPrefix: importMap.PrefixExpr(option.TypeName, pkg.Pkg),
-					Discriminator:      option.TypeName,
+					Discriminator:      ifaceProp.Interface.DiscriminatorValue(option),
 					Pointer:            option.Indirection == syntax.Pointer,
 				})
 			}
@@ -2226,10 +2227,10 @@ func validateOwnerCodecInterfaceFields(owner string, props []InterfaceProp) erro
 func validateInterfaceDiscriminators(owner, fieldName string, field registeredInterfaceField) error {
 	seen := make(map[string]syntax.TypeID, len(field.Interface.Impls))
 	for _, impl := range field.Interface.Impls {
-		value := impl.TypeName
+		value := field.Interface.DiscriminatorValue(impl)
 		if previous, exists := seen[value]; exists {
 			return fmt.Errorf(
-				"field %s.%s: duplicate discriminator value %q for %s and %s; variant type names must be unique",
+				"field %s.%s: duplicate discriminator value %q for %s and %s; discriminator inflection must produce unique values",
 				owner,
 				fieldName,
 				value,
