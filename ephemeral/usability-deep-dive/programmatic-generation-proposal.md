@@ -1,36 +1,73 @@
 # Make code generation callable as a library
 
-Proposal only; no implementation is requested by this task.
+This is a high-level proposal: requirements, suggested structure, examples, a work sequence, and a definition of done. It is not an instruction to implement the change now or a detailed API specification.
 
-## Core requirement
+## Goal and starting point
 
-Use **exactly one executable configuration API**. The functions called in schema.go must return the same usable configuration objects as those called directly by another Go program. Every chained option retains its arguments. Document this API once.
+Make polytype straightforward to embed in another Go tool. The caller should configure and initiate generation directly, without manufacturing files containing registration calls and then asking the CLI to rediscover that configuration.
 
-The old declaration language may be completely replaced. Preserve the file-based workflow, not no-op markers or a separate AST-only interpretation of their meaning. Another generator must be able to construct configuration and generate output without creating registration files or stubs in the model package.
+TypeScript and devalue already have library generators. JSON Schema and its generated Go accessors, validation, and codecs are still tied to the registration workflow. The solution should expose the whole supported generation surface coherently.
 
-## Suggested boundaries
+## The central requirement: those same functions return configuration
 
-- Configuration describes **roots, rules, and requested outputs**; ordinary Go functions and composition build it.
-- Generation takes **configuration plus source context** and returns artifacts. Writing artifacts is a separate operation.
-- Both invocation workflows use the same compiler and shared static type grammar. Schema providers remain an explicit capability with clear projection limits.
-- Keep naming, binding collection, and package organization open to the implementer. Avoid expanding the supported type system during this work.
+The user's requested shape is:
 
-## Suggested sequence
+```go
+//go:build jsonschema
 
-1. Demonstrate one identical declaration expression in both workflows.
-2. Make declarations and options construct real configuration values.
-3. Load caller-selected types independently of registration files.
-4. Align static JSON Schema with the shared grammar.
-5. Expose generation with explicit output selection and returned artifacts.
-6. Separate read-only checking from output writes.
-7. Migrate schema.go declarations to the executable API.
-8. Prove external consumers and generated runtime behavior.
-9. Document the API once and remove duplicate generation machinery.
+var _ = polytype.Declare(foo.bar).Whatever(baz)
+```
 
-## Done means
+and, elsewhere in an ordinary generation program:
 
-- The same declaration expression returns equivalent configuration and output in both workflows, including when composed through helpers.
-- An external Go program generates usable output without model registration files, stubs, or a CLI subprocess; first generation and regeneration both work.
-- Existing supported capabilities have representative executable coverage. Generated consumers compile and run; the observed byte-slice and fixed-array inconsistencies are corrected or consistently refused.
-- Callers select outputs and control writes. Check mode detects altered or missing artifacts without modifying them.
-- Examples are migrated, the configuration API has one reference, and unit tests, tagged builds, and generation/drift checks pass.
+```go
+config := polytype.Declare(foo.bar).Whatever(baz)
+codegen.Gen(config)
+```
+
+These examples express the requirement, not frozen signatures or a required blank-binding convention. **The exact same declaration and option functions must return usable configuration objects in both places.** Every option retains its arguments and contributes to the returned configuration. Another program can store, compose, and pass that object directly to generation.
+
+It is not sufficient to have no-op markers interpreted by a scanner and a separate executable API that happens to produce the same internal representation. There must be one declaration API with one implementation of its meaning, documented once. Only the invocation instructions differ.
+
+The user explicitly permits completely reinventing the traditional schema.go language, including the stub and marker-call conventions. Keep the file-based workflow available, but do not preserve old syntax at the expense of this requirement. For example, an evaluated field value may lose its identity; use an explicit field name or symbol if necessary. The final spelling and binding convention are implementation choices.
+
+## Suggested structure and formalities
+
+Use Go itself as the configuration language. Declaration calls construct ordinary values; helpers, composition, loops, and conditionals work normally. Merely constructing configuration should not trigger generation or global registration.
+
+A small conceptual grammar is enough to guide the design:
+
+```text
+Configuration = selected roots + type/field rules + requested outputs
+Rule          = enum | field encoding | union | reference | schema provider
+Generation    = configuration + source context -> generated artifacts
+```
+
+Resolve configuration into the existing closed type grammar: scalars, time, enums, ordered objects, pointers, slices, fixed arrays, and references, with required/optional/nullable and supported union field forms. Preserve descriptions, identities, field order, enum/discriminator values, and array lengths. Static JSON Schema must consume this grammar too. Keep dynamic providers explicit where their output cannot be projected statically.
+
+Both workflows supply configuration to the same engine. File collection may locate bindings, but must obtain values produced by the shared functions rather than supply separate AST-only option semantics. The direct API must work without a registration file or user-authored schema stubs in the model package. Allow caller-selected roots, explicit source context, and reuse of source/type information another generator already loaded.
+
+Let callers select outputs and receive artifacts before writing them. A TypeScript-only request should not force schema files or Go accessors. Checking generated output should compare actual destination bytes without modifying them; application of output is explicit. Address first-run loading and references to generated methods during implementation. Do not turn this into unrelated expansion of the supported type system.
+
+## Nine basic steps to success
+
+1. **Start with the user's two examples.** Demonstrate one identical declaration expression returning real configuration in a file binding and an external program.
+2. **Build the shared configuration API.** Make every declaration and option store its meaning; support ordinary Go composition and replace source-only syntax where needed.
+3. **Separate loading from registration.** Resolve caller-selected types without registration files, reuse loaded source information, and handle first-generation dependencies.
+4. **Unify static lowering and projection.** Make JSON Schema use the shared grammar while preserving supported rules and explicit provider capabilities.
+5. **Expose generation directly.** Consume configuration through the public library API and return only the requested artifacts and emitted identifiers.
+6. **Separate checking and writing.** Detect missing or altered output using actual contents; preflight destinations before applying changes.
+7. **Migrate the file-based workflow.** Collect configurations from the same executable API and update traditional declarations and shipped examples as necessary.
+8. **Prove real consumers.** Exercise both workflows, generated runtime behavior, independent output selection, and first-run/regeneration cases.
+9. **Document once and remove duplication.** Publish one declaration reference with short instructions for each invocation workflow; retire no-op declarations and superseded generation machinery.
+
+## Definition of done
+
+- **Same API, same meaning:** identical declaration expressions in both contexts return equivalent configuration and output. Include helper-based composition so a second syntax-only interpreter cannot satisfy the check.
+- **Usable externally:** a separate Go module configures and generates output without adding registration files or stubs to the model package or launching the polytype CLI. First generation and regeneration work, including the supported generated-method reference cases.
+- **Supported capabilities retained:** representative enums, enum-name encoding, unions/discriminators, refs, providers, validation, YAML, TypeScript, and devalue work through the shared configuration model. Unsupported combinations produce clear diagnostics.
+- **Behavior demonstrated:** generated consumers compile and execute. Test encode/validate/decode behavior. Represent byte-like slices correctly or consistently refuse them; fixed arrays must reject wrong-length input instead of validating data that Go silently truncates.
+- **Outputs under caller control:** schema-only and TypeScript-only requests work; artifacts can be consumed by a caller-owned writer. Check mode reports altered/missing files without writes, even when checksum sidecars remain unchanged.
+- **Migration complete:** examples use the executable API, old forms are migrated or rejected with useful guidance, and configuration is documented once. Appropriate tests, go test ./..., tagged builds, and generation/drift checks pass.
+
+The first deliverable is one configuration expression producing correct JSON Schema through both workflows. Use that working result to guide the broader migration, rather than specifying every API detail in advance.
