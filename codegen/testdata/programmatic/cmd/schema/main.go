@@ -10,7 +10,10 @@ import (
 )
 
 func main() {
-	config := polytype.Declare[model.Envelope]()
+	config := polytype.Compose(
+		polytype.Declare[model.Envelope](),
+		polytype.SealedUnion[model.Event]("kind", polytype.Camel),
+	)
 	if err := codegen.Gen(config,
 		codegen.Target("./model"),
 		codegen.JSONSchema(),

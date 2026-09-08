@@ -356,8 +356,8 @@ option before writing artifacts because its encoding differs from the schema.
 ## Discriminated interfaces and slices
 
 A field whose type is a **sealed interface** becomes an `anyOf` union of the
-interface's variants, discriminated by a `"type"` property whose value is the
-concrete type name. An interface is sealed when its own body declares an
+interface's variants, discriminated by a `"type"` property whose value defaults
+to the PascalCase concrete type name. An interface is sealed when its own body declares an
 unexported method; its variants are inferred: every named struct type in the
 same package that declares that method directly. The receiver of the sealing
 method decides the variant kind: a value receiver is a value variant, a
@@ -392,8 +392,8 @@ Nothing is declared at the field:
 var _ = polytype.Declare(Batch.Schema)
 ```
 
-The discriminator value is the concrete type name (`"Created"`, `"Deleted"`)
-and the default discriminator property is `type` for both JSON and YAML.
+The discriminator value defaults to the concrete type name (`"Created"`,
+`"Deleted"`) and the default discriminator property is `type` for both JSON and YAML.
 Rejected with a diagnostic naming the type or field: a reachable field of a
 non-sealed interface (no fallback), a sealing method obtained by embedding, a
 type satisfying the interface only through an embedded field (excluded), a
@@ -438,8 +438,11 @@ Run `go mod tidy` after YAML-enabled generation so the module records its
 
 The discriminator property is a property of the union. To use a property other
 than `type`, declare it once in the build-tagged file of the package that
-declares the interface: `var _ = polytype.SealedUnion[Event]("kind")`. Every
-use of `Event` then discriminates on `kind`; values stay the type names. The
+declares the interface: `var _ = polytype.SealedUnion[Event]("kind")`. Add
+`polytype.Snake` or `polytype.Camel` as the optional second argument to inflect
+the concrete type names; `polytype.Pascal` is the default. Executable
+configuration passed to `codegen` may supply any non-nil `func(string) string`.
+Every use of `Event` then shares the property and resolved values. The property
 argument must be a nonempty string literal; a declaration in another package,
 a duplicate, a non-sealed or non-interface target, or a payload collision with
 the declared name fails generation naming the interface.
@@ -447,7 +450,7 @@ the declared name fails generation naming the interface.
 Migration: `.Interface(...)`, `WithInterface`, `WithInterfaceImpls`,
 `WithDiscriminator`, `Impl`, `Discriminator`, and `NewInterfaceImpl[I]` are
 removed; seal the interface, delete the field-level declaration, and move a
-custom discriminator to `SealedUnion[I](name)`.
+custom discriminator to `SealedUnion[I](name, inflector?)`.
 
 Marshal the containing value with `json.Marshal(batch)` or
 `json.Marshal(&batch)`. Its generated owner codec injects each field's
@@ -589,8 +592,9 @@ var _ = polytype.Declare(Task.Schema).
 
 Enum types are declared on the type itself with `func (T) enum()`, and
 sealed unions are inferred from an interface's unexported method; neither
-appears in the registration chain. A union's discriminator property is
-declared once with the package-level `polytype.SealedUnion[I](name)`.
+appears in the registration chain. A union's discriminator property and
+optional value inflection are declared once with package-level
+`polytype.SealedUnion[I](name, inflector?)`.
 
 Registration markers are read from the build-tagged file by the generator and
 are no-ops at runtime.
@@ -610,9 +614,9 @@ schema accessor stub) has no fluent form yet and is unaffected.
 | `WithEnum(field)` | removed; declare `func (T) enum() {}` on the field's type |
 | `WithStringerEnum(field)` | `.StringerEnum(field)` |
 | `WithInterface(field, options...)` | removed; membership is inferred from the sealing method |
-| `Impl(value, implementation)` | removed; the wire value is the concrete type name |
+| `Impl(value, implementation)` | removed; the wire value is inferred from the concrete type name and union inflector |
 | `WithInterfaceImpls(field, impls...)` | removed; membership is inferred from the sealing method |
-| `WithDiscriminator(field, name)` / `Discriminator(name)` | removed; declare `SealedUnion[I](name)` once in `I`'s package |
+| `WithDiscriminator(field, name)` / `Discriminator(name)` | removed; declare `SealedUnion[I](name, inflector?)` once in `I`'s package |
 | `WithFunction(field, fn)` | `.Function(field, fn)` |
 | `WithStructAccessorMethod(field, method)` | `.Accessor(field, T.method)` |
 | `WithStructFunctionMethod(field, method)` | `.Method(field, T.method)` |
@@ -783,14 +787,14 @@ func (Order) ValidateJSON(_ []byte) error { panic("not implemented") }
 var _ = polytype.Declare(Order.Schema).
     StringerEnum(Order{}.Priority)
 
-var _ = polytype.SealedUnion[Payment]("kind")
+var _ = polytype.SealedUnion[Payment]("kind", polytype.Snake)
 ```
 
 Per root type: one stub with the exact signature and one `Declare` line.
 Chain `.StringerEnum`, `.Ref()`, or a provider option only when wanted. Add
-`SealedUnion[I](name)` only for a non-default discriminator, and only in the
-package that declares `I`. The method name is the tool's choice; `Schema` is
-the convention.
+`SealedUnion[I](name, inflector?)` only for a non-default discriminator or
+non-default value inflection, and only in the package that declares `I`. The
+method name is the tool's choice; `Schema` is the convention.
 
 Then run, once per package:
 

@@ -131,11 +131,13 @@ type (
 	// membership: every named struct type in the interface's own package that
 	// declares the sealing method directly (see inferSealedUnion). Impls
 	// carry Pointer indirection for pointer-receiver variants. Discriminator
-	// is the union's declared discriminator property, empty for the default.
+	// is the union's declared discriminator property, empty for the default;
+	// DiscriminatorValues contains non-default resolved wire values.
 	IfaceImplementations struct {
-		TypeSpec      TypeSpec
-		Impls         []TypeID
-		Discriminator string
+		TypeSpec            TypeSpec
+		Impls               []TypeID
+		Discriminator       string
+		DiscriminatorValues map[string]string
 	}
 
 	EnumSet struct {
@@ -153,6 +155,15 @@ type (
 		Source      token.Position
 	}
 )
+
+// DiscriminatorValue returns the resolved wire value for an implementation.
+// An absent entry is the historical PascalCase concrete type name.
+func (i IfaceImplementations) DiscriminatorValue(impl TypeID) string {
+	if value, ok := i.DiscriminatorValues[impl.TypeName]; ok {
+		return value
+	}
+	return impl.TypeName
+}
 
 func (s SchemaMethod) IsPointer() bool {
 	return s.Receiver.Indirection == Pointer

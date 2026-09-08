@@ -12,7 +12,9 @@ import (
 func main() {
 	config := polytype.Compose(
 		polytype.Declare[model.Envelope](),
-		polytype.SealedUnion[model.Event]("kind"),
+		polytype.SealedUnion[model.Event]("kind", func(name string) string {
+			return "wire_" + polytype.Snake(name)
+		}),
 	)
 	if err := codegen.Gen(config,
 		codegen.Target("./model"),

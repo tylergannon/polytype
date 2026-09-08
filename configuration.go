@@ -95,6 +95,7 @@ type DeclarationSpec struct {
 type SealedUnionSpec struct {
 	Type          TypeSpec
 	Discriminator string
+	Inflect       func(string) string
 }
 
 // ConfigurationSpec is the resolved meaning of one or more configuration

@@ -474,7 +474,7 @@ func (l *typeGrammarLowerer) union(field registeredInterfaceField) (typegrammar.
 		union.Variants = append(union.Variants, typegrammar.Variant{
 			Implementation: name,
 			Pointer:        impl.Indirection == syntax.Pointer,
-			Tag:            impl.TypeName,
+			Tag:            field.Interface.DiscriminatorValue(impl),
 			Source:         position,
 		})
 	}

@@ -36,6 +36,7 @@ type ConfiguredUnion struct {
 	PackagePath   string
 	TypeName      string
 	Discriminator string
+	Inflect       func(string) string
 }
 
 // ProgrammaticConfig is the builder-facing form of executable declarations.
@@ -79,6 +80,11 @@ func NewProgrammatic(pkg *decorator.Package, config ProgrammaticConfig, mapSchem
 			return SchemaBuilder{}, fmt.Errorf("configured sealed union %s is not a sealed interface in %s", union.TypeName, data.Pkg.PkgPath)
 		}
 		iface.Discriminator = union.Discriminator
+		values, err := discriminatorValues(union, iface)
+		if err != nil {
+			return SchemaBuilder{}, err
+		}
+		iface.DiscriminatorValues = values
 		data.Interfaces[union.TypeName] = iface
 	}
 
@@ -116,6 +122,33 @@ func NewProgrammatic(pkg *decorator.Package, config ProgrammaticConfig, mapSchem
 		}
 	}
 	return newFromScan(data, nil, mapSchemas)
+}
+
+func discriminatorValues(union ConfiguredUnion, iface syntax.IfaceImplementations) (values map[string]string, err error) {
+	inflect := union.Inflect
+	if inflect == nil {
+		inflect = func(name string) string { return name }
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("configured sealed union %s: discriminator inflection panicked: %v", union.TypeName, recovered)
+			values = nil
+		}
+	}()
+	values = make(map[string]string, len(iface.Impls))
+	seen := make(map[string]string, len(iface.Impls))
+	for _, impl := range iface.Impls {
+		value := inflect(impl.TypeName)
+		if value == "" || !utf8.ValidString(value) {
+			return nil, fmt.Errorf("configured sealed union %s: discriminator inflection returned an empty or invalid UTF-8 value for variant %s", union.TypeName, impl.TypeName)
+		}
+		if previous, exists := seen[value]; exists {
+			return nil, fmt.Errorf("configured sealed union %s: discriminator inflection returned duplicate value %q for variants %s and %s", union.TypeName, value, previous, impl.TypeName)
+		}
+		seen[value] = impl.TypeName
+		values[impl.TypeName] = value
+	}
+	return values, nil
 }
 
 // ApplyTransforms applies registered builder transforms before any output is
