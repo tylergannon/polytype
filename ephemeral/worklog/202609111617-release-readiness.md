@@ -1,0 +1,16 @@
+# 1.0 readiness assessment
+
+decision: Assess current main (38f05b1) and live release/issues without changing product behavior. Continue the existing task worktree on codex/release-readiness.
+proof: Baseline `go test ./...` passed; `just build-tagged` and `go vet ./...` passed. Current origin HEAD matches the checkout; GitHub Go CI is green. Latest published RC is v1.0.0-rc.12.
+discovery: #110 requests YAML removal before 1.0; current public codegen.Options.YAML and codegen.YAML extend its original removal scope. #66 still mixes stale dependencies and YAML wording into release acceptance.
+doc_bug: llms.txt still uses StringerEnum(Task{}.LogLevel) and claims the CLI is the only path for schema/validation/Go JSON outputs; the executable API now accepts FieldRef and supports those outputs.
+doc_bug: website API reference lists the pre-inflection SealedUnion signature; README registration table and StringerEnum godoc say fmt.Stringer despite constant-name semantics.
+discovery: No tracked LICENSE or COPYING file exists. License choice remains a maintainer decision.
+proof: Reproduced #100 against the built current-main CLI in ephemeral/release-readiness: zero Todo marshals to {"note":null,"tags":null}; generated TS requires note:string, tags:Array<string>, title:string; generated validation rejects both nulls and missing title. Generation emitted no narrowing diagnostic.
+proof: Reproduced #102: regenerate the same model without --validate; command succeeds silently, ValidateJSON disappears, and `go run ./cmd/probe` fails with undefined ValidateJSON. Restored validation-enabled output afterward.
+proof: Targeted programmatic schema-only, transport-only, and Go-JSON-only fixture tests pass; generated devalue codecs compile and execute their fixture assertions; recorded devalue golden roundtrips pass.
+friction: Initial local TypeScript compiler test skipped because node_modules was absent. Installed repository pins with `npm ci --ignore-scripts --no-audit --no-fund` to exercise it instead of treating the skip as proof.
+decision: Recommend blocking 1.0 on honest nil/omission wire semantics, finishing planned YAML removal, final public API compatibility decisions, documentation alignment, license, and bounded published-RC consumer checks. Recommend deferring maps, recursion, plugin packaging, and broad agent evaluation; existing milestone metadata needs reconciliation with this proposed scope.
+discovery: Potential final API naming choice: StringerEnum emits constant names and ignores String methods on marked enums, so its current name and fmt.Stringer godoc are misleading. Legacy NewJSONSchema*/With* helpers and exported configuration structs need an explicit retain-or-retire decision before promising v1 compatibility.
+proof: After installing pins, TestGenerateEdgeCasesCompile passed without skipping. Final `go test ./...` passed across the root module. Restored nested probe compiles with `go test ./...` and generation with --validate --typescript --no-changes succeeds.
+state: Assessment and reproduction artifacts checkpointed on codex/release-readiness; no product implementation changes, issue changes, PR, or release. Public-tag installation/consumer proof is still a release task, not claimed by local-replace probes.

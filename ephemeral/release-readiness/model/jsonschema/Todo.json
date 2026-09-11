@@ -1,0 +1,6 @@
+{"type":"object",
+"properties":{
+"note":{"type":"string"},
+"tags":{"type":"array","items":{"type":"string"}},
+"title":{"type":"string"}
+},"required":["note","tags","title"],"additionalProperties":false}
