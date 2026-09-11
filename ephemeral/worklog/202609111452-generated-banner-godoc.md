@@ -1,0 +1,1 @@
+decision: A blank line after the generated-file marker keeps the marker intact while preventing go/doc from adopting it as authored package documentation; verified through an authored fixture package and `go doc -all .`.

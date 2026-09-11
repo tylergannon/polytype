@@ -1,3 +1,4 @@
+// Package basictypes is the authored fixture documentation.
 package basictypes
 
 //go:generate go run ./gen
