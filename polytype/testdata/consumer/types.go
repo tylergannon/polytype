@@ -75,7 +75,7 @@ type Composition struct {
 	C polytype.Optional[[]Status] `json:"c,omitzero"`
 	D polytype.Nullable[Status]   `json:"d"`
 	E [2]string                   `json:"e"`
-	F *bool                       `json:"f"`
+	F polytype.Nullable[bool]     `json:"f"`
 	G []Envelope                  `json:"g"`
 	H Array                       `json:"h"`
 	I Omit                        `json:"i"`

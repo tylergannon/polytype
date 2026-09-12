@@ -611,6 +611,21 @@
     "label": {
       "type": "string"
     },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
     "omitted": {
       "type": "string"
     }
@@ -621,7 +636,9 @@
     "nested",
     "ordinary",
     "state",
-    "label"
+    "label",
+    "tags",
+    "groups"
   ],
   "additionalProperties": false
 }

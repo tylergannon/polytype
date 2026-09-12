@@ -72,6 +72,11 @@ func TestLegacyInterfaceMarshalCarriesDerivedDiscriminators(t *testing.T) {
 	if err := json.Unmarshal(encoded, &decoded); err != nil {
 		t.Fatal(err)
 	}
+	if decoded.EnumVal == nil || decoded.Details == nil || len(decoded.EnumVal) != 0 || len(decoded.Details) != 0 {
+		t.Fatalf("normalized ordinary slices = enumVal %#v, details %#v; want non-nil empty slices", decoded.EnumVal, decoded.Details)
+	}
+	value.EnumVal = decoded.EnumVal
+	value.Details = decoded.Details
 	if !reflect.DeepEqual(decoded, value) {
 		t.Fatalf("round trip = %#v, want %#v", decoded, value)
 	}

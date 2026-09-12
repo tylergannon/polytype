@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 )
@@ -116,6 +117,10 @@ func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
 }
 
+func __polytype_marshal(value any) ([]byte, error) {
+	return jsonv2.Marshal(value, json.DefaultOptionsV1(), jsonv2.FormatNilSliceAsNull(false))
+}
+
 func (ApplicationConfig) Schema() json.RawMessage {
 	const fileName = "jsonschema/ApplicationConfig.json"
 	data, err := __gen_jsonschema_fs.ReadFile(fileName)
@@ -154,7 +159,7 @@ func (a ApplicationConfig) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("field log_level: %w", err)
 	}
 
-	return json.Marshal(&wrapper)
+	return __polytype_marshal(&wrapper)
 }
 
 // UnmarshalJSON is a generated custom json.Unmarshaler implementation for
@@ -191,13 +196,13 @@ func (a *ApplicationConfig) UnmarshalJSON(data []byte) (err error) {
 func __jsonMarshalEnum__ApplicationConfig__DefaultPriority(value Priority) (json.RawMessage, error) {
 	switch value {
 	case PriorityLow:
-		return json.Marshal("PriorityLow")
+		return __polytype_marshal("PriorityLow")
 	case PriorityNormal:
-		return json.Marshal("PriorityNormal")
+		return __polytype_marshal("PriorityNormal")
 	case PriorityHigh:
-		return json.Marshal("PriorityHigh")
+		return __polytype_marshal("PriorityHigh")
 	case PriorityUrgent:
-		return json.Marshal("PriorityUrgent")
+		return __polytype_marshal("PriorityUrgent")
 	default:
 		return nil, errors.New("undeclared value for string-mode enum Priority")
 	}
@@ -228,15 +233,15 @@ func __jsonUnmarshalEnum__ApplicationConfig__DefaultPriority(data []byte) (Prior
 func __jsonMarshalEnum__ApplicationConfig__LogLevel(value LogLevel) (json.RawMessage, error) {
 	switch value {
 	case LogDebug:
-		return json.Marshal("LogDebug")
+		return __polytype_marshal("LogDebug")
 	case LogInfo:
-		return json.Marshal("LogInfo")
+		return __polytype_marshal("LogInfo")
 	case LogWarning:
-		return json.Marshal("LogWarning")
+		return __polytype_marshal("LogWarning")
 	case LogError:
-		return json.Marshal("LogError")
+		return __polytype_marshal("LogError")
 	case LogFatal:
-		return json.Marshal("LogFatal")
+		return __polytype_marshal("LogFatal")
 	default:
 		return nil, errors.New("undeclared value for string-mode enum LogLevel")
 	}

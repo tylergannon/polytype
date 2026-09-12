@@ -31,7 +31,7 @@ type StructType1 struct {
 
 	Field5 [][]struct {
 		// The second field is truly interesting.
-		Field2 *([]*EnumType123) `json:"field2"`
+		Field2 []*EnumType123 `json:"field2"`
 		Field3 struct {
 			Field9 []*EnumType123 `json:"field9"`
 			// foobar is just a field where you do things
@@ -54,9 +54,9 @@ type StructWithRefs struct {
 }
 
 type JSONTagNames struct {
-	MaxRetries      int `json:",omitzero"`
-	TimeoutSeconds  int `json:",omitempty"`
-	BackoffStrategy int `json:"backoff_strategy,omitzero"`
+	MaxRetries      int `json:"MaxRetries"`
+	TimeoutSeconds  int `json:"TimeoutSeconds"`
+	BackoffStrategy int `json:"backoff_strategy"`
 	Untagged        int
 	Ignored         int `json:"-"`
 }

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/tylergannon/polytype"
 )
 
 // TestMarkedEnumRoundTripAndValidation proves that a type declaring
@@ -11,7 +13,14 @@ import (
 // values on the wire, and that the generated validator rejects a value
 // outside the constant set.
 func TestMarkedEnumRoundTripAndValidation(t *testing.T) {
-	in := Task{ID: "t-1", Name: "ship", Description: "ship it", Status: StatusInProgress, Priority: PriorityHigh, Tags: []string{"release"}}
+	in := Task{
+		ID:          "t-1",
+		Name:        "ship",
+		Description: polytype.Optional[string]{Present: true, Value: "ship it"},
+		Status:      StatusInProgress,
+		Priority:    PriorityHigh,
+		Tags:        polytype.Optional[[]string]{Present: true, Value: []string{"release"}},
+	}
 	data, err := json.Marshal(in)
 	if err != nil {
 		t.Fatal(err)

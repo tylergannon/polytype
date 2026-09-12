@@ -86,21 +86,21 @@ type Numbers struct {
 
 // Envelope is the whole graph in one object.
 type Envelope struct {
-	Label     string                    `json:"label"`
-	Numbers   Numbers                   `json:"numbers"`
-	When      time.Time                 `json:"when"`
-	Coords    [3]int                    `json:"coords"`
-	Tags      []string                  `json:"tags"`
-	Detail    *Detail                   `json:"detail"`
-	Priority  Priority                  `json:"priority"`
-	Ranked    Priority                  `json:"ranked"`
-	Status    Status                    `json:"status"`
-	Shade     Shade                     `json:"shade"`
-	Primary   Event                     `json:"primary"`
-	Events    []Event                   `json:"events"`
-	Alternate polytype.Optional[Event]  `json:"alternate,omitzero"`
-	Nickname  polytype.Optional[string] `json:"nickname,omitzero"`
-	Owner     polytype.Nullable[Detail] `json:"owner"`
+	Label     string                     `json:"label"`
+	Numbers   Numbers                    `json:"numbers"`
+	When      time.Time                  `json:"when"`
+	Coords    [3]int                     `json:"coords"`
+	Tags      []string                   `json:"tags"`
+	Detail    polytype.Nullable[*Detail] `json:"detail"`
+	Priority  Priority                   `json:"priority"`
+	Ranked    Priority                   `json:"ranked"`
+	Status    Status                     `json:"status"`
+	Shade     Shade                      `json:"shade"`
+	Primary   Event                      `json:"primary"`
+	Events    []Event                    `json:"events"`
+	Alternate polytype.Optional[Event]   `json:"alternate,omitzero"`
+	Nickname  polytype.Optional[string]  `json:"nickname,omitzero"`
+	Owner     polytype.Nullable[Detail]  `json:"owner"`
 	// Inline is an anonymous struct field. The generated codecs reach it
 	// through selectors on the Envelope value, never by spelling its type.
 	Inline struct {

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 
@@ -72,6 +73,10 @@ func (__enumValue *Color) UnmarshalJSON(data []byte) error {
 
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
+}
+
+func __polytype_marshal(value any) ([]byte, error) {
+	return jsonv2.Marshal(value, json.DefaultOptionsV1(), jsonv2.FormatNilSliceAsNull(false))
 }
 
 // Compiled JSON schemas for validation, initialized once at startup.
@@ -157,7 +162,7 @@ func (p Paint) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("field remote: %w", err)
 	}
 
-	return json.Marshal(&wrapper)
+	return __polytype_marshal(&wrapper)
 }
 
 // UnmarshalJSON is a generated custom json.Unmarshaler implementation for
@@ -220,13 +225,13 @@ func (p *Paint) UnmarshalJSON(data []byte) (err error) {
 func __jsonMarshalEnum__Paint__C(value Color) (json.RawMessage, error) {
 	switch value {
 	case ColorZero:
-		return json.Marshal("ColorZero")
+		return __polytype_marshal("ColorZero")
 	case ColorRed:
-		return json.Marshal("ColorRed")
+		return __polytype_marshal("ColorRed")
 	case ColorGreen:
-		return json.Marshal("ColorGreen")
+		return __polytype_marshal("ColorGreen")
 	case ColorBlue:
-		return json.Marshal("ColorBlue")
+		return __polytype_marshal("ColorBlue")
 	default:
 		return nil, errors.New("undeclared value for string-mode enum Color")
 	}
@@ -257,13 +262,13 @@ func __jsonUnmarshalEnum__Paint__C(data []byte) (Color, error) {
 func __jsonMarshalEnum__Paint__Nullable(value Color) (json.RawMessage, error) {
 	switch value {
 	case ColorZero:
-		return json.Marshal("ColorZero")
+		return __polytype_marshal("ColorZero")
 	case ColorRed:
-		return json.Marshal("ColorRed")
+		return __polytype_marshal("ColorRed")
 	case ColorGreen:
-		return json.Marshal("ColorGreen")
+		return __polytype_marshal("ColorGreen")
 	case ColorBlue:
-		return json.Marshal("ColorBlue")
+		return __polytype_marshal("ColorBlue")
 	default:
 		return nil, errors.New("undeclared value for string-mode enum Color")
 	}
@@ -294,13 +299,13 @@ func __jsonUnmarshalEnum__Paint__Nullable(data []byte) (Color, error) {
 func __jsonMarshalEnum__Paint__Optional(value Color) (json.RawMessage, error) {
 	switch value {
 	case ColorZero:
-		return json.Marshal("ColorZero")
+		return __polytype_marshal("ColorZero")
 	case ColorRed:
-		return json.Marshal("ColorRed")
+		return __polytype_marshal("ColorRed")
 	case ColorGreen:
-		return json.Marshal("ColorGreen")
+		return __polytype_marshal("ColorGreen")
 	case ColorBlue:
-		return json.Marshal("ColorBlue")
+		return __polytype_marshal("ColorBlue")
 	default:
 		return nil, errors.New("undeclared value for string-mode enum Color")
 	}
@@ -331,9 +336,9 @@ func __jsonUnmarshalEnum__Paint__Optional(data []byte) (Color, error) {
 func __jsonMarshalEnum__Paint__Remote(value palette.Level) (json.RawMessage, error) {
 	switch value {
 	case palette.LevelLow:
-		return json.Marshal("LevelLow")
+		return __polytype_marshal("LevelLow")
 	case palette.LevelHigh:
-		return json.Marshal("LevelHigh")
+		return __polytype_marshal("LevelHigh")
 	default:
 		return nil, errors.New("undeclared value for string-mode enum Level")
 	}

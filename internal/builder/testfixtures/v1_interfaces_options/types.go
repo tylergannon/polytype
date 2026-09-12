@@ -49,9 +49,9 @@ type PlainInner struct {
 }
 
 type Plain struct {
-	Tags  []string    `json:"tags"`
-	Inner *PlainInner `json:"inner"`
-	Count int         `json:"count"`
+	Tags  []string                       `json:"tags"`
+	Inner polytype.Nullable[*PlainInner] `json:"inner"`
+	Count int                            `json:"count"`
 }
 
 type Owner struct {

@@ -6,4 +6,4 @@
 "status":{"type":"string","description":"Status indicates the current state of the task. This will use the Status enum type defined above.","enum":["pending","in_progress","completed","failed"]},
 "priority":{"type":"string","description":"Priority indicates how important this task is.","enum":["low","medium","high"]},
 "tags":{"type":"array","description":"Tags are additional categorization for the task.","items":{"type":"string"}}
-},"required":["id","name","description","status","priority","tags"],"additionalProperties":false}
+},"required":["id","name","status","priority"],"additionalProperties":false}

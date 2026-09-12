@@ -1,7 +1,7 @@
 {"type":"object",
 "description":"ComplexStruct demonstrates using all these indirect types in a struct.","properties":{
 "simpleValue":{"type":"integer","description":"SimpleValue is a simple integer."},
-"pointerValue":{"type":"integer","description":"PointerValue is a nullable integer."},
+"pointerValue":{"type":["integer","null"],"description":"PointerValue is a nullable integer."},
 "sliceValue":{"type":"array","description":"SliceValue is an array of SimpleInt.","items":{"type":"integer","description":"SimpleInt is a basic integer type."}},
 "pointerSliceValue":{"type":"array","description":"PointerSliceValue is an array of nullable SimpleInt.","items":{"type":"integer","description":"SimpleInt is a basic integer type."}},
 "namedSliceValue":{"type":"array","description":"NamedSliceValue demonstrates using a named slice type.","items":{"type":"integer","description":"SimpleInt is a basic integer type."}},
@@ -10,11 +10,11 @@
 "name":{"type":"string","description":"Name is the person's name."},
 "age":{"type":"integer","description":"Age is the person's age."}
 },"required":["name","age"],"additionalProperties":false},
-"personPointerValue":{"type":"object",
+"personPointerValue":{"anyOf":[{"type":"object",
 "description":"PersonPointerValue is a nullable Person object.","properties":{
 "name":{"type":"string","description":"Name is the person's name."},
 "age":{"type":"integer","description":"Age is the person's age."}
-},"required":["name","age"],"additionalProperties":false},
+},"required":["name","age"],"additionalProperties":false},{"type":"null"}]},
 "peopleValue":{"type":"array","description":"PeopleValue is an array of Person objects.","items":{"type":"object",
 "description":"NestedTypes demonstrates deeply nested types. Person is a basic struct with simple fields.","properties":{
 "name":{"type":"string","description":"Name is the person's name."},

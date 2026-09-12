@@ -4,4 +4,4 @@
 "name":{"type":"string","description":"Name is the display name. Multiline comments are supported and will be preserved in the schema."},
 "score":{"type":"number","description":"Score is a numerical value between 0 and 100."},
 "tags":{"type":"array","description":"Tags are additional metadata for this struct.","items":{"type":"string"}}
-},"required":["id","name","score","tags"],"additionalProperties":false}
+},"required":["id","name","score"],"additionalProperties":false}

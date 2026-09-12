@@ -241,6 +241,8 @@ type User struct {
 |---|---|
 | `json:"name"` | Property name (standard Go semantics) |
 | `json:",omitzero"` | Required on `Optional[T]`; omits the wrapper's absent zero value |
+| `json:",omitempty"` on an ordinary field | Rejected; use `Optional[T]` with `json:",omitzero"` |
+| `json:",omitzero"` on an ordinary field | Rejected; use `Optional[T]` with `json:",omitzero"` |
 | `description:"..."` | Overrides the doc comment as the property description |
 | `jsonschema:"ref=definitions/T"` | Emit a `$ref` instead of inlining (you must define the referenced schema yourself) |
 
@@ -262,6 +264,10 @@ supports scalars, registered enums, structs, pointers to structs, and structs
 registered with `.Ref()`. Wrappers must be the complete type of a direct named
 field; aliases, nesting, embedding, and unsupported Nullable shapes fail
 generation.
+
+A direct bare pointer field is rejected because its nil value encodes as JSON
+null while the pointed-to schema is non-null. Use `Nullable[T]` when null is a
+valid required value, or `Optional[T]` when the property may be absent.
 
 Migration note: `jsonschema:"optional"` is no longer honored. Replace it with
 `polytype.Optional[T]` and add `json:",omitzero"`; otherwise the field is
@@ -538,6 +544,26 @@ static shapes, including runtime schema providers and custom JSON/text codecs,
 fail with a diagnostic. Generation itself has no Node, npm, or JavaScript-engine
 dependency.
 
+### JSON encoding contract
+
+Polytype's JSON Schema and TypeScript array projections use the Go 1.27
+`encoding/json/v2` wire behavior: a nil slice encodes as `[]`, including nil
+slices nested inside other slices. Encode plain projected values with
+`jsonv2.Marshal`. Generated enum and sealed-union owner codecs preserve v1
+encoding behavior except for the same nil-slice normalization, so a legacy
+`encoding/json.Marshal` caller also receives arrays from those generated
+methods. A handwritten `MarshalJSON` remains authoritative for its own bytes.
+
+To migrate a v1 call site while changing only nil-slice formatting:
+
+```go
+data, err := jsonv2.Marshal(
+    value,
+    jsonv1.DefaultOptionsV1(),
+    jsonv2.FormatNilSliceAsNull(false),
+)
+```
+
 ### From a Go program
 
 A generator that already knows which types it wants, such as a SvelteKit
@@ -588,15 +614,16 @@ union JSON codecs; there is no separate codec flag:
 
 Run `go generate ./...`, then `go mod tidy`, and commit `schema.go`,
 `jsonschema_gen.go`, the complete `jsonschema/` directory, and the generated
-`types.ts` plus optional `index.ts`. On the Go boundary, use `json.Marshal` on
-the containing struct. For incoming bytes, validate before decoding:
+`types.ts` plus optional `index.ts`. On the Go boundary, use
+`encoding/json/v2.Marshal` on the containing struct. For incoming bytes,
+validate before decoding:
 
 ```go
 if err := (Envelope{}).ValidateJSON(data); err != nil {
     return err
 }
 var value Envelope
-if err := json.Unmarshal(data, &value); err != nil {
+if err := jsonv2.Unmarshal(data, &value); err != nil {
     return err
 }
 ```

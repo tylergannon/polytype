@@ -3,4 +3,4 @@
 "width":{"type":"number","description":"Width is the first dimension."},
 "height":{"type":"number","description":"Height is the second dimension."},
 "color":{"type":"string","description":"Color is an optional display color."}
-},"required":["width","height","color"],"additionalProperties":false}
+},"required":["width","height"],"additionalProperties":false}

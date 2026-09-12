@@ -8,19 +8,19 @@
 "type":{"type":"string","const":"Circle"},
 "radius":{"type":"number","description":"Radius is the distance from the center to the edge."},
 "color":{"type":"string","description":"Color is an optional display color."}
-},"required":["type","radius","color"],"additionalProperties":false},
+},"required":["type","radius"],"additionalProperties":false},
 {"type":"object",
 "description":"Rectangle implements the Shape interface.","properties":{
 "type":{"type":"string","const":"Rectangle"},
 "width":{"type":"number","description":"Width is the first dimension."},
 "height":{"type":"number","description":"Height is the second dimension."},
 "color":{"type":"string","description":"Color is an optional display color."}
-},"required":["type","width","height","color"],"additionalProperties":false},
+},"required":["type","width","height"],"additionalProperties":false},
 {"type":"object",
 "description":"Triangle implements the Shape interface.","properties":{
 "type":{"type":"string","const":"Triangle"},
 "base":{"type":"number","description":"Base is the length of the base."},
 "height":{"type":"number","description":"Height is the height from the base to the opposite vertex."},
 "color":{"type":"string","description":"Color is an optional display color."}
-},"required":["type","base","height","color"],"additionalProperties":false}]}}
+},"required":["type","base","height"],"additionalProperties":false}]}}
 },"required":["id","title","createdAt","shapes"],"additionalProperties":false}

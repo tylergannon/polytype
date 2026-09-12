@@ -2,7 +2,11 @@ package structs
 
 //go:generate go run ../../polytype/ --validate
 
-import "time"
+import (
+	"time"
+
+	"github.com/tylergannon/polytype"
+)
 
 // Address represents a physical location.
 type Address struct {
@@ -28,26 +32,26 @@ type ContactInfo struct {
 	Email string `json:"email"`
 
 	// Phone is the primary phone number.
-	Phone string `json:"phone,omitempty"`
+	Phone polytype.Optional[string] `json:"phone,omitzero"`
 
 	// AlternateEmails contains additional email addresses.
-	AlternateEmails []string `json:"alternateEmails,omitempty"`
+	AlternateEmails polytype.Optional[[]string] `json:"alternateEmails,omitzero"`
 
 	// COMMENTED OUT: Map fields are not yet supported
 	// // AlternatePhones contains additional phone numbers with labels.
 	// AlternatePhones map[string]string `json:"alternatePhones,omitempty"`
 }
 
-// RetryPolicy demonstrates JSON options that retain Go's default field names.
+// RetryPolicy demonstrates required fields with default and explicit JSON names.
 type RetryPolicy struct {
-	// MaxRetries uses its Go field name while omitting the zero value.
-	MaxRetries int `json:",omitzero"`
+	// MaxRetries uses its Go field name.
+	MaxRetries int
 
-	// TimeoutSeconds uses its Go field name with omitempty.
-	TimeoutSeconds int `json:",omitempty"`
+	// TimeoutSeconds also uses its Go field name.
+	TimeoutSeconds int
 
 	// BackoffStrategy uses an explicit JSON name.
-	BackoffStrategy int `json:"backoff_strategy,omitzero"`
+	BackoffStrategy int `json:"backoff_strategy"`
 
 	// Untagged uses its Go field name.
 	Untagged int
@@ -77,7 +81,7 @@ type Person struct {
 	ContactInfo `json:",inline"`
 
 	// Tags are arbitrary labels associated with the person.
-	Tags []string `json:"tags,omitempty"`
+	Tags polytype.Optional[[]string] `json:"tags,omitzero"`
 
 	// COMMENTED OUT: Map fields are not yet supported
 	// // Metadata contains any additional information.
@@ -94,7 +98,7 @@ type Organization struct {
 	Name string `json:"name"`
 
 	// Description is information about the organization.
-	Description string `json:"description,omitempty"`
+	Description polytype.Optional[string] `json:"description,omitzero"`
 
 	// Founded is when the organization was established.
 	// COMMENTED OUT: External package types (time.Time) need special handling
@@ -104,10 +108,10 @@ type Organization struct {
 	HeadquartersAddress Address `json:"headquartersAddress"`
 
 	// Employees is a list of people that work for the organization.
-	Employees []Person `json:"employees,omitempty"`
+	Employees polytype.Optional[[]Person] `json:"employees,omitzero"`
 
 	// Departments is a tree structure of departments within the organization.
-	Departments []Department `json:"departments,omitempty"`
+	Departments polytype.Optional[[]Department] `json:"departments,omitzero"`
 }
 
 // Department represents a division within an organization.
@@ -116,10 +120,10 @@ type Department struct {
 	Name string `json:"name"`
 
 	// Manager is the person in charge of the department.
-	Manager *Person `json:"manager,omitempty"`
+	Manager polytype.Optional[*Person] `json:"manager,omitzero"`
 
 	// ParentDepartment is the name of the parent department, if any.
-	ParentDepartment string `json:"parentDepartment,omitempty"`
+	ParentDepartment polytype.Optional[string] `json:"parentDepartment,omitzero"`
 
 	// COMMENTED OUT: Recursive/circular references are not yet supported
 	// // SubDepartments demonstrates recursive structures.

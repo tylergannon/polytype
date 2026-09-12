@@ -3,4 +3,4 @@
 "email":{"type":"string","description":"Email is the primary email address."},
 "phone":{"type":"string","description":"Phone is the primary phone number."},
 "alternateEmails":{"type":"array","description":"AlternateEmails contains additional email addresses. COMMENTED OUT: Map fields are not yet supported  AlternatePhones contains additional phone numbers with labels. AlternatePhones map[string]string `json:\"alternatePhones,omitempty\"`","items":{"type":"string"}}
-},"required":["email","phone","alternateEmails"],"additionalProperties":false}
+},"required":["email"],"additionalProperties":false}

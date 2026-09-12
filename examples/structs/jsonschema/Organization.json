@@ -20,7 +20,7 @@
 "phone":{"type":"string","description":"Phone is the primary phone number."},
 "alternateEmails":{"type":"array","description":"AlternateEmails contains additional email addresses. COMMENTED OUT: Map fields are not yet supported  AlternatePhones contains additional phone numbers with labels. AlternatePhones map[string]string `json:\"alternatePhones,omitempty\"`","items":{"type":"string"}},
 "tags":{"type":"array","description":"Tags are arbitrary labels associated with the person. COMMENTED OUT: Map fields are not yet supported  Metadata contains any additional information.  Using map[string]interface{} allows for arbitrary JSON. Metadata map[string]any `json:\"metadata,omitempty\"`","items":{"type":"string"}}
-},"required":["id","name","birthDate","email","phone","alternateEmails","tags"],"additionalProperties":false}},
+},"required":["id","name","birthDate","email"],"additionalProperties":false}},
 "departments":{"type":"array","description":"Departments is a tree structure of departments within the organization.","items":{"type":"object",
 "description":"Department represents a division within an organization.","properties":{
 "name":{"type":"string","description":"Name of the department."},
@@ -33,7 +33,7 @@
 "phone":{"type":"string","description":"Phone is the primary phone number."},
 "alternateEmails":{"type":"array","description":"AlternateEmails contains additional email addresses. COMMENTED OUT: Map fields are not yet supported  AlternatePhones contains additional phone numbers with labels. AlternatePhones map[string]string `json:\"alternatePhones,omitempty\"`","items":{"type":"string"}},
 "tags":{"type":"array","description":"Tags are arbitrary labels associated with the person. COMMENTED OUT: Map fields are not yet supported  Metadata contains any additional information.  Using map[string]interface{} allows for arbitrary JSON. Metadata map[string]any `json:\"metadata,omitempty\"`","items":{"type":"string"}}
-},"required":["id","name","birthDate","email","phone","alternateEmails","tags"],"additionalProperties":false},
+},"required":["id","name","birthDate","email"],"additionalProperties":false},
 "parentDepartment":{"type":"string","description":"ParentDepartment is the name of the parent department, if any. COMMENTED OUT: Recursive/circular references are not yet supported  SubDepartments demonstrates recursive structures.  This creates a tree structure of departments. SubDepartments []Department `json:\"subDepartments,omitempty\"`"}
-},"required":["name","manager","parentDepartment"],"additionalProperties":false}}
-},"required":["id","name","description","headquartersAddress","employees","departments"],"additionalProperties":false}
+},"required":["name"],"additionalProperties":false}}
+},"required":["id","name","headquartersAddress"],"additionalProperties":false}

@@ -13,6 +13,9 @@ import (
     "embed"
     {{- end }}
     "encoding/json"
+	{{- if .UsesJSONV2Marshal }}
+	jsonv2 "encoding/json/v2"
+	{{- end }}
 	"errors"
     "fmt"
 	{{- if and .GenerateSchemas (gt (len .RenderedTypes) 0) }}
@@ -95,13 +98,19 @@ func __gen_jsonschema_panic(fname string, err error) {
 }
 {{ end }}
 
+{{ if .UsesJSONV2Marshal -}}
+func __polytype_marshal(value any) ([]byte, error) {
+	return jsonv2.Marshal(value, json.DefaultOptionsV1(), jsonv2.FormatNilSliceAsNull(false))
+}
+{{ end }}
+
 {{ if .GeneratesYAMLUnmarshalers -}}
 func __gen_jsonschema_yamlNodeToJSON(node *yaml.Node) ([]byte, error) {
 	var value any
 	if err := node.Decode(&value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(value)
+	return __polytype_marshal(value)
 }
 
 {{ if .Validate -}}
@@ -110,7 +119,7 @@ func __gen_jsonschema_yamlToJSON(data []byte) ([]byte, error) {
 	if err := yaml.Load(data, &value, yaml.WithV4Defaults()); err != nil {
 		return nil, err
 	}
-	return json.Marshal(value)
+	return __polytype_marshal(value)
 }
 {{ end -}}
 {{ end -}}
@@ -276,7 +285,7 @@ func ({{.Initial}} {{.Name}}) MarshalJSON() ([]byte, error) {
 			return nil, fmt.Errorf("field {{$prop.JSONName}}[%d]: %w", __index, err)
 		}
 	}
-	if wrapper.{{$prop.FieldNames}}, err = json.Marshal(__raw{{$i}}); err != nil {
+	if wrapper.{{$prop.FieldNames}}, err = __polytype_marshal(__raw{{$i}}); err != nil {
 		return nil, fmt.Errorf("field {{$prop.JSONName}}: %w", err)
 	}
 	{{else if .Optional}}
@@ -317,7 +326,7 @@ func ({{.Initial}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	}
 	{{end}}
 	{{end}}
-	return json.Marshal(&wrapper)
+	return __polytype_marshal(&wrapper)
 }
 
 // UnmarshalJSON is a generated custom json.Unmarshaler implementation for
@@ -421,7 +430,7 @@ func {{.MarshalerFunc}}(value {{.EnumTypeNameWithPrefix}}) (json.RawMessage, err
 	switch value {
 	{{range .Entries -}}
 	case {{.GoValueExpr}}:
-		return json.Marshal({{printf "%q" .WireName}})
+		return __polytype_marshal({{printf "%q" .WireName}})
 	{{end -}}
 	default:
 		return nil, errors.New("undeclared value for string-mode enum {{.EnumType.Name}}")
@@ -496,7 +505,7 @@ func {{.MarshalerFunc}}(value {{.TypeNameWithPrefix}}) (json.RawMessage, error) 
 		}
 		{{end -}}
 		discriminator = {{printf "%q" .Discriminator}}
-		data, err = json.Marshal({{if .Pointer}}object{{else}}&object{{end}})
+		data, err = __polytype_marshal({{if .Pointer}}object{{else}}&object{{end}})
 	{{end -}}
 	default:
 		return nil, fmt.Errorf("unregistered dynamic implementation %T for {{.TypeName}}", value)
@@ -564,13 +573,13 @@ func __jsonschema__marshalUnionObject(data []byte, discriminatorProp, discrimina
 			return nil, fmt.Errorf("discriminator property %q is %q, want registered value %q", discriminatorProp, current, discriminatorValue)
 		}
 	} else {
-		encoded, err := json.Marshal(discriminatorValue)
+		encoded, err := __polytype_marshal(discriminatorValue)
 		if err != nil {
 			return nil, err
 		}
 		object[discriminatorProp] = encoded
 	}
-	return json.Marshal(object)
+	return __polytype_marshal(object)
 }
 
 func __jsonschema__decodeDiscriminator(discriminator json.RawMessage) (string, error) {

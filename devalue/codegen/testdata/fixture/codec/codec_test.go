@@ -19,7 +19,10 @@ func sample() model.Envelope {
 		When:    time.Date(2024, 3, 1, 12, 0, 0, 0, time.UTC),
 		Coords:  [3]int{1, 2, 3},
 		Tags:    []string{"a", "b"},
-		Detail:  &model.Detail{Note: "note"},
+		Detail: polytype.Nullable[*model.Detail]{
+			Present: true,
+			Value:   &model.Detail{Note: "note"},
+		},
 
 		Priority: model.PriorityHigh,
 		Ranked:   model.PriorityLow,

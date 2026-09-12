@@ -54,6 +54,46 @@ var _ = polytype.Declare(PointerRootSchema)
 	require.ErrorContains(t, err, "--validate cannot generate ValidateJSON for PointerRoot")
 }
 
+func TestSchemaGenerationRejectsImplicitPointerAndOmissionSemantics(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		wants  []string
+	}{
+		{name: "bare pointer", source: "type Root struct { Child *string `json:\"child\"` }", wants: []string{"bare pointer field Root.Child", "use polytype.Nullable[T]"}},
+		{name: "embedded bare pointer", source: "type Child struct{}\ntype Root struct { *Child }", wants: []string{"bare pointer field Root.Child", "use polytype.Nullable[T]"}},
+		{name: "omitempty", source: "type Root struct { Value string `json:\"value,omitempty\"` }", wants: []string{`ordinary field Root.Value uses json:",omitempty"`, "use polytype.Optional[T]"}},
+		{name: "embedded omitempty", source: "type Child struct{}\ntype Root struct { Child `json:\",omitempty\"` }", wants: []string{`ordinary field Root.Child uses json:",omitempty"`, "use polytype.Optional[T]"}},
+		{name: "omitzero", source: "type Root struct { Value string `json:\"value,omitzero\"` }", wants: []string{`ordinary field Root.Value uses json:",omitzero"`, "use polytype.Optional[T]"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := writeMultiFileFixture(t, map[string]string{
+				"types.go": "package fixture\n\n" + test.source + "\n",
+				"schema.go": `//go:build jsonschema
+
+package fixture
+
+import (
+	"encoding/json"
+
+	"github.com/tylergannon/polytype"
+)
+
+func (Root) Schema() json.RawMessage { panic("not implemented") }
+
+var _ = polytype.Declare(Root.Schema)
+`,
+			})
+
+			err := Run(BuilderArgs{TargetDir: dir})
+			for _, want := range test.wants {
+				require.ErrorContains(t, err, want)
+			}
+		})
+	}
+}
+
 // TestFreeFunctionRootForRegisteredInterfaceGeneratesFreeFunction proves
 // that a free-function schema root for a type registered via the legacy
 // NewInterfaceImpl (recorded in Scan.Interfaces, not Scan.LocalNamedTypes)

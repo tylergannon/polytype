@@ -3,4 +3,4 @@
 "provider":{"type":"string","description":"Provider is the wallet provider name (e.g., \"PayPal\", \"Apple Pay\")."},
 "email":{"type":"string","description":"Email is the account email."},
 "phoneNumber":{"type":"string","description":"PhoneNumber is the associated phone number."}
-},"required":["provider","email","phoneNumber"],"additionalProperties":false}
+},"required":["provider","email"],"additionalProperties":false}
