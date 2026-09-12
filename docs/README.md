@@ -5,6 +5,8 @@ Durable project documentation. Session notes and raw artifacts live under
 
 - Current contract: [spec/v1.md](spec/v1.md). Where it is silent, the
   feature guides under `website/src/content/docs/` are authoritative.
+- Stable migration guide:
+  [website/src/content/docs/migration-v1.md](../website/src/content/docs/migration-v1.md).
 - Design history and roadmap: [design/](design/).
 - Public site source: `website/` (published at
   https://go-gen-jsonschema.tylergannon.com); agent instructions in

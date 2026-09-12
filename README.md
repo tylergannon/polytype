@@ -24,6 +24,7 @@ refuses a shape it cannot represent faithfully instead of widening to `any`.
 </p>
 
 - **Docs**: https://go-gen-jsonschema.tylergannon.com
+- **Migration guide**: [Migrate to v1](website/src/content/docs/migration-v1.md)
 - **Agent skill**: [skills/polytype](skills/polytype/SKILL.md)
 
 ## 🚀 Quick Start
