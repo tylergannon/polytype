@@ -20,3 +20,13 @@ proof:
 - `just build-tagged` passed.
 - `go test ./...` passed after all repository changes.
 - `git diff --check` passed.
+
+release:
+
+- PR #123 merged as `020088e94ddd94cb4eee581a2364d28b018ea4cb`; its exact main-branch Go run 34669541082 passed and the gated release job skipped.
+- Annotated tag and GitHub Release `v1.0.0` were published at that exact commit, then `SEMANTIC_RELEASE_ENABLED` was set to `true`.
+- A fresh consumer installed `github.com/tylergannon/polytype/polytype@v1.0.0` from the public module proxy with no replacement. Module sum: `h1:s+73q6E0MOsuCK/rY2R+g85nuOI5yi58kFOHF1k1Pbc=`. The module origin hash is the release commit and the downloaded archive contains `LICENSE`.
+- The stable consumer's Go round-trip and invalid-input tests, strict TypeScript 6.0.3 compilation, YAML-absence check, and `JSONSCHEMA_NO_CHANGES=1` generation passed. Pre/post hashes of every generated artifact matched.
+- Required title-check smoke PR #124 failed run 34669788494 with a non-conventional title, passed run 34669802807 after correction to `chore: ...`, and was closed without merge.
+- Authenticated dry runs from the stable tag selected v1.1.0 for a local `feat:` commit and v1.0.1 for a local `fix:` commit. A dry run at the exact tag found zero commits and no release.
+- Issue #66 was closed with the evidence above. Milestone 1.0 was closed with 18 completed issues and no open issues.
