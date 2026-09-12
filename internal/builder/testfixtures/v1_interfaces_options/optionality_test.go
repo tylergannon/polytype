@@ -21,12 +21,12 @@ count: 2
 `), &got, yaml.WithV4Defaults()); err != nil {
 		t.Fatal(err)
 	}
-	want := Plain{Tags: []string{"one", "two"}, Inner: &PlainInner{A: "alpha", B: "beta"}, Count: 2}
+	want := Plain{Tags: []string{"one", "two"}, Inner: polytype.Nullable[*PlainInner]{Present: true, Value: &PlainInner{A: "alpha", B: "beta"}}, Count: 2}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("decoded plain value = %#v, want %#v", got, want)
 	}
 
-	original := Plain{Tags: []string{"keep-a", "keep-b"}, Inner: &PlainInner{A: "keep-a", B: "keep-b"}, Count: 5}
+	original := Plain{Tags: []string{"keep-a", "keep-b"}, Inner: polytype.Nullable[*PlainInner]{Present: true, Value: &PlainInner{A: "keep-a", B: "keep-b"}}, Count: 5}
 	sharedTags := original.Tags
 	sharedInner := original.Inner
 	got = original
@@ -40,7 +40,7 @@ count: not-an-int
 		t.Fatal("invalid count unexpectedly decoded")
 	}
 	if !reflect.DeepEqual(got, original) || !reflect.DeepEqual(sharedTags, []string{"keep-a", "keep-b"}) ||
-		*sharedInner != (PlainInner{A: "keep-a", B: "keep-b"}) {
+		*sharedInner.Value != (PlainInner{A: "keep-a", B: "keep-b"}) {
 		t.Fatalf("failed decode mutated caller state: got %#v, tags %#v, inner %#v", got, sharedTags, sharedInner)
 	}
 

@@ -1,5 +1,7 @@
 package indirecttypes
 
+import "github.com/tylergannon/polytype"
+
 //go:generate go run ../../polytype/
 
 // This example demonstrates various forms of indirection in type definitions
@@ -73,28 +75,28 @@ type ComplexStruct struct {
 	SimpleValue SimpleInt `json:"simpleValue"`
 
 	// PointerValue is a nullable integer.
-	PointerValue *SimpleInt `json:"pointerValue,omitempty"`
+	PointerValue polytype.Nullable[SimpleInt] `json:"pointerValue"`
 
 	// SliceValue is an array of SimpleInt.
-	SliceValue SliceOfSimpleInt `json:"sliceValue,omitempty"`
+	SliceValue SliceOfSimpleInt `json:"sliceValue"`
 
 	// PointerSliceValue is an array of nullable SimpleInt.
-	PointerSliceValue SliceOfPointerToSimpleInt `json:"pointerSliceValue,omitempty"`
+	PointerSliceValue SliceOfPointerToSimpleInt `json:"pointerSliceValue"`
 
 	// NamedSliceValue demonstrates using a named slice type.
-	NamedSliceValue NamedSliceType `json:"namedSliceValue,omitempty"`
+	NamedSliceValue NamedSliceType `json:"namedSliceValue"`
 
 	// PersonValue is a Person object.
 	PersonValue Person `json:"personValue"`
 
 	// PersonPointerValue is a nullable Person object.
-	PersonPointerValue *Person `json:"personPointerValue,omitempty"`
+	PersonPointerValue polytype.Nullable[*Person] `json:"personPointerValue"`
 
 	// PeopleValue is an array of Person objects.
-	PeopleValue SliceOfPerson `json:"peopleValue,omitempty"`
+	PeopleValue SliceOfPerson `json:"peopleValue"`
 
 	// PeoplePointerValue is an array of nullable Person objects.
-	PeoplePointerValue SliceOfPointerToPerson `json:"peoplePointerValue,omitempty"`
+	PeoplePointerValue SliceOfPointerToPerson `json:"peoplePointerValue"`
 
 	// COMMENTED OUT: Map types are not yet supported
 	// // PeopleMapValue is an object with string keys and Person values.

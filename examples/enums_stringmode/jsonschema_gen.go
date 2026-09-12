@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 )
@@ -19,6 +20,10 @@ var errNoDiscriminator = errors.New("no discriminator property 'type' found")
 
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
+}
+
+func __polytype_marshal(value any) ([]byte, error) {
+	return jsonv2.Marshal(value, json.DefaultOptionsV1(), jsonv2.FormatNilSliceAsNull(false))
 }
 
 func (Paint) Schema() json.RawMessage {
@@ -45,7 +50,7 @@ func (p Paint) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("field c: %w", err)
 	}
 
-	return json.Marshal(&wrapper)
+	return __polytype_marshal(&wrapper)
 }
 
 // UnmarshalJSON is a generated custom json.Unmarshaler implementation for
@@ -75,11 +80,11 @@ func (p *Paint) UnmarshalJSON(data []byte) (err error) {
 func __jsonMarshalEnum__Paint__C(value Color) (json.RawMessage, error) {
 	switch value {
 	case ColorRed:
-		return json.Marshal("ColorRed")
+		return __polytype_marshal("ColorRed")
 	case ColorGreen:
-		return json.Marshal("ColorGreen")
+		return __polytype_marshal("ColorGreen")
 	case ColorBlue:
-		return json.Marshal("ColorBlue")
+		return __polytype_marshal("ColorBlue")
 	default:
 		return nil, errors.New("undeclared value for string-mode enum Color")
 	}

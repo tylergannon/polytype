@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 
@@ -25,12 +26,16 @@ func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
 }
 
+func __polytype_marshal(value any) ([]byte, error) {
+	return jsonv2.Marshal(value, json.DefaultOptionsV1(), jsonv2.FormatNilSliceAsNull(false))
+}
+
 func __gen_jsonschema_yamlNodeToJSON(node *yaml.Node) ([]byte, error) {
 	var value any
 	if err := node.Decode(&value); err != nil {
 		return nil, err
 	}
-	return json.Marshal(value)
+	return __polytype_marshal(value)
 }
 
 func __gen_jsonschema_yamlToJSON(data []byte) ([]byte, error) {
@@ -38,7 +43,7 @@ func __gen_jsonschema_yamlToJSON(data []byte) ([]byte, error) {
 	if err := yaml.Load(data, &value, yaml.WithV4Defaults()); err != nil {
 		return nil, err
 	}
-	return json.Marshal(value)
+	return __polytype_marshal(value)
 }
 
 // Compiled JSON schemas for validation, initialized once at startup.
@@ -166,7 +171,7 @@ func (o Owner) MarshalJSON() ([]byte, error) {
 			return nil, fmt.Errorf("field ifs[%d]: %w", __index, err)
 		}
 	}
-	if wrapper.IFaces, err = json.Marshal(__raw1); err != nil {
+	if wrapper.IFaces, err = __polytype_marshal(__raw1); err != nil {
 		return nil, fmt.Errorf("field ifs: %w", err)
 	}
 
@@ -176,7 +181,7 @@ func (o Owner) MarshalJSON() ([]byte, error) {
 		}
 	}
 
-	return json.Marshal(&wrapper)
+	return __polytype_marshal(&wrapper)
 }
 
 // UnmarshalJSON is a generated custom json.Unmarshaler implementation for
@@ -272,10 +277,10 @@ func __jsonMarshal__v1_interfaces_options__IFace__6af605dbb1d39d3a8bf61c632fa0f8
 	switch object := value.(type) {
 	case Impl1:
 		discriminator = "Impl1"
-		data, err = json.Marshal(&object)
+		data, err = __polytype_marshal(&object)
 	case Impl2:
 		discriminator = "Impl2"
-		data, err = json.Marshal(&object)
+		data, err = __polytype_marshal(&object)
 	default:
 		return nil, fmt.Errorf("unregistered dynamic implementation %T for IFace", value)
 	}
@@ -338,13 +343,13 @@ func __jsonschema__marshalUnionObject(data []byte, discriminatorProp, discrimina
 			return nil, fmt.Errorf("discriminator property %q is %q, want registered value %q", discriminatorProp, current, discriminatorValue)
 		}
 	} else {
-		encoded, err := json.Marshal(discriminatorValue)
+		encoded, err := __polytype_marshal(discriminatorValue)
 		if err != nil {
 			return nil, err
 		}
 		object[discriminatorProp] = encoded
 	}
-	return json.Marshal(object)
+	return __polytype_marshal(object)
 }
 
 func __jsonschema__decodeDiscriminator(discriminator json.RawMessage) (string, error) {

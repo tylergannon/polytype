@@ -105,8 +105,11 @@ run:
 
 The barrel flag is optional. Sealed interface fields and `.StringerEnum`
 registrations automatically select JSON codecs on the containing Go struct;
-there is no codec flag. Encode that owner with `json.Marshal`. For incoming JSON,
-call its generated `ValidateJSON` before `json.Unmarshal`.
+there is no codec flag. Encode projected values with Go 1.27
+`encoding/json/v2.Marshal`; its default maps nil slices to `[]`, matching the
+non-null array projections. Generated owner codecs preserve v1 behavior except
+for that same slice normalization, including when a v1 caller invokes them.
+For incoming JSON, call the generated `ValidateJSON` before unmarshaling.
 
 The TypeScript output is structural only. It supplies `types.ts` and an optional
 type-only `index.ts`, with no runtime decoder or validator. TypeScript consumers
@@ -217,6 +220,13 @@ ordinary renderer's scalar and named scalar, struct, pointer, array/slice,
 supported-ref, and registered-interface paths. V1 Nullable supports scalars,
 registered enums, structs, pointers to structs, and structs registered with
 `.Ref()`.
+
+Reject a direct bare pointer field instead of projecting its nil value through
+a non-null schema; use Nullable or Optional. Reject `omitempty` or `omitzero`
+on an ordinary field; omission is explicit only through direct Optional with
+`json:",omitzero"`. Ordinary slices remain non-null arrays because the
+canonical v2 encoder maps nil slices to `[]` recursively. Handwritten
+`MarshalJSON` methods remain authoritative for their own bytes.
 
 ## Beyond flat structs
 

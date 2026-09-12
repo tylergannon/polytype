@@ -136,7 +136,7 @@ func TestRefusedRootsUseGrammarWording(t *testing.T) {
 // error: the bridge hands named types to the dst lowering rather than
 // reimplementing it.
 func TestAcceptedRootMatchesFieldLowering(t *testing.T) {
-	source := shapeFixture("*Meta")
+	source := shapeFixture("[]*Meta")
 	dir := writeFixture(t, map[string]string{"fixture.go": source})
 	pkg, err := grammar.Load(dir)
 	require.NoError(t, err)

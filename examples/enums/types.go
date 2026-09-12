@@ -1,5 +1,7 @@
 package enums
 
+import "github.com/tylergannon/polytype"
+
 //go:generate go run ../../polytype/ --validate
 
 // Status represents the state of an item in the system.
@@ -46,7 +48,7 @@ type Task struct {
 	Name string `json:"name"`
 
 	// Description provides details about the task.
-	Description string `json:"description,omitempty"`
+	Description polytype.Optional[string] `json:"description,omitzero"`
 
 	// Status indicates the current state of the task.
 	// This will use the Status enum type defined above.
@@ -56,7 +58,7 @@ type Task struct {
 	Priority Priority `json:"priority"`
 
 	// Tags are additional categorization for the task.
-	Tags []string `json:"tags,omitempty"`
+	Tags polytype.Optional[[]string] `json:"tags,omitzero"`
 }
 
 // SliceOfStatus demonstrates how to use a slice of enum values.

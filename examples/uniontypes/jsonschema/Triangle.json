@@ -3,4 +3,4 @@
 "base":{"type":"number","description":"Base is the length of the base."},
 "height":{"type":"number","description":"Height is the height from the base to the opposite vertex."},
 "color":{"type":"string","description":"Color is an optional display color."}
-},"required":["base","height","color"],"additionalProperties":false}
+},"required":["base","height"],"additionalProperties":false}

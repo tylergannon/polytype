@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tylergannon/polytype"
 )
 
 func TestStructSchemaPropertyNamesMatchJSON(t *testing.T) {
@@ -98,9 +100,9 @@ func TestPersonJSONMarshalUnmarshal(t *testing.T) {
 		Name:            "John Doe",
 		BirthDate:       time.Date(1990, 5, 15, 14, 30, 0, 0, time.UTC),
 		Email:           "john@example.com",
-		Phone:           "555-1234",
-		AlternateEmails: []string{"john.doe@example.com"},
-		Tags:            []string{"developer", "golang"},
+		Phone:           polytype.Optional[string]{Present: true, Value: "555-1234"},
+		AlternateEmails: polytype.Optional[[]string]{Present: true, Value: []string{"john.doe@example.com"}},
+		Tags:            polytype.Optional[[]string]{Present: true, Value: []string{"developer", "golang"}},
 	}
 
 	// Marshal to JSON

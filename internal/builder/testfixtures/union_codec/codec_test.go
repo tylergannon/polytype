@@ -41,6 +41,13 @@ func TestGeneratedUnionMarshalValidateDecodeRoundTrip(t *testing.T) {
 	if err := (Envelope{}).ValidateJSON(encodedValue); err != nil {
 		t.Fatalf("generated schema rejected generated JSON: %v\n%s", err, encodedValue)
 	}
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(encodedValue, &root); err != nil {
+		t.Fatal(err)
+	}
+	if string(root["tags"]) != "[]" || string(root["groups"]) != "[]" {
+		t.Fatalf("nil ordinary slices = tags %s, groups %s; want [] through a v1 caller of the generated codec", root["tags"], root["groups"])
+	}
 
 	hookMarshalCalls = 0
 	ordinaryMarshalCalls = 0
@@ -178,7 +185,7 @@ func TestGeneratedDecodeErrorIsTransactionalAndSuccessReplaces(t *testing.T) {
 	}
 
 	got = original
-	input := []byte(`{"primary":{"!kind":"Created","name":"replacement"},"events":[],"nested":{"event":{"!kind":"Created","name":"nested"}},"ordinary":{"value":"new"},"state":"StateOpen","label":"new"}`)
+	input := []byte(`{"primary":{"!kind":"Created","name":"replacement"},"events":[],"nested":{"event":{"!kind":"Created","name":"nested"}},"ordinary":{"value":"new"},"state":"StateOpen","label":"new","tags":[],"groups":[]}`)
 	if err := (Envelope{}).ValidateJSON(input); err != nil {
 		t.Fatalf("manual replacement input failed schema validation: %v", err)
 	}

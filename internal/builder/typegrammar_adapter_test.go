@@ -69,7 +69,7 @@ type Created struct {
 func (*Created) event() {}
 
 type Deleted struct {
-	At *time.Time ` + "`json:\"at\"`" + `
+	At polytype.Nullable[time.Time] ` + "`json:\"at\"`" + `
 }
 
 func (Deleted) event() {}
@@ -104,7 +104,7 @@ type Envelope struct {
 	Alias  LabelAlias                  ` + "`json:\"alias\"`" + `
 	Huge   Huge                        ` + "`json:\"huge\"`" + `
 	Count  polytype.Nullable[int64]  ` + "`json:\"count\"`" + `
-	Child  *Meta                       ` + "`json:\"child\"`" + `
+	Child  polytype.Nullable[*Meta]    ` + "`json:\"child\"`" + `
 	Matrix [2][]int16                  ` + "`json:\"matrix\"`" + `
 	Shadow int                         ` + "`json:\"shadow\"`" + `
 	hidden, Exported int

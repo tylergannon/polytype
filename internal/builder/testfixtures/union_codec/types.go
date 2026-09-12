@@ -157,5 +157,7 @@ type Envelope struct {
 	Ordinary  Ordinary                  `json:"ordinary"`
 	State     State                     `json:"state"`
 	Label     string                    `json:"label"`
+	Tags      []string                  `json:"tags"`
+	Groups    [][]string                `json:"groups"`
 	Omitted   polytype.Optional[string] `json:"omitted,omitzero"`
 }

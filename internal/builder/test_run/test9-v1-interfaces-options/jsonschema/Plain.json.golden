@@ -8,20 +8,27 @@
       }
     },
     "inner": {
-      "type": "object",
-      "properties": {
-        "a": {
-          "type": "string"
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string"
+            },
+            "b": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ],
+          "additionalProperties": false
         },
-        "b": {
-          "type": "string"
+        {
+          "type": "null"
         }
-      },
-      "required": [
-        "a",
-        "b"
-      ],
-      "additionalProperties": false
+      ]
     },
     "count": {
       "type": "integer"

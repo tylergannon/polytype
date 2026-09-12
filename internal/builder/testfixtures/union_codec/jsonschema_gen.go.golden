@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 
@@ -21,6 +22,10 @@ var errNoDiscriminator = errors.New("no discriminator property 'type' found")
 
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
+}
+
+func __polytype_marshal(value any) ([]byte, error) {
+	return jsonv2.Marshal(value, json.DefaultOptionsV1(), jsonv2.FormatNilSliceAsNull(false))
 }
 
 // Compiled JSON schemas for validation, initialized once at startup.
@@ -125,7 +130,7 @@ func (e Envelope) MarshalJSON() ([]byte, error) {
 			return nil, fmt.Errorf("field events[%d]: %w", __index, err)
 		}
 	}
-	if wrapper.Events, err = json.Marshal(__raw1); err != nil {
+	if wrapper.Events, err = __polytype_marshal(__raw1); err != nil {
 		return nil, fmt.Errorf("field events: %w", err)
 	}
 
@@ -163,7 +168,7 @@ func (e Envelope) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("field state: %w", err)
 	}
 
-	return json.Marshal(&wrapper)
+	return __polytype_marshal(&wrapper)
 }
 
 // UnmarshalJSON is a generated custom json.Unmarshaler implementation for
@@ -268,9 +273,9 @@ func (e *Envelope) UnmarshalJSON(data []byte) (err error) {
 func __jsonMarshalEnum__Envelope__State(value State) (json.RawMessage, error) {
 	switch value {
 	case StateOpen:
-		return json.Marshal("StateOpen")
+		return __polytype_marshal("StateOpen")
 	case StateClosed:
-		return json.Marshal("StateClosed")
+		return __polytype_marshal("StateClosed")
 	default:
 		return nil, errors.New("undeclared value for string-mode enum State")
 	}
@@ -310,7 +315,7 @@ func (n Nested) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("field event: %w", err)
 	}
 
-	return json.Marshal(&wrapper)
+	return __polytype_marshal(&wrapper)
 }
 
 // UnmarshalJSON is a generated custom json.Unmarshaler implementation for
@@ -352,19 +357,19 @@ func __jsonMarshal__union_codec__Event__7e7faa344cb53c0c7c5f74113c04e5f30685279d
 	switch object := value.(type) {
 	case Created:
 		discriminator = "Created"
-		data, err = json.Marshal(&object)
+		data, err = __polytype_marshal(&object)
 	case *Deleted:
 		if object == nil {
 			return nil, fmt.Errorf("cannot marshal typed nil registered implementation %T for Event", value)
 		}
 		discriminator = "Deleted"
-		data, err = json.Marshal(object)
+		data, err = __polytype_marshal(object)
 	case Hooked:
 		discriminator = "Hooked"
-		data, err = json.Marshal(&object)
+		data, err = __polytype_marshal(&object)
 	case PointerHookValue:
 		discriminator = "PointerHookValue"
-		data, err = json.Marshal(&object)
+		data, err = __polytype_marshal(&object)
 	default:
 		return nil, fmt.Errorf("unregistered dynamic implementation %T for Event", value)
 	}
@@ -439,13 +444,13 @@ func __jsonschema__marshalUnionObject(data []byte, discriminatorProp, discrimina
 			return nil, fmt.Errorf("discriminator property %q is %q, want registered value %q", discriminatorProp, current, discriminatorValue)
 		}
 	} else {
-		encoded, err := json.Marshal(discriminatorValue)
+		encoded, err := __polytype_marshal(discriminatorValue)
 		if err != nil {
 			return nil, err
 		}
 		object[discriminatorProp] = encoded
 	}
-	return json.Marshal(object)
+	return __polytype_marshal(object)
 }
 
 func __jsonschema__decodeDiscriminator(discriminator json.RawMessage) (string, error) {

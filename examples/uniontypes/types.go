@@ -2,7 +2,11 @@ package uniontypes
 
 //go:generate go run ../../polytype/
 
-import "time"
+import (
+	"time"
+
+	"github.com/tylergannon/polytype"
+)
 
 // Shape is an interface that represents any geometric shape.
 // By using this interface with multiple implementations and registering them,
@@ -21,7 +25,7 @@ type Circle struct {
 	Radius float64 `json:"radius"`
 
 	// Color is an optional display color.
-	Color string `json:"color,omitempty"`
+	Color polytype.Optional[string] `json:"color,omitzero"`
 }
 
 // Area calculates the area of the circle.
@@ -40,7 +44,7 @@ type Rectangle struct {
 	Height float64 `json:"height"`
 
 	// Color is an optional display color.
-	Color string `json:"color,omitempty"`
+	Color polytype.Optional[string] `json:"color,omitzero"`
 }
 
 // Area calculates the area of the rectangle.
@@ -59,7 +63,7 @@ type Triangle struct {
 	Height float64 `json:"height"`
 
 	// Color is an optional display color.
-	Color string `json:"color,omitempty"`
+	Color polytype.Optional[string] `json:"color,omitzero"`
 }
 
 // Area calculates the area of the triangle.
@@ -147,7 +151,7 @@ type DigitalWallet struct {
 	Email string `json:"email"`
 
 	// PhoneNumber is the associated phone number.
-	PhoneNumber string `json:"phoneNumber,omitempty"`
+	PhoneNumber polytype.Optional[string] `json:"phoneNumber,omitzero"`
 }
 
 // Process implements the PaymentMethod interface using a pointer receiver.

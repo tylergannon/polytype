@@ -440,6 +440,11 @@ func (s schemaTemplateData) HaveEnumCodecs() bool {
 	return slices.ContainsFunc(s.OwnerCodecs, func(owner OwnerCodec) bool { return len(owner.EnumFields) > 0 })
 }
 
+func (s schemaTemplateData) UsesJSONV2Marshal() bool {
+	return s.GeneratesYAMLUnmarshalers() ||
+		(s.GeneratesJSONUnmarshalers() && (len(s.OwnerCodecs) > 0 || len(s.Interfaces) > 0))
+}
+
 func (s SchemaBuilder) validateOwnerCodecMethods() error {
 	owners := s.sortedOwnerCodecNames()
 	for _, owner := range owners {
@@ -1679,6 +1684,13 @@ func (s SchemaBuilder) renderStructProps(t syntax.StructType, seenProps syntax.S
 			continue
 		}
 		if prop.Embedded() {
+			wrapper, _, wrapperErr := prop.Wrapper()
+			if wrapperErr != nil {
+				return nil, wrapperErr
+			}
+			if contractErr := validateStaticFieldWireContract(t, prop, wrapper); contractErr != nil {
+				return nil, contractErr
+			}
 			var embeddedType syntax.StructType
 			if embeddedType, err = s.resolveEmbeddedType(prop.TypeExpr, seen); err != nil {
 				return nil, fmt.Errorf("resolving embedded type: %w", err)
@@ -1710,6 +1722,9 @@ func (s SchemaBuilder) renderStructField(owner syntax.StructType, f syntax.Struc
 	)
 	wrapper, inner, err := f.Wrapper()
 	if err != nil {
+		return nil, err
+	}
+	if err := validateStaticFieldWireContract(owner, f, wrapper); err != nil {
 		return nil, err
 	}
 	if wrapper == syntax.WrapperOptional && !f.HasJSONOption("omitzero") {

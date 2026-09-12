@@ -159,8 +159,9 @@ type Field struct {
 // A collection of named objects whose own fields contain unions is permitted.
 type FieldValue interface{ fieldValue() }
 
-// Required is a required non-null field. Ordinary omitempty/omitzero tags do not
-// become Optional; lowering must diagnose their valid-domain limitation.
+// Required is a required non-null field. Direct pointers and ordinary
+// omitempty/omitzero tags are rejected during lowering; authors must state
+// nullability or omission with Nullable or Optional.
 type Required struct{ Type Type }
 
 // Optional is absent or a non-null value, corresponding to direct Optional[T].

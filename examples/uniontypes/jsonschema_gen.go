@@ -7,6 +7,7 @@ package uniontypes
 import (
 	"embed"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 )
@@ -18,6 +19,10 @@ var errNoDiscriminator = errors.New("no discriminator property 'type' found")
 
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
+}
+
+func __polytype_marshal(value any) ([]byte, error) {
+	return jsonv2.Marshal(value, json.DefaultOptionsV1(), jsonv2.FormatNilSliceAsNull(false))
 }
 
 func (Circle) Schema() json.RawMessage {
@@ -112,11 +117,11 @@ func (d Drawing) MarshalJSON() ([]byte, error) {
 			return nil, fmt.Errorf("field shapes[%d]: %w", __index, err)
 		}
 	}
-	if wrapper.Shapes, err = json.Marshal(__raw0); err != nil {
+	if wrapper.Shapes, err = __polytype_marshal(__raw0); err != nil {
 		return nil, fmt.Errorf("field shapes: %w", err)
 	}
 
-	return json.Marshal(&wrapper)
+	return __polytype_marshal(&wrapper)
 }
 
 // UnmarshalJSON is a generated custom json.Unmarshaler implementation for
@@ -169,7 +174,7 @@ func (p Payment) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("field method: %w", err)
 	}
 
-	return json.Marshal(&wrapper)
+	return __polytype_marshal(&wrapper)
 }
 
 // UnmarshalJSON is a generated custom json.Unmarshaler implementation for
@@ -208,13 +213,13 @@ func __jsonMarshal__uniontypes__Shape__47932c2de6ab4b045f3b027a0ed0585382b4cc891
 	switch object := value.(type) {
 	case Circle:
 		discriminator = "Circle"
-		data, err = json.Marshal(&object)
+		data, err = __polytype_marshal(&object)
 	case Rectangle:
 		discriminator = "Rectangle"
-		data, err = json.Marshal(&object)
+		data, err = __polytype_marshal(&object)
 	case Triangle:
 		discriminator = "Triangle"
-		data, err = json.Marshal(&object)
+		data, err = __polytype_marshal(&object)
 	default:
 		return nil, fmt.Errorf("unregistered dynamic implementation %T for Shape", value)
 	}
@@ -276,16 +281,16 @@ func __jsonMarshal__uniontypes__PaymentMethod__3518dd514c46878508abbe640e74edf14
 	switch object := value.(type) {
 	case BankTransfer:
 		discriminator = "BankTransfer"
-		data, err = json.Marshal(&object)
+		data, err = __polytype_marshal(&object)
 	case CreditCard:
 		discriminator = "CreditCard"
-		data, err = json.Marshal(&object)
+		data, err = __polytype_marshal(&object)
 	case *DigitalWallet:
 		if object == nil {
 			return nil, fmt.Errorf("cannot marshal typed nil registered implementation %T for PaymentMethod", value)
 		}
 		discriminator = "DigitalWallet"
-		data, err = json.Marshal(object)
+		data, err = __polytype_marshal(object)
 	default:
 		return nil, fmt.Errorf("unregistered dynamic implementation %T for PaymentMethod", value)
 	}
@@ -353,13 +358,13 @@ func __jsonschema__marshalUnionObject(data []byte, discriminatorProp, discrimina
 			return nil, fmt.Errorf("discriminator property %q is %q, want registered value %q", discriminatorProp, current, discriminatorValue)
 		}
 	} else {
-		encoded, err := json.Marshal(discriminatorValue)
+		encoded, err := __polytype_marshal(discriminatorValue)
 		if err != nil {
 			return nil, err
 		}
 		object[discriminatorProp] = encoded
 	}
-	return json.Marshal(object)
+	return __polytype_marshal(object)
 }
 
 func __jsonschema__decodeDiscriminator(discriminator json.RawMessage) (string, error) {

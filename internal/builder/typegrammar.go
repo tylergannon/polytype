@@ -288,6 +288,13 @@ type typeGrammarFieldCandidate struct {
 func (l *typeGrammarLowerer) collectStructFields(owner syntax.StructType, namedOwner bool, depth int, order *int, candidates *[]typeGrammarFieldCandidate) error {
 	for _, field := range owner.Fields() {
 		if field.Embedded() && !hasExplicitJSONName(field) {
+			wrapper, _, err := field.Wrapper()
+			if err != nil {
+				return err
+			}
+			if err := validateStaticFieldWireContract(owner, field, wrapper); err != nil {
+				return err
+			}
 			if err := l.recordEmbeddedDependency(field.TypeExpr); err != nil {
 				return fmt.Errorf("embedded field at %s: %w", field.Position(), err)
 			}
@@ -377,6 +384,9 @@ func (l *typeGrammarLowerer) fieldValue(owner syntax.StructType, field syntax.St
 	if err != nil {
 		return nil, err
 	}
+	if err := validateStaticFieldWireContract(owner, field, wrapper); err != nil {
+		return nil, err
+	}
 	if wrapper == syntax.WrapperOptional && !field.HasJSONOption("omitzero") {
 		return nil, fmt.Errorf("%s field %s.%s requires json:\",omitzero\" at %s", wrapper, owner.Name(), fieldName(field), field.Position())
 	}
@@ -451,6 +461,25 @@ func (l *typeGrammarLowerer) fieldValue(owner syntax.StructType, field syntax.St
 		return nil, fmt.Errorf("field %s.%s: %w", owner.Name(), fieldName(field), err)
 	}
 	return wrapFieldValue(wrapper, typ)
+}
+
+func validateStaticFieldWireContract(owner syntax.StructType, field syntax.StructField, wrapper syntax.WrapperKind) error {
+	if wrapper != syntax.WrapperNone {
+		return nil
+	}
+	name := fieldName(field)
+	if name == "" {
+		name, _ = embeddedFieldName(field)
+	}
+	for _, option := range []string{"omitempty", "omitzero"} {
+		if field.HasJSONOption(option) {
+			return fmt.Errorf("ordinary field %s.%s uses json:\",%s\"; use polytype.Optional[T] with json:\",omitzero\" to state omission explicitly at %s", owner.Name(), name, option, field.Position())
+		}
+	}
+	if _, ok := field.Type().(*dst.StarExpr); ok {
+		return fmt.Errorf("bare pointer field %s.%s is not admitted; use polytype.Nullable[T] to state nullability explicitly at %s", owner.Name(), name, field.Position())
+	}
+	return nil
 }
 
 func (l *typeGrammarLowerer) union(field registeredInterfaceField) (typegrammar.Union, error) {

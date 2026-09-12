@@ -1,5 +1,7 @@
 package basictypes
 
+import "github.com/tylergannon/polytype"
+
 //go:generate go run ../../polytype/
 
 // SimpleInt demonstrates a basic integer type that will be represented
@@ -31,7 +33,7 @@ type SimpleStruct struct {
 	Score SimpleFloat `json:"score"`
 
 	// Tags are additional metadata for this struct.
-	Tags []string `json:"tags,omitempty"`
+	Tags polytype.Optional[[]string] `json:"tags,omitzero"`
 
 	// InternalID is not exposed in JSON.
 	InternalID string `json:"-"`
