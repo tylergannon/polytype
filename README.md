@@ -72,7 +72,10 @@ Then just ask your agent to "add polytype to this project."
    ```
 
 Commit everything the generator writes: `jsonschema_gen.go` and the
-`jsonschema/` directory (schemas plus `.json.sum` checksums).
+`jsonschema/` directory (schemas plus `.json.sum` checksums). A checksum marks
+its matching schema as generator-owned; when a registration is removed or
+renamed, the next successful generation removes that stale pair. A modified
+orphan is preserved and reported instead of being deleted.
 
 ### Programmatic generation
 

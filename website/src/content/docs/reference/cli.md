@@ -44,6 +44,11 @@ generation can still update `jsonschema_gen.go` when they are unchanged. In CI,
 follow generation with `test -z "$(git status --porcelain)"` to verify tracked
 and untracked generated files.
 
+A normal generation run removes an obsolete schema and checksum when their
+checksum still matches. `-no-changes` reports those pending removals without
+deleting them. If an orphaned schema was edited after generation, polytype
+preserves it and returns an error instead of deleting it.
+
 ## Go codecs and TypeScript declarations
 
 One directive can generate validation, Go owner codecs selected by field

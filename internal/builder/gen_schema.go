@@ -1303,6 +1303,13 @@ func (s SchemaBuilder) renderStructSchema(t syntax.StructType, description strin
 	return node, err
 }
 
+func (s SchemaBuilder) schemaArtifactName(t syntax.TypeID) string {
+	if _, templated := s.TypeProvidersMap[t.TypeName]; templated {
+		return fmt.Sprintf("%s.json.tmpl", t.TypeName)
+	}
+	return fmt.Sprintf("%s.json", t.TypeName)
+}
+
 func (s SchemaBuilder) writeSchema(t syntax.TypeID, targetDir string, noChanges bool) (wroteNew bool, err error) {
 	var (
 		ok       bool
@@ -1311,12 +1318,7 @@ func (s SchemaBuilder) writeSchema(t syntax.TypeID, targetDir string, noChanges 
 		tmpFile  *os.File
 	)
 
-	// Decide target file extension based on whether schema is templated
-	if _, templated := s.TypeProvidersMap[t.TypeName]; templated {
-		filePath = filepath.Join(targetDir, fmt.Sprintf("%s.json.tmpl", t.TypeName))
-	} else {
-		filePath = filepath.Join(targetDir, fmt.Sprintf("%s.json", t.TypeName))
-	}
+	filePath = filepath.Join(targetDir, s.schemaArtifactName(t))
 	sumPath = filePath + ".sum"
 
 	// Create temp file in same directory to ensure same filesystem
@@ -1412,6 +1414,60 @@ func (s SchemaBuilder) writeSchema(t syntax.TypeID, targetDir string, noChanges 
 	}
 
 	return wroteNew, nil
+}
+
+func pruneOrphanedSchemaArtifacts(targetDir string, expected map[string]bool, noChanges bool) ([]string, error) {
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		return nil, fmt.Errorf("could not inspect generated schema directory: %w", err)
+	}
+
+	var orphaned []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".sum") || expected[name] {
+			continue
+		}
+		artifactName := strings.TrimSuffix(name, ".sum")
+		if !strings.HasSuffix(artifactName, ".json") && !strings.HasSuffix(artifactName, ".json.tmpl") {
+			continue
+		}
+
+		sumPath := filepath.Join(targetDir, name)
+		sumData, readErr := os.ReadFile(sumPath)
+		if readErr != nil {
+			return nil, fmt.Errorf("could not read orphaned schema checksum %s: %w", name, readErr)
+		}
+
+		artifactPath := filepath.Join(targetDir, artifactName)
+		artifactData, readErr := os.ReadFile(artifactPath)
+		switch {
+		case readErr == nil:
+			hash := fnv.New64a()
+			_, _ = hash.Write(artifactData)
+			actualChecksum := hex.EncodeToString(hash.Sum(nil))
+			if strings.TrimSpace(string(sumData)) != actualChecksum {
+				return nil, fmt.Errorf("refusing to remove modified orphaned schema %s because it does not match %s", artifactName, name)
+			}
+			orphaned = append(orphaned, artifactName)
+		case errors.Is(readErr, os.ErrNotExist):
+			// A checksum without its generated artifact is itself stale.
+		default:
+			return nil, fmt.Errorf("could not read orphaned schema %s: %w", artifactName, readErr)
+		}
+		orphaned = append(orphaned, name)
+	}
+
+	slices.Sort(orphaned)
+	if noChanges {
+		return orphaned, nil
+	}
+	for _, name := range orphaned {
+		if err := os.Remove(filepath.Join(targetDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("could not remove orphaned generated schema artifact %s: %w", name, err)
+		}
+	}
+	return orphaned, nil
 }
 
 func (s SchemaBuilder) sortedOwnerCodecNames() []string {
@@ -1576,28 +1632,53 @@ func (s *SchemaBuilder) RenderGoCode() (err error) {
 	return nil
 }
 
-func (s SchemaBuilder) RenderSchemas(noChanges, force bool) (changedSchemas map[string]bool, err error) {
+func (s SchemaBuilder) RenderSchemas(noChanges, force bool) (changedSchemas map[string]bool, orphaned []string, err error) {
 	var targetDir = filepath.Join(s.Scan.Pkg.Dir, s.Subdir)
 	changedSchemas = make(map[string]bool)
+	expected := make(map[string]bool)
 
 	if err = os.MkdirAll(targetDir, 0755); err != nil {
-		return nil, fmt.Errorf("could not create subdir %s: %w", targetDir, err)
+		return nil, nil, fmt.Errorf("could not create subdir %s: %w", targetDir, err)
 	}
+	for _, method := range s.Scan.SchemaMethods {
+		artifactName := s.schemaArtifactName(method.Receiver)
+		expected[artifactName] = true
+		expected[artifactName+".sum"] = true
+	}
+	for _, fn := range s.Scan.SchemaFuncs {
+		artifactName := s.schemaArtifactName(fn.Receiver)
+		expected[artifactName] = true
+		expected[artifactName+".sum"] = true
+	}
+
+	// Validate every removal before writing current schemas. This keeps a
+	// modified orphan from causing an otherwise failed run to mutate outputs.
+	orphaned, err = pruneOrphanedSchemaArtifacts(targetDir, expected, true)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	for _, method := range s.Scan.SchemaMethods {
 		var changed bool
 		if changed, err = s.writeSchema(method.Receiver, targetDir, noChanges); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		changedSchemas[method.Receiver.TypeName] = changed || force
 	}
 	for _, fn := range s.Scan.SchemaFuncs {
 		var changed bool
 		if changed, err = s.writeSchema(fn.Receiver, targetDir, noChanges); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		changedSchemas[fn.Receiver.TypeName] = changed || force
 	}
-	return changedSchemas, nil
+	if !noChanges && len(orphaned) > 0 {
+		orphaned, err = pruneOrphanedSchemaArtifacts(targetDir, expected, false)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return changedSchemas, orphaned, nil
 }
 
 func (s SchemaBuilder) resolveEmbeddedType(t syntax.TypeExpr, seen syntax.SeenTypes) (syntax.StructType, error) {

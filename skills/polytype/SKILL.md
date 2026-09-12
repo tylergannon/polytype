@@ -45,7 +45,9 @@ above under the same module.
 The build tags make them mutually exclusive, so the package always compiles —
 before and after generation. Commit all generated outputs: `jsonschema_gen.go`
 and the whole `jsonschema/` directory (each `T.json` schema comes with a
-`T.json.sum` checksum the tool uses for change detection).
+`T.json.sum` checksum the tool uses for change detection and ownership).
+Removing or renaming a registration removes its unchanged generated schema and
+checksum on the next run. A modified orphan is preserved and reported.
 
 ## Setup workflow
 

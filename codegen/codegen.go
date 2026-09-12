@@ -185,7 +185,7 @@ func Generate(config polytype.Configuration, opts Options) error {
 	}
 
 	if opts.JSONSchema {
-		if _, err := b.RenderSchemas(false, opts.Force); err != nil {
+		if _, _, err := b.RenderSchemas(false, opts.Force); err != nil {
 			return err
 		}
 	}
