@@ -32,6 +32,7 @@ export default defineConfig({
 						items: [
 							{ label: 'Overview', link: '/' },
 							{ label: 'Getting started', link: '/getting-started/' },
+							{ label: 'Migrate to v1', link: '/migration-v1/' },
 							{ label: 'Examples', link: '/examples/' },
 						],
 					},
