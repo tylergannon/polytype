@@ -14,7 +14,7 @@ type BuilderArgs struct {
 	TargetDir string
 	Pretty    bool
 	NoChanges bool // If true, fail if any schema changes are detected
-	Force     bool // If true, force regeneration of schemas even if no changes are detected
+	Force     bool // If true, force regeneration and permit removal of generated validation methods
 	Validate  bool // If true, generate validation methods and schema compilation
 	// TypeScriptDir selects a directory for structural TypeScript declarations.
 	// Relative paths are resolved against the invocation working directory.
@@ -62,6 +62,9 @@ func Run(args BuilderArgs) (err error) {
 		return fmt.Errorf("no packages found in %s", args.TargetDir)
 	}
 	if builder, err = New(pkgs[0]); err != nil {
+		return err
+	}
+	if err = guardValidationMethodRemoval(builder.Scan.Pkg.Dir, args); err != nil {
 		return err
 	}
 	builder.Pretty = args.Pretty

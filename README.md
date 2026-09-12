@@ -738,6 +738,9 @@ tagged file, and every registered type gets `ValidateJSON([]byte) error`. With `
 also gets `ValidateYAML([]byte) error`. Both methods validate the same JSON data
 model and schemas are compiled once in `init()` via
 [santhosh-tekuri/jsonschema](https://github.com/santhosh-tekuri/jsonschema).
+If a later generation command omits `--validate` (or drops `--formats=both`),
+polytype refuses to remove the existing validation methods. Restore the flag,
+or pass `--force` when removing those methods is intentional.
 
 ```go
 if err := (Person{}).ValidateJSON(llmOutput); err != nil {
@@ -826,7 +829,7 @@ polytype [gen] [options]     # generate (default subcommand)
   -target DIR          package to process (default: current directory)
   -pretty              pretty-print the .json output
   -no-changes          fail, writing nothing, if schemas or requested TypeScript output would change
-  -force               rewrite even when unchanged (incompatible with -no-changes)
+  -force               force regeneration and allow removal of generated validation methods (incompatible with -no-changes)
   --validate           generate validation methods for the selected formats
   --formats MODE       decoding and validation: json (default) or both
   --typescript DIR     generate structural TypeScript declarations in DIR
