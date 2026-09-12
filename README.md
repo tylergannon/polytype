@@ -78,6 +78,23 @@ its matching schema as generator-owned; when a registration is removed or
 renamed, the next successful generation removes that stale pair. A modified
 orphan is preserved and reported instead of being deleted.
 
+## Releases
+
+Pull request titles follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
+and become the squash-merge commit title on `main`. After the Go workflow
+passes, [semantic-release](https://github.com/semantic-release/semantic-release)
+creates the next tag and GitHub Release automatically:
+
+- `feat:` produces a minor release.
+- `fix:` and `perf:` produce a patch release.
+- A `!` or `BREAKING CHANGE:` produces a major release.
+- `build:`, `chore:`, `ci:`, `docs:`, `refactor:`, `style:`, and `test:` do not
+  publish a release by themselves.
+
+## License
+
+polytype is available under the permissive [Zero-Clause BSD license](LICENSE).
+
 ### Programmatic generation
 
 The declaration API constructs real configuration values. A generator program

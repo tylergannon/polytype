@@ -55,3 +55,24 @@ jobs:
 
       - name: Test regenerated checkout
         run: go test ./...
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SEMANTIC_RELEASE_ENABLED == 'true'
+    needs: test-and-generate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish semantic release
+        uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0
+        with:
+          semantic_version: 25.0.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
