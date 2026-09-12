@@ -869,11 +869,12 @@ prompting), use `ObjectSchema` and add fields with `AddProperty` /
 
 ### YAML input
 
-polytype generates no YAML methods and takes no YAML dependency. YAML is an
-input encoding rather than part of the schema contract. Convert YAML to a
-generic value with the library your application already uses, marshal that
-value to JSON, then call the generated `ValidateJSON` method and decode it with
-`encoding/json`. Property names still come from `json` tags.
+polytype generates no YAML methods, and generated consumer code imports no YAML
+library. YAML is an input encoding rather than part of the schema contract.
+Convert YAML to a generic value with the library your application already uses,
+marshal that value to JSON, then call the generated `ValidateJSON` method and
+decode it with `encoding/json`. Property names still come from `json` tags. The
+repository's test dependency graph may carry a YAML library transitively.
 
 ## 🛠️ Development
 
