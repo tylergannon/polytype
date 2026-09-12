@@ -51,7 +51,7 @@ func newGenFlagSet(errorHandling flag.ErrorHandling) (*flag.FlagSet, *genOptions
 	genCmd.BoolVar(&options.pretty, "pretty", false, "Enable pretty output")
 	genCmd.StringVar(&options.target, "target", "", "Path to target package (default to local wd)")
 	genCmd.BoolVar(&options.noChanges, "no-changes", false, "Fail if any schema or requested TypeScript output changes are detected")
-	genCmd.BoolVar(&options.force, "force", false, "Force regeneration of schemas and requested TypeScript output even if no changes are detected")
+	genCmd.BoolVar(&options.force, "force", false, "Force regeneration of schemas and requested TypeScript output, and allow removal of generated validation methods")
 	genCmd.BoolVar(&options.validate, "validate", false, "Generate schema validation methods for the selected formats")
 	genCmd.StringVar(&options.formats, "formats", "json", "Generated decoding and validation formats: json or both")
 	genCmd.StringVar(&options.typeScriptDir, "typescript", "", "Generate structural TypeScript declarations in this directory")
