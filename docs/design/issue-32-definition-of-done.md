@@ -284,7 +284,7 @@ Work:
 - [x] Remove `jsonschema:"optional"` from requiredness parsing.
 - [x] Confirm leftover legacy tags are inert, not generation errors.
 - [x] Remove all fixture/example reliance on the legacy tag.
-- [x] Update README, `llms.txt`, examples, internal developer notes, and
+- [x] Update README, examples, internal developer notes, and
   `skills/polytype/SKILL.md` to the agreed contract.
 - [x] State plainly that missing Nullable and explicit null are indistinguishable
   through plain `json.Unmarshal`; generated validation enforces presence.
@@ -373,7 +373,7 @@ response is part of this feature's proof.
 - Repository-wide generation is clean and deterministic.
 - `JSONSCHEMA_NO_CHANGES=1 go generate ./...` passes.
 - A fresh checkout can generate and test without local bootstrap state.
-- README, `llms.txt`, examples, and the checked-in skill agree on the three
+- README, examples, and the checked-in skill agree on the three
   contracts, selection guidance, `omitzero`, the missing-Nullable-key validation
   caveat, supported and rejected shapes, interface behavior, strict-schema
   implications, and usable examples.

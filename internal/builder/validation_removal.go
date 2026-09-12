@@ -38,8 +38,7 @@ func guardValidationMethodRemoval(targetDir string, args BuilderArgs) error {
 	}
 
 	desired := map[string]bool{
-		"ValidateJSON": args.Validate && args.UnmarshalFormats.generatesJSON(),
-		"ValidateYAML": args.Validate && args.UnmarshalFormats.generatesYAML(),
+		"ValidateJSON": args.Validate,
 	}
 	removed := make(map[string]bool)
 	for _, declaration := range file.Decls {
@@ -61,13 +60,9 @@ func guardValidationMethodRemoval(targetDir string, args BuilderArgs) error {
 	}
 	slices.Sort(methods)
 
-	preserveFlags := "--validate"
-	if removed["ValidateYAML"] {
-		preserveFlags += " --formats=both"
-	}
 	return fmt.Errorf(
 		"refusing to remove previously generated %s from jsonschema_gen.go; rerun with %s to preserve validation, or pass --force to remove it intentionally",
 		strings.Join(methods, " and "),
-		preserveFlags,
+		"--validate",
 	)
 }

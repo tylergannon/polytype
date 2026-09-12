@@ -96,8 +96,8 @@ func (d *Declaration[T]) Function[F any](field FieldRef[F], provider func(F) jso
 	return d.withRule(RuleSpec{Kind: RuleFunction, Field: ref, ProviderName: name}, err)
 }
 
-// StringerEnum marks field as an enum whose values are compared via
-// fmt.Stringer (equivalent to WithStringerEnum).
+// StringerEnum emits an integer enum field using its constant names instead of
+// its underlying integer values (equivalent to WithStringerEnum).
 func (d *Declaration[T]) StringerEnum[F any](field FieldRef[F]) *Declaration[T] {
 	ref, err := resolveField[T](field)
 	return d.withRule(RuleSpec{Kind: RuleStringerEnum, Field: ref}, err)

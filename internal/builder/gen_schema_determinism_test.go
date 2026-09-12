@@ -28,7 +28,6 @@ func TestRenderGoCodeTwiceUsesFreshCodecProjection(t *testing.T) {
 	builder, err := New(packages[0])
 	require.NoError(t, err)
 	builder.Validate = true
-	builder.UnmarshalFormats = UnmarshalFormatsBoth
 
 	require.NoError(t, builder.RenderGoCode())
 	generatedPath := filepath.Join(targetDir, "jsonschema_gen.go")
@@ -42,5 +41,4 @@ func TestRenderGoCodeTwiceUsesFreshCodecProjection(t *testing.T) {
 	require.Equal(t, first, second)
 	require.Equal(t, 1, strings.Count(string(second), "func (e Envelope) MarshalJSON()"))
 	require.Equal(t, 1, strings.Count(string(second), "func (e *Envelope) UnmarshalJSON(data []byte)"))
-	require.Equal(t, 1, strings.Count(string(second), "func (e *Envelope) UnmarshalYAML(node *yaml.Node)"))
 }

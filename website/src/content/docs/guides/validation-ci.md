@@ -1,6 +1,6 @@
 ---
 title: Validation and CI
-description: Validate generated JSON or YAML and prevent committed schemas from drifting.
+description: Validate generated JSON and prevent committed schemas from drifting.
 ---
 
 ## Generate validation methods
@@ -32,6 +32,10 @@ and nested structure. Schema-validation failures can be inspected as
 `*jsonschemav6.ValidationError`; malformed JSON may instead return a parsing
 error.
 
+If a later generation command omits `--validate`, polytype refuses to remove an
+existing generated `ValidateJSON` method. Restore the flag, or pass `--force`
+when removing validation is intentional.
+
 ```go
 import (
     "errors"
@@ -51,15 +55,6 @@ func validateToolInput(data []byte) error {
     return nil
 }
 ```
-
-For YAML input, add `--formats=both` to both commands. Generation adds
-`ValidateYAML([]byte) error` and yaml/v4 decoding adapters. YAML is translated
-into the JSON data model before validation and unmarshaling, so JSON Schema
-property names and `json` tags remain canonical; Go `yaml` struct tags are ignored.
-Because yaml/v4 does not pass decoder options into `UnmarshalYAML`,
-`yaml.WithKnownFields()` cannot enforce strict fields inside registered types;
-use `ValidateYAML` for schema-backed unknown-property rejection. Decode with
-`yaml.WithV4Defaults()` to match `ValidateYAML` scalar resolution.
 
 ## Fail CI on drift
 
@@ -83,3 +78,10 @@ For repositories with generators that do not understand
 
 Run `go test ./...` after the drift check so tests execute against the same
 generated state that will be committed.
+
+## YAML input
+
+polytype generates no YAML methods and takes no YAML dependency. Convert YAML
+to a generic value with the library your application already uses, marshal that
+value to JSON, then call `ValidateJSON` and decode with `encoding/json`.
+Property names come from `json` tags.

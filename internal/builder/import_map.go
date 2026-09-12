@@ -24,7 +24,7 @@ func (m *ImportMap) LocalPkgName() string {
 
 func NewImportMap(localPackage *decorator.Package) *ImportMap {
 	usedNames := map[string]bool{}
-	for _, name := range []string{"bytes", "embed", "errors", "fmt", "json", "jsonschema", "template", "yaml"} {
+	for _, name := range []string{"bytes", "embed", "errors", "fmt", "json", "jsonschema", "template"} {
 		usedNames[name] = true
 	}
 	return &ImportMap{localPackage: localPackage, usedNames: usedNames}

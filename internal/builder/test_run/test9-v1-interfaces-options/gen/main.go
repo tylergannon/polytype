@@ -8,10 +8,9 @@ import (
 
 func main() {
 	err := builder.Run(builder.BuilderArgs{
-		TargetDir:        ".",
-		Pretty:           true,
-		Validate:         true,
-		UnmarshalFormats: builder.UnmarshalFormatsBoth,
+		TargetDir: ".",
+		Pretty:    true,
+		Validate:  true,
 	})
 	if err != nil {
 		log.Fatal(err)

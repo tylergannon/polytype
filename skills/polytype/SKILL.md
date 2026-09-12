@@ -12,11 +12,11 @@ polytype is a type projection tool. It lowers Go types, statically at
 `go generate` time, into one closed type grammar and projects that grammar
 into the other type systems a program speaks:
 
-- JSON Schema files plus Go accessors (the CLI's always-on output), tuned for
+- JSON Schema files plus optional Go accessors, tuned for
   LLM function calling: struct field order, `additionalProperties: false`,
   ordinary and nullable fields required, `Optional[T]` optional, doc comments
   as descriptions.
-- Validation methods (`--validate`) and YAML input (`--formats=both`).
+- JSON validation methods (`--validate`).
 - Go JSON codecs inferred from the types: membership-checked enums and
   discriminated sealed unions. No flag selects them.
 - Structural TypeScript declarations (`--typescript DIR`, or the `typescript`
@@ -40,7 +40,7 @@ above under the same module.
   registrations. Compiled only during generation, never in production.
 - `jsonschema_gen.go` — `//go:build !jsonschema`. Generated. Real schema,
   validation, and selected codec methods over an `embed.FS` of
-  `jsonschema/*.json`. JSON is the default; YAML is opt-in.
+  `jsonschema/*.json`.
 
 The build tags make them mutually exclusive, so the package always compiles —
 before and after generation. Commit all generated outputs: `jsonschema_gen.go`
@@ -63,19 +63,15 @@ and the whole `jsonschema/` directory (each `T.json` schema comes with a
    ```
 
    Add `--validate` to generate validation methods (recommended for LLM
-   output): `//go:generate go tool polytype --validate`. Add
-   `--formats=both` when inputs may be JSON or YAML; validation then includes
-   `ValidateYAML`.
+   output): `//go:generate go tool polytype --validate`.
 
 3. **Write `schema.go` by hand** — see the example below. One panic stub per
    generated method and one `Declare` line per root type. Add a
-   `ValidateJSON` stub when the directive passes `--validate`, and a
-   `ValidateYAML` stub when it also passes `--formats=both`. Then run
+   `ValidateJSON` stub when the directive passes `--validate`. Then run
    `go generate ./...`.
 
 4. **Tidy** when generation adds dependencies: run `go mod tidy`. Validation
-   imports `github.com/santhosh-tekuri/jsonschema/v6`; opted-in YAML support
-   imports `go.yaml.in/yaml/v4`.
+   imports `github.com/santhosh-tekuri/jsonschema/v6`.
 
 5. **Verify**: `go build ./...` and `go test ./...` must pass, and a second
    `go generate ./...` must produce no diff (generation is idempotent).
@@ -84,16 +80,32 @@ and the whole `jsonschema/` directory (each `T.json` schema comes with a
    [references/hooks-and-ci.md](references/hooks-and-ci.md) for lefthook and
    GitHub Actions recipes (auto-stage vs fail-on-drift).
 
+## Programmatic generation
+
+When another generator already knows the root types, use the same declaration
+values without a tagged registration file or schema accessor:
+
+```go
+config := polytype.Declare[model.Envelope]()
+err := codegen.Gen(config,
+    codegen.Target("./model"),
+    codegen.TypeScript("./web/generated", true),
+    codegen.Devalue("./transport/codec_gen.go", "transport", "example.com/project/transport"),
+)
+```
+
+Select `codegen.JSONSchema()` for schema files and `codegen.GoJSON()` for
+generated enum or sealed-union JSON codecs. Passing a schema function to
+`Declare` records its accessor name. Combine declarations and union settings
+with `polytype.Compose`.
+
 ## TypeScript declarations and the Go JSON boundary
 
 For a Go and TypeScript integration, pin one explicit module release for both
-the tool and imported marker/runtime package. This combined surface requires
-`v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes TypeScript declarations but
-predates generated owner codecs, and releases before `v1.0.0-rc.7` predate the
-marker-based enum and sealed-union registration:
+the tool and imported marker/runtime package:
 
 ```bash
-go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.10
+go get -tool github.com/tylergannon/polytype/polytype@latest
 ```
 
 Generate the schema, validation, Go output, and TypeScript declarations in one
@@ -115,7 +127,12 @@ The TypeScript output is structural only. It supplies `types.ts` and an optional
 type-only `index.ts`, with no runtime decoder or validator. TypeScript consumers
 use `JSON.parse`/`JSON.stringify` and must validate untrusted runtime data in the
 application. Do not claim executed cross-language equivalence from TypeScript
-compilation alone; issue #71 owns the broader Go/JavaScript transport proof.
+compilation alone.
+
+Treat one TypeScript output directory as owned by one CLI run. Use distinct
+directories for distinct target Go packages because a later run replaces the
+generated `types.ts`. To combine roots from several packages, lower them into
+one definition graph through `grammar` and call `typescript.Generate` once.
 
 ## devalue transport and custom backends
 
@@ -239,19 +256,10 @@ Unions are inferred, never declared: an interface with an unexported method is
 sealed, and its variants are the same-package struct types declaring that
 method directly (value receiver = value variant, pointer receiver = pointer
 variant). Non-sealed interface fields fail generation. Discriminator values
-are the concrete type names. The default discriminator property is `type` for
-both JSON and YAML; declare another once per union with
-`polytype.SealedUnion[I](name)` in the package that declares `I`. Generation
-is JSON-only by default; `--formats=both` adds yaml/v4 entry points that
-translate YAML into the JSON data model and reuse the JSON validator and
-decoder. JSON Schema property names and `json` tags are canonical. Go `yaml`
-struct tags are ignored and nested custom `UnmarshalYAML` hooks are bypassed;
-custom `UnmarshalJSON` hooks remain authoritative. yaml/v4 does not pass decoder
-options into `UnmarshalYAML`, so `yaml.WithKnownFields()` cannot enforce strict
-fields inside a registered type; use generated `ValidateYAML` for schema-backed
-unknown-property rejection. Decoding is transactional replacement, so omitted
-YAML fields do not retain receiver values. Use `yaml.WithV4Defaults()` to match
-`ValidateYAML` resolution.
+are the concrete type names. The default discriminator property is `type`;
+declare another once per union with `polytype.SealedUnion[I](name)` in the
+package that declares `I`. JSON Schema property names and `json` tags are
+canonical, and custom `UnmarshalJSON` hooks remain authoritative.
 
 By default, a struct type referenced from multiple places is inlined at every
 call site; add `.Ref()` to its registration to render it once as a `"$ref"`
@@ -277,6 +285,10 @@ unions/slices, typed-nil implementations, and conflicting custom object
 payloads are encoding errors. Production owner JSON method collisions are
 rejected before generation writes output. Verify encode/validate/decode with
 semantic equality for the shapes used by the consumer.
+
+YAML is outside polytype's generated surface. When an application accepts YAML,
+convert it to the JSON data model with the application's YAML library, then use
+the generated JSON validator and codecs.
 
 ## Closeout checklist
 

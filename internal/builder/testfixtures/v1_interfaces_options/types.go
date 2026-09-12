@@ -4,35 +4,25 @@ import (
 	"encoding/json"
 
 	"github.com/tylergannon/polytype"
-	yaml "go.yaml.in/yaml/v4"
 )
 
 //go:generate go run ./gen
 
 type IFace interface{ isIface() }
 
-type yamlString string
+type jsonString string
 
-func (s *yamlString) UnmarshalYAML(node *yaml.Node) error {
-	var value string
-	if err := node.Decode(&value); err != nil {
-		return err
-	}
-	*s = yamlString("yaml:" + value)
-	return nil
-}
-
-func (s *yamlString) UnmarshalJSON(data []byte) error {
+func (s *jsonString) UnmarshalJSON(data []byte) error {
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	*s = yamlString("json:" + value)
+	*s = jsonString("json:" + value)
 	return nil
 }
 
 type Impl1 struct {
-	X yamlString `json:"x" yaml:"x"`
+	X jsonString `json:"x"`
 }
 
 func (Impl1) isIface() {}
@@ -55,9 +45,9 @@ type Plain struct {
 }
 
 type Owner struct {
-	IF         IFace                     `json:"if" yaml:"yaml_if"`
-	IFaces     []IFace                   `json:"ifs" yaml:"yaml_ifs"`
-	OptionalIF polytype.Optional[IFace]  `json:"optional_if,omitzero" yaml:"yaml_optional"`
-	Label      polytype.Optional[string] `json:"label,omitzero" yaml:"label"`
-	Timeout    polytype.Nullable[int]    `json:"timeout" yaml:"timeout"`
+	IF         IFace                     `json:"if"`
+	IFaces     []IFace                   `json:"ifs"`
+	OptionalIF polytype.Optional[IFace]  `json:"optional_if,omitzero"`
+	Label      polytype.Optional[string] `json:"label,omitzero"`
+	Timeout    polytype.Nullable[int]    `json:"timeout"`
 }

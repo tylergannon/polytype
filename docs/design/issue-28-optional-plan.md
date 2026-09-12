@@ -366,7 +366,7 @@ Remove all interpretation of `optional` from `jsonschema` struct tags:
 - remove or rewrite legacy tests;
 - migrate scalar and composite fixtures to the explicit wrapper types;
 - preserve `ref`, provider, and other tag behavior;
-- remove current-support claims from README, `llms.txt`, the installable skill,
+- remove current-support claims from README, the installable skill,
   examples, and internal documentation;
 - do not warn or keep a deprecation branch. A leftover old tag has no
   optionality effect and release notes must call that out as breaking.
@@ -401,7 +401,7 @@ another agent can use the feature without reading implementation code. Cover:
   containing object non-strict;
 - closeout searches that remove the old tag from Go source.
 
-Apply the same public contract to README and `llms.txt`.
+Apply the same public contract to README and the installable skill.
 
 ## Implementation order
 

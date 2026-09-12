@@ -5,23 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"go.yaml.in/yaml/v4"
 )
-
-func TestGeneratedYAMLUnmarshalSimple(t *testing.T) {
-	var _ yaml.Unmarshaler = (*FancyStruct)(nil)
-
-	var got FancyStruct
-	input := []byte("iface:\n  type: TestInterface1\n  field1: one\n")
-	if err := yaml.Unmarshal(input, &got); err != nil {
-		t.Fatal(err)
-	}
-	impl, ok := got.IFace.(TestInterface1)
-	if !ok || impl.Field1 != "one" {
-		t.Fatalf("iface = %#v, want TestInterface1{Field1: %q}", got.IFace, "one")
-	}
-}
 
 func TestLegacyInterfaceSliceDecode(t *testing.T) {
 	var got FancyStruct

@@ -9,8 +9,8 @@ grammar into the other type systems your program has to speak:
 | Projection | What you get | How |
 |---|---|---|
 | **JSON Schema** | Deterministic schemas for LLM tool calls and structured output, optionally embedded in Go | `go tool polytype`, or `codegen.JSONSchema()` |
-| **Validation** | `ValidateJSON` / `ValidateYAML` methods backed by the schemas | `--validate`, `--formats=both` |
-| **Go JSON codecs** | Membership-checked enums, discriminated sealed unions, YAML input | Inferred from your types; no flag |
+| **Validation** | `ValidateJSON` methods backed by the schemas | `--validate` |
+| **Go JSON codecs** | Membership-checked enums and discriminated sealed unions | Inferred from your types; no flag |
 | **TypeScript** | Structural `types.ts` declarations for the same shapes | `--typescript DIR`, or the `typescript` package |
 | **devalue transport** | Go encoders/decoders for the [devalue](https://github.com/sveltejs/devalue) wire format SvelteKit uses, plus a Go port of the runtime | `devalue` and `devalue/codegen` packages |
 | **Your own backend** | Load a package, lower any roots, walk the grammar | `grammar` and `typegrammar` packages |
@@ -24,7 +24,6 @@ refuses a shape it cannot represent faithfully instead of widening to `any`.
 </p>
 
 - **Docs**: https://go-gen-jsonschema.tylergannon.com
-- **LLM/agent-friendly docs**: [llms.txt](llms.txt)
 - **Agent skill**: [skills/polytype](skills/polytype/SKILL.md)
 
 ## 🚀 Quick Start
@@ -51,10 +50,10 @@ Then just ask your agent to "add polytype to this project."
    ```
 
 2. **Add a generate directive** next to your types (include `--validate` for
-   generated validation; add `--formats=both` when inputs may be YAML):
+   generated validation):
 
    ```go
-   //go:generate go tool polytype --validate --formats=both
+   //go:generate go tool polytype --validate
    ```
 
 3. **Write the registration file and generate** (the file is shown under
@@ -62,14 +61,14 @@ Then just ask your agent to "add polytype to this project."
 
    ```bash
    go generate ./...
-   go mod tidy   # records dependencies added by validation or opted-in YAML decoding
+   go mod tidy   # records dependencies added by validation
    ```
 
 4. **Use the generated methods:**
 
    ```go
    schema := Person{}.Schema()          // json.RawMessage — drop into your tool definition
-   err := Person{}.ValidateJSON(data)   // or ValidateYAML for YAML input
+   err := Person{}.ValidateJSON(data)
    ```
 
 Commit everything the generator writes: `jsonschema_gen.go` and the
@@ -141,12 +140,8 @@ Go JSON, TypeScript, and devalue all consume the resulting configuration.
 - **LLM-optimized defaults** — `additionalProperties: false`, ordinary and
   nullable fields required, `Optional[T]` fields optional, and doc comments
   become `description` fields.
-- **Built-in validation** — opt-in `ValidateJSON()` and, with
-  `--formats=both`, `ValidateYAML()` methods backed by schemas compiled once at
-  startup.
-- **Optional YAML input** — `--formats=both` adds yaml/v4 entry points that
-  translate YAML into the schema's JSON data model, then reuse the JSON
-  validator and decoder.
+- **Built-in validation** — opt-in `ValidateJSON()` methods backed by schemas
+  compiled once at startup.
 
 ## ⚙️ How it works
 
@@ -199,7 +194,6 @@ import (
 // Stubs so the package compiles before generation.
 func (Person) Schema() json.RawMessage     { panic("not implemented") }
 func (Person) ValidateJSON(_ []byte) error { panic("not implemented") }
-func (Person) ValidateYAML(_ []byte) error { panic("not implemented") }
 
 var _ = polytype.Declare(Person.Schema)
 ```
@@ -374,10 +368,9 @@ same package that declares that method directly. The receiver of the sealing
 method decides the variant kind: a value receiver is a value variant, a
 pointer receiver is a pointer variant, and decoding constructs the variant
 accordingly. Nothing is declared at the field. A direct one-dimensional slice
-of the interface becomes an array with the union under `items.anyOf`. Generation defaults to JSON-only. Pass `--formats=both` to add
-`UnmarshalYAML(*yaml.Node)` adapters. yaml/v4 parses the document, the adapter
-translates it into JSON, and the existing JSON decoder performs union dispatch
-for scalar values (including `Optional[I]`) and every slice element.
+of the interface becomes an array with the union under `items.anyOf`. The
+generated JSON decoder performs union dispatch for scalar values (including
+`Optional[I]`) and every slice element.
 
 ```go
 // PaymentMethod is sealed by its unexported method.
@@ -447,40 +440,6 @@ type name, so renaming a variant type or changing its inflector changes the
 wire value, and adding a qualifying implementation changes membership. Review
 generated schema diffs accordingly.
 
-Opt into YAML alongside the default JSON unmarshaler in the generation
-directive:
-
-```go
-//go:generate go tool polytype --formats=both
-```
-
-With the default discriminator, ordinary YAML can be decoded directly:
-
-```go
-import yaml "go.yaml.in/yaml/v4"
-
-var payment Payment
-err := yaml.Load([]byte(`
-amount: 42
-methods:
-  - type: CreditCard
-    cardNumber: "4111111111111111"
-    expiry: "12/30"
-`), &payment, yaml.WithV4Defaults())
-```
-
-YAML uses the JSON Schema property names. Go `yaml` struct tags are ignored,
-and nested custom `UnmarshalYAML` hooks are bypassed; JSON tags and custom
-`UnmarshalJSON` hooks remain authoritative. The generator owns
-`UnmarshalYAML` on registered types. YAML constructs that cannot be represented
-by JSON are rejected. Run `go mod tidy` after YAML-enabled generation to record
-the yaml/v4 dependency. Because yaml/v4 does not pass decoder options into
-`UnmarshalYAML`, `yaml.WithKnownFields()` cannot enforce strict fields inside a
-registered type; use the generated `ValidateYAML` method for schema-backed
-unknown-property rejection. Decoding is transactional replacement: omitted YAML
-fields do not retain values already present in the receiver. Decode with
-`yaml.WithV4Defaults()` to use the same scalar resolution as `ValidateYAML`.
-
 Migration: `Declare(T.Schema).Interface(field, Discriminator(...), Impl(...))`,
 `WithInterface`, `WithInterfaceImpls`, `WithDiscriminator`, `Impl`,
 `Discriminator`, and the package-level `NewInterfaceImpl[I](...)` are removed.
@@ -533,11 +492,16 @@ omits `--typescript-barrel`, it removes a previously generated `index.ts` while
 preserving an application-owned one. `--no-changes` checks these requested
 artifacts for missing or stale content as well as checking JSON Schemas.
 
+One CLI run owns one TypeScript output directory. Use a distinct directory for
+each target Go package; a later run targeting the same directory replaces the
+earlier generated `types.ts`. A tool that needs one declaration graph spanning
+several packages can lower all of its roots together through `grammar` and pass
+the combined definitions to `typescript.Generate`.
+
 These declarations describe the admitted JSON structure for static TypeScript
 checking. They do not provide runtime decoding or validation on the JSON wire;
-[issue #71](https://github.com/tylergannon/polytype/issues/71) tracks that
-proof, and the [devalue codecs](#-go--javascript-transport-with-devalue) are
-the typed, runtime-checked Go/JavaScript transport polytype does ship. Time values remain strings and numeric fields become
+the [devalue codecs](#-go--javascript-transport-with-devalue) are the typed,
+runtime-checked Go/JavaScript transport polytype does ship. Time values remain strings and numeric fields become
 `number`; TypeScript does not enforce Go integer ranges or JSON Schema formats.
 Enum literals that cannot be represented exactly are rejected. Unsupported
 static shapes, including runtime schema providers and custom JSON/text codecs,
@@ -587,8 +551,9 @@ name unless a reserved word, an illegal identifier, or a same-named type in
 another package forced a rename; a tool writing
 `import type { Order } from './types'` reads it from there. Nothing is
 written into the package that declares the types. See
-[Driving polytype from another generator](llms.txt) for both paths side by
-side.
+[Programmatic generation](#programmatic-generation) for the executable
+configuration API that selects JSON Schema, Go JSON, TypeScript, and devalue
+outputs from the same declarations.
 
 ### Adopt TypeScript declarations with Go JSON codecs
 
@@ -596,13 +561,11 @@ Pin an explicit module release that contains both capabilities; the generator
 and the imported marker/runtime package must use that same release:
 
 ```bash
-go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.10
+go get -tool github.com/tylergannon/polytype/polytype@latest
 ```
 
-The `devalue`, `devalue/codegen`, and `grammar` packages require `v1.0.0-rc.10` or newer; the `typescript` package requires the release after it. The combined TypeScript and codec surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
-TypeScript declarations but predates generated owner codecs, and releases before
-`v1.0.0-rc.7` predate the marker-based enum and sealed-union registration. Pin
-the version explicitly.
+Pin one module version for both the tool and imported runtime packages so the
+generator and declarations stay in sync.
 
 Generate validation and TypeScript declarations together. The field
 registrations shown above automatically select the containing struct's enum and
@@ -761,11 +724,10 @@ projection of the same types.
 ## 🛡️ Validation
 
 Pass `--validate` to generation, add a matching `ValidateJSON` stub to the
-tagged file, and every registered type gets `ValidateJSON([]byte) error`. With `--formats=both`, it
-also gets `ValidateYAML([]byte) error`. Both methods validate the same JSON data
-model and schemas are compiled once in `init()` via
+tagged file, and every registered type gets `ValidateJSON([]byte) error`.
+Schemas are compiled once in `init()` via
 [santhosh-tekuri/jsonschema](https://github.com/santhosh-tekuri/jsonschema).
-If a later generation command omits `--validate` (or drops `--formats=both`),
+If a later generation command omits `--validate`,
 polytype refuses to remove the existing validation methods. Restore the flag,
 or pass `--force` when removing those methods is intentional.
 
@@ -824,7 +786,7 @@ onto the returned `*Declaration[T]`:
 | `.Accessor(field, T.method)` | Provider is a struct method taking only the receiver |
 | `.Method(field, T.method)` | Provider is a struct method also taking the field's own value |
 | `.Function(field, fn)` | Provider is a free function taking the field's own value |
-| `.StringerEnum(field)` | Field is an enum compared via `fmt.Stringer` |
+| `.StringerEnum(field)` | Emit an integer enum field using constant names |
 | `.Ref()` | Render this type as `"$ref"` wherever it's referenced |
 | `.RenderProviders()` | Generate `RenderedSchema()` and run providers at runtime |
 
@@ -857,8 +819,7 @@ polytype [gen] [options]     # generate (default subcommand)
   -pretty              pretty-print the .json output
   -no-changes          fail, writing nothing, if schemas or requested TypeScript output would change
   -force               force regeneration and allow removal of generated validation methods (incompatible with -no-changes)
-  --validate           generate validation methods for the selected formats
-  --formats MODE       decoding and validation: json (default) or both
+  --validate           generate JSON validation methods
   --typescript DIR     generate structural TypeScript declarations in DIR
   --typescript-barrel  also generate index.ts type-only exports (requires --typescript)
 ```
@@ -902,6 +863,14 @@ prompting), use `ObjectSchema` and add fields with `AddProperty` /
 - External package types unsupported, except `time.Time` (rendered as a string
   with RFC3339 guidance)
 - Max nesting depth: 100
+
+### YAML input
+
+polytype generates no YAML methods and takes no YAML dependency. YAML is an
+input encoding rather than part of the schema contract. Convert YAML to a
+generic value with the library your application already uses, marshal that
+value to JSON, then call the generated `ValidateJSON` method and decode it with
+`encoding/json`. Property names still come from `json` tags.
 
 ## 🛠️ Development
 

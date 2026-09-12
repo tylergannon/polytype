@@ -244,11 +244,6 @@ func (e EnumFieldPlan) StructTag() string {
 func (e EnumFieldPlan) Optional() bool { return e.Wrapper == syntax.WrapperOptional }
 func (e EnumFieldPlan) Nullable() bool { return e.Wrapper == syntax.WrapperNullable }
 
-type YAMLType struct {
-	Name    string
-	Initial string
-}
-
 type InterfaceOptionInfo struct {
 	TypeNameWithPrefix string
 	Discriminator      string
@@ -287,7 +282,6 @@ type SchemaBuilder struct {
 	Pretty            bool
 	Validate          bool
 	BuildTag          string
-	UnmarshalFormats  UnmarshalFormats
 	DiscriminatorProp string
 	// GenerateSchemas controls schema accessors and embedding in generated Go
 	// code. Codec-only generation leaves it false and writes no schema assets.
@@ -312,11 +306,7 @@ type SchemaBuilder struct {
 }
 
 func (s SchemaBuilder) GeneratesJSONUnmarshalers() bool {
-	return s.UnmarshalFormats.generatesJSON()
-}
-
-func (s SchemaBuilder) GeneratesYAMLUnmarshalers() bool {
-	return s.UnmarshalFormats.generatesYAML()
+	return true
 }
 
 // HasGeneratedJSONCode reports whether the configured roots require enum or
@@ -391,7 +381,6 @@ type schemaTemplateData struct {
 	SchemaBuilder
 	Imports     []string
 	OwnerCodecs []OwnerCodec
-	YAMLTypes   []YAMLType
 	Interfaces  []InterfaceInfo
 	// EnumMarkers lists every type in the generated package that declares
 	// the func (T) enum() marker, sorted by type name. The template emits one
@@ -441,8 +430,7 @@ func (s schemaTemplateData) HaveEnumCodecs() bool {
 }
 
 func (s schemaTemplateData) UsesJSONV2Marshal() bool {
-	return s.GeneratesYAMLUnmarshalers() ||
-		(s.GeneratesJSONUnmarshalers() && (len(s.OwnerCodecs) > 0 || len(s.Interfaces) > 0))
+	return s.GeneratesJSONUnmarshalers() && (len(s.OwnerCodecs) > 0 || len(s.Interfaces) > 0)
 }
 
 func (s SchemaBuilder) validateOwnerCodecMethods() error {
@@ -1570,26 +1558,6 @@ func (s *SchemaBuilder) RenderGoCode() (err error) {
 				UnmarshalerFunc:       ifaceProp.UnmarshalerFunc(),
 				DiscriminatorPropName: discProp,
 				Options:               opts,
-			})
-		}
-	}
-	if s.GeneratesYAMLUnmarshalers() {
-		yamlTypes := make(map[string]bool)
-		for _, method := range s.SchemaMethods() {
-			yamlTypes[method.Receiver.TypeName] = true
-		}
-		for _, special := range templateData.OwnerCodecs {
-			yamlTypes[special.Name] = true
-		}
-		names := make([]string, 0, len(yamlTypes))
-		for name := range yamlTypes {
-			names = append(names, name)
-		}
-		slices.Sort(names)
-		for _, name := range names {
-			templateData.YAMLTypes = append(templateData.YAMLTypes, YAMLType{
-				Name:    name,
-				Initial: strings.ToLower(name[0:1]),
 			})
 		}
 	}

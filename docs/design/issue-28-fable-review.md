@@ -234,8 +234,8 @@ Go standard library (verified against go1.26.5 docs + empirical runs):
   both. The tag is used in three Go fixture/example files
   (`examples/test_options/types.go`,
   `internal/builder/test_run/test4-structs/struct_types.go`,
-  `internal/builder/testfixtures/structs/struct_types.go`) plus README,
-  llms.txt, and the installable skill.
+  `internal/builder/testfixtures/structs/struct_types.go`) plus README and the
+  installable skill.
 - `node_wrappers.go:648-655` — `PropNames()` returns
   `tag.Options[0]` as the JSON name, and the structtag fork puts the name
   at `Options[0]`. For `json:",omitzero"` (name defaulted), `Options[0]`

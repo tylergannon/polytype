@@ -25,7 +25,6 @@ type Options struct {
 	JSONSchema bool
 	GoCode     bool
 	Validate   bool
-	YAML       bool
 
 	TypeScript *TypeScriptOptions
 	Devalue    *DevalueOptions
@@ -69,9 +68,6 @@ func Validation() Option {
 		o.Validate = true
 	}
 }
-
-// YAML also emits the supported YAML decoding and validation entrypoints.
-func YAML() Option { return func(o *Options) { o.YAML = true } }
 
 // TypeScript writes structural TypeScript declarations to dir.
 func TypeScript(dir string, barrel ...bool) Option {
@@ -132,9 +128,6 @@ func Generate(config polytype.Configuration, opts Options) error {
 			}
 		}
 	}
-	if opts.YAML && !opts.GoCode {
-		return errors.New("codegen: YAML requires generated Go code")
-	}
 	for _, declaration := range spec.Declarations {
 		for _, rule := range declaration.Rules {
 			switch rule.Kind {
@@ -155,11 +148,6 @@ func Generate(config polytype.Configuration, opts Options) error {
 	}
 	b.Pretty = opts.Pretty
 	b.Validate = opts.Validate
-	if opts.YAML {
-		b.UnmarshalFormats = builder.UnmarshalFormatsBoth
-	} else {
-		b.UnmarshalFormats = builder.UnmarshalFormatsJSON
-	}
 	b.GenerateSchemas = opts.JSONSchema && hasEntrypoint
 	if err := b.ApplyTransforms(); err != nil {
 		return err
@@ -201,7 +189,7 @@ func Generate(config polytype.Configuration, opts Options) error {
 			return err
 		}
 	}
-	if (opts.GoCode && (b.HasGeneratedJSONCode() || opts.YAML)) || (opts.JSONSchema && hasEntrypoint) {
+	if (opts.GoCode && b.HasGeneratedJSONCode()) || (opts.JSONSchema && hasEntrypoint) {
 		if err := b.RenderGoCode(); err != nil {
 			return err
 		}

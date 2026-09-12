@@ -768,10 +768,6 @@ func (f StructField) JSONTag() *structtag.Tag {
 	return f.structTag("json")
 }
 
-func (f StructField) YAMLTag() *structtag.Tag {
-	return f.structTag("yaml")
-}
-
 func (f StructField) Skip() bool {
 	// If there's a name list, check if all are unexported or check if `json:"-"`
 	if len(f.Field.Names) > 0 {

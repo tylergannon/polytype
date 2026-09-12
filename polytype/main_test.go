@@ -31,23 +31,6 @@ func TestGenTypeScriptFlagsDefaultToDisabled(t *testing.T) {
 	require.False(t, options.typeScriptBarrel)
 }
 
-func TestParseUnmarshalFormats(t *testing.T) {
-	t.Parallel()
-
-	for _, value := range []string{"json", "both"} {
-		t.Run(value, func(t *testing.T) {
-			t.Parallel()
-			_, err := parseUnmarshalFormats(value)
-			require.NoError(t, err)
-		})
-	}
-
-	for _, value := range []string{"yaml", "toml"} {
-		_, err := parseUnmarshalFormats(value)
-		require.EqualError(t, err, `invalid --formats value "`+value+`": expected json or both`)
-	}
-}
-
 // TestGenCommandRejectsInvalidFluentFieldAssociationWithSourcePosition runs
 // the actual polytype binary (not an in-process builder.Run call)
 // against the checked-in fluent_field_mismatch scanner fixture
