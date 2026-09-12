@@ -81,7 +81,8 @@ generated state that will be committed.
 
 ## YAML input
 
-polytype generates no YAML methods and takes no YAML dependency. Convert YAML
-to a generic value with the library your application already uses, marshal that
-value to JSON, then call `ValidateJSON` and decode with `encoding/json`.
-Property names come from `json` tags.
+polytype generates no YAML methods, and generated consumer code imports no YAML
+library. Convert YAML to a generic value with the library your application
+already uses, marshal that value to JSON, then call `ValidateJSON` and decode
+with `encoding/json`. Property names come from `json` tags. The repository's
+test dependency graph may carry a YAML library transitively.
