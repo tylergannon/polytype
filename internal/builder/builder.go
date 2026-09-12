@@ -95,7 +95,8 @@ func Run(args BuilderArgs) (err error) {
 	}
 
 	var changedSchemas map[string]bool
-	if changedSchemas, err = builder.RenderSchemas(args.NoChanges, args.Force); err != nil {
+	var orphanedSchemas []string
+	if changedSchemas, orphanedSchemas, err = builder.RenderSchemas(args.NoChanges, args.Force); err != nil {
 		return err
 	}
 
@@ -109,7 +110,14 @@ func Run(args BuilderArgs) (err error) {
 		}
 		if len(changedTypes) > 0 {
 			slices.Sort(changedTypes)
-			return fmt.Errorf("schema changes detected for types: %s (and --no-changes or JSONSCHEMA_NO_CHANGES was set)", strings.Join(changedTypes, ", "))
+			orphanedMessage := ""
+			if len(orphanedSchemas) > 0 {
+				orphanedMessage = fmt.Sprintf("; orphaned generated artifacts: %s", strings.Join(orphanedSchemas, ", "))
+			}
+			return fmt.Errorf("schema changes detected for types: %s%s (and --no-changes or JSONSCHEMA_NO_CHANGES was set)", strings.Join(changedTypes, ", "), orphanedMessage)
+		}
+		if len(orphanedSchemas) > 0 {
+			return fmt.Errorf("orphaned generated schema artifacts detected: %s (and --no-changes or JSONSCHEMA_NO_CHANGES was set)", strings.Join(orphanedSchemas, ", "))
 		}
 		if typeScriptPlan != nil && typeScriptPlan.changed() {
 			return fmt.Errorf("TypeScript output changes detected for paths: %s (and --no-changes or JSONSCHEMA_NO_CHANGES was set)", strings.Join(typeScriptPlan.changedPaths(), ", "))

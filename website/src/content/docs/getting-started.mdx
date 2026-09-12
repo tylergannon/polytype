@@ -147,11 +147,14 @@ and string-mode enum fields use the generated owner codec automatically.
 
 Commit `schema.go`, `jsonschema_gen.go`, the entire `jsonschema/` directory
 including `.json.sum` files, and any requested generated TypeScript files.
+The checksum marks its matching schema as generator-owned. Removing or renaming
+a registration prunes its unchanged schema pair on the next generation; a
+modified orphan is preserved and reported.
 
 <Aside type="tip" title="Keep schemas current">
   Add `JSONSCHEMA_NO_CHANGES=1 go generate ./...` to CI. It fails without writing
   when committed schemas or requested TypeScript declarations no longer match
-  their Go types.
+  their Go types, including when an obsolete generated schema needs removal.
 </Aside>
 
 <Aside type="caution" title="Optionality comes from the field type">
