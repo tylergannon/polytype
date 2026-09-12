@@ -100,13 +100,10 @@ same package that declares that method directly. The receiver of the sealing
 method decides the variant kind: a value receiver is a value variant, a
 pointer receiver is a pointer variant, and decoding constructs the variant
 accordingly. Nothing is declared at the field. A direct one-dimensional slice
-of the interface becomes an array with the union under `items.anyOf`. The generator emits owner `MarshalJSON` and `UnmarshalJSON` by default. Pass
-`--formats=both` to add `go.yaml.in/yaml/v4` entry points for scalar values and
-every slice element. YAML is translated into the JSON data model and decoded
-through the same implementation. Both syntaxes use `type` as the default
-discriminator property and JSON Schema property names are canonical. Go `yaml`
-struct tags are ignored and nested custom `UnmarshalYAML` hooks are bypassed;
-custom `UnmarshalJSON` hooks remain authoritative.
+of the interface becomes an array with the union under `items.anyOf`. The
+generator emits owner `MarshalJSON` and `UnmarshalJSON` by default. The default
+discriminator property is `type`, JSON Schema property names are canonical,
+and custom `UnmarshalJSON` hooks remain authoritative.
 
 ```go
 // types.go
@@ -235,13 +232,14 @@ Notes:
 
 Opt in with `--validate` on generation and write a matching `ValidateJSON`
 stub in the tagged file. Each registered type gets
-`ValidateJSON([]byte) error`; `--formats=both` also adds
-`ValidateYAML([]byte) error`. Schemas are compiled once in `init()` using
+`ValidateJSON([]byte) error`. Schemas are compiled once in `init()` using
 `github.com/santhosh-tekuri/jsonschema/v6`. Failures return a
 `*jsonschema.ValidationError` with `InstanceLocation` (path to the failing
 field), `ErrorKind`, and nested `Causes`. Validation covers required fields,
 types, unknown properties (rejected — `additionalProperties: false`), enum
 membership, and nested structure. Validate LLM output *before* `json.Unmarshal`.
+If a later generation command omits `--validate`, polytype refuses to remove an
+existing generated method unless the command also passes `--force`.
 
 ## CLI reference
 
@@ -252,8 +250,7 @@ polytype gen [flags]
   -target DIR        # package to process (default: cwd)
   -no-changes        # fail (writing nothing) if schemas or requested TypeScript output would change
   -force             # rewrite even when unchanged; incompatible with -no-changes
-  --validate         # generate validation methods for the selected formats
-  --formats MODE     # decoding and validation: json (default) or both
+  --validate         # generate JSON validation methods
   --typescript DIR   # generate structural TypeScript declarations in DIR
   --typescript-barrel # also generate index.ts type-only exports; requires --typescript
 ```

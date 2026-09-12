@@ -45,13 +45,10 @@ func (Person) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.Declare(Person.Schema)
 ```
 
-`NewJSONSchemaFunc[T](func(T) json.RawMessage, options...)` registers a free
-function with the same receiver type. `NewJSONSchemaBuilder[T](func() json.RawMessage)`
-registers a no-argument schema accessor stub and returns a `SchemaMarker`; the
-generator emits the accessor (for example, `BuilderTypeSchema()`) that returns
-the generated schema bytes. Both registrations are generation markers, not
-runtime codecs. See the compiling entrypoint fixture under
-`internal/builder/testfixtures/entrypoints` for all three forms.
+`Declare(fn)` also accepts a free function taking `T`. `Declare[T]()` selects a
+root without a schema accessor for programmatic generation through
+`codegen.Gen`. `NewJSONSchemaMethod`, `NewJSONSchemaFunc`, and their `With*`
+options remain available only for source compatibility and are deprecated.
 
 ## Optional and nullable fields
 
@@ -81,13 +78,10 @@ marker/runtime package. Generate validation and TypeScript declarations in the
 same run:
 
 ```bash
-go get -tool github.com/tylergannon/polytype/polytype@v1.0.0-rc.8
+go get -tool github.com/tylergannon/polytype/polytype@latest
 ```
 
-This combined surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
-TypeScript declarations but predates generated owner codecs, and releases before
-`v1.0.0-rc.7` predate the marker-based enum and sealed-union registration. Pin
-the version explicitly.
+Pin one module version for both the tool and imported runtime package.
 
 ```go
 //go:generate go tool polytype --validate --typescript web/src/generated --typescript-barrel
@@ -114,15 +108,14 @@ if err := json.Unmarshal(data, &value); err != nil {
 The TypeScript output contains structural declarations only. Consumers use
 `JSON.parse` and `JSON.stringify`, but must supply their own runtime validation
 for untrusted values because TypeScript annotations are erased. Generated
-TypeScript runtime decoders and validators are not provided. The broader
-executed Go/JavaScript transport proof remains tracked by
-[#71](https://github.com/tylergannon/polytype/issues/71).
+TypeScript runtime decoders and validators are not provided.
 
 ## Enums and interfaces
 
 Declare an enum on the type itself with the marker method `func (T) enum() {}`
 in ordinary Go; its same-package typed constants become the enum values
-wherever the type is used. Use `.StringerEnum(field)` on a field of an integer
+wherever the type is used. Use
+`.StringerEnum(polytype.Field[Owner, Enum]("Field"))` on a field of an integer
 enum to emit constant names instead of integer values.
 
 For a discriminated union, seal the interface with an unexported method and
@@ -158,16 +151,16 @@ union slices are rejected during encoding. See
 
 ## Providers and shared definitions
 
-Provider options replace selected field schemas at runtime. The retained
-provider forms are `WithFunction`, `WithStructAccessorMethod`, and
-`WithStructFunctionMethod`; `WithRenderProviders` emits `RenderedSchema()`.
+Provider options replace selected field schemas at runtime. The provider forms
+are `.Function`, `.Accessor`, and `.Method`; `.RenderProviders()` emits
+`RenderedSchema()`.
 Provider-rendered types do not receive static validation methods because their
 schemas depend on runtime values. See
 [`examples/providers_rendering`](../examples/providers_rendering) and
 [`docs/providers-documentation.md`](providers-documentation.md).
 
-Use `AsRef()` on a type's own registration to put it in `$defs` and reference it
-from other generated schemas. Without `AsRef()`, nested structs are inlined.
+Use `.Ref()` on a type's own declaration to put it in `$defs` and reference it
+from other generated schemas. Without `.Ref()`, nested structs are inlined.
 See [`examples/ref_types`](../examples/ref_types).
 
 ## Verification
@@ -181,7 +174,5 @@ go build ./...
 go test ./...
 ```
 
-The no-change check catches generated files that are untracked as well as
-tracked schema changes. Use `--formats=both` when YAML input is required; YAML
-is translated into the canonical JSON data model before validation and
-decoding.
+The Git status check catches generated files that are untracked as well as
+tracked schema changes.

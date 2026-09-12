@@ -13,9 +13,9 @@ go get -tool github.com/tylergannon/polytype/polytype@latest
 
 Invoke the pinned CLI as `go tool polytype`.
 
-The CLI owns the JSON Schema, validation, Go JSON codec, and TypeScript
-projections. The devalue transport codecs and the type-grammar library are Go
-packages driven from your own program, not CLI flags; see
+The CLI generates JSON Schema, validation, Go JSON codecs, and TypeScript.
+Generators can select the same projections through the `codegen` package. The
+devalue transport and type-grammar packages also support lower-level use; see
 [devalue transport](/guides/devalue/) and [custom backends](/guides/custom-backends/).
 
 ## Generate
@@ -26,9 +26,8 @@ go tool polytype gen [flags]
   -pretty            indent schema JSON
   -target DIR        package to process (default: current directory)
   -no-changes        fail without writing when schemas or requested TypeScript output would change
-  -force             rewrite unchanged output; incompatible with -no-changes
-  --validate         generate validation methods for the selected formats
-  --formats MODE     decoding and validation: json (default) or both
+  -force             rewrite unchanged output and allow removal of generated validation; incompatible with -no-changes
+  --validate         generate JSON validation methods
   --typescript DIR   generate structural TypeScript declarations in DIR
   --typescript-barrel
                      also generate index.ts type-only exports; requires --typescript
@@ -59,6 +58,9 @@ containing Go struct's JSON methods to be generated automatically; there is no
 codec flag.
 The TypeScript output provides static declarations only, with no runtime decoder
 or validator. Validate untrusted values in the TypeScript application, and call
-the generated Go `ValidateJSON` method before `json.Unmarshal`. Issue
-[#71](https://github.com/tylergannon/polytype/issues/71) tracks broader
-executed Go/JavaScript transport proof.
+the generated Go `ValidateJSON` method before `json.Unmarshal`.
+
+One CLI run owns one TypeScript output directory. Use separate directories for
+different target Go packages; otherwise the later run replaces the earlier
+generated `types.ts`. Use the `grammar` and `typescript` packages when one
+declaration graph must span several packages.

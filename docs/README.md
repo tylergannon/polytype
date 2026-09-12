@@ -7,8 +7,8 @@ Durable project documentation. Session notes and raw artifacts live under
   feature guides under `website/src/content/docs/` are authoritative.
 - Design history and roadmap: [design/](design/).
 - Public site source: `website/` (published at
-  https://go-gen-jsonschema.tylergannon.com); agent-facing summary in the
-  repository root `llms.txt` and skill in `skills/polytype/`.
+  https://go-gen-jsonschema.tylergannon.com); agent instructions in
+  `skills/polytype/`.
 - Working notes kept for reference: [internal-dev-notes.md](internal-dev-notes.md),
   [providers-documentation.md](providers-documentation.md),
   [TIME_TYPE_NOTE.md](TIME_TYPE_NOTE.md), [UNIONTYPES_ISSUE.md](UNIONTYPES_ISSUE.md),

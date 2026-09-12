@@ -21,10 +21,6 @@ import (
 	{{- if and .GenerateSchemas (gt (len .RenderedTypes) 0) }}
 	"text/template"
 	{{- end }}
-	{{- if .GeneratesYAMLUnmarshalers }}
-
-	yaml "go.yaml.in/yaml/v4"
-	{{- end }}
 	{{ range .Imports}}
 	{{.}}
 	{{ end -}}
@@ -103,27 +99,6 @@ func __polytype_marshal(value any) ([]byte, error) {
 	return jsonv2.Marshal(value, json.DefaultOptionsV1(), jsonv2.FormatNilSliceAsNull(false))
 }
 {{ end }}
-
-{{ if .GeneratesYAMLUnmarshalers -}}
-func __gen_jsonschema_yamlNodeToJSON(node *yaml.Node) ([]byte, error) {
-	var value any
-	if err := node.Decode(&value); err != nil {
-		return nil, err
-	}
-	return __polytype_marshal(value)
-}
-
-{{ if .Validate -}}
-func __gen_jsonschema_yamlToJSON(data []byte) ([]byte, error) {
-	var value any
-	if err := yaml.Load(data, &value, yaml.WithV4Defaults()); err != nil {
-		return nil, err
-	}
-	return __polytype_marshal(value)
-}
-{{ end -}}
-{{ end -}}
-
 {{ if and .GenerateSchemas .Validate .HasNonRenderedTypes -}}
 // Compiled JSON schemas for validation, initialized once at startup.
 var (
@@ -230,22 +205,6 @@ func ({{$recvName}}) ValidateJSON(data []byte) error {
 	}
 	return __gen_jsonschema_compiled_{{$recvName}}.Validate(inst)
 }
-{{ if $.GeneratesYAMLUnmarshalers -}}
-
-// ValidateYAML validates YAML against the JSON Schema for {{$recvName}}.
-// YAML is interpreted using the schema's JSON property names.
-func ({{$recvName}}) ValidateYAML(data []byte) error {
-	jsonData, err := __gen_jsonschema_yamlToJSON(data)
-	if err != nil {
-		return err
-	}
-	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(jsonData))
-	if err != nil {
-		return err
-	}
-	return __gen_jsonschema_compiled_{{$recvName}}.Validate(inst)
-}
-{{ end -}}
 {{ end -}}
 {{ end -}}
 {{ end -}}
@@ -466,24 +425,6 @@ func __jsonschema__isJSONNull(data []byte) bool {
 }
 {{ end -}}
 
-{{ if .GeneratesYAMLUnmarshalers -}}
-{{ range .YAMLTypes -}}
-// UnmarshalYAML translates YAML into the JSON data model before decoding
-// {{.Name}} with its JSON contract.
-func ({{.Initial}} *{{.Name}}) UnmarshalYAML(node *yaml.Node) error {
-	data, err := __gen_jsonschema_yamlNodeToJSON(node)
-	if err != nil {
-		return err
-	}
-	var next {{.Name}}
-	if err := json.Unmarshal(data, &next); err != nil {
-		return err
-	}
-	*{{.Initial}} = next
-	return nil
-}
-{{ end -}}
-{{ end -}}
 {{ range .Interfaces -}}
 {{$interface := . -}}
 {{ if $.GeneratesJSONUnmarshalers -}}

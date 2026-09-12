@@ -12,8 +12,6 @@ import (
 	"errors"
 	"fmt"
 
-	yaml "go.yaml.in/yaml/v4"
-
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -28,22 +26,6 @@ func __gen_jsonschema_panic(fname string, err error) {
 
 func __polytype_marshal(value any) ([]byte, error) {
 	return jsonv2.Marshal(value, json.DefaultOptionsV1(), jsonv2.FormatNilSliceAsNull(false))
-}
-
-func __gen_jsonschema_yamlNodeToJSON(node *yaml.Node) ([]byte, error) {
-	var value any
-	if err := node.Decode(&value); err != nil {
-		return nil, err
-	}
-	return __polytype_marshal(value)
-}
-
-func __gen_jsonschema_yamlToJSON(data []byte) ([]byte, error) {
-	var value any
-	if err := yaml.Load(data, &value, yaml.WithV4Defaults()); err != nil {
-		return nil, err
-	}
-	return __polytype_marshal(value)
 }
 
 // Compiled JSON schemas for validation, initialized once at startup.
@@ -108,37 +90,9 @@ func (Plain) ValidateJSON(data []byte) error {
 	return __gen_jsonschema_compiled_Plain.Validate(inst)
 }
 
-// ValidateYAML validates YAML against the JSON Schema for Plain.
-// YAML is interpreted using the schema's JSON property names.
-func (Plain) ValidateYAML(data []byte) error {
-	jsonData, err := __gen_jsonschema_yamlToJSON(data)
-	if err != nil {
-		return err
-	}
-	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(jsonData))
-	if err != nil {
-		return err
-	}
-	return __gen_jsonschema_compiled_Plain.Validate(inst)
-}
-
 // ValidateJSON validates the given JSON bytes against the schema for Owner.
 func (Owner) ValidateJSON(data []byte) error {
 	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-	return __gen_jsonschema_compiled_Owner.Validate(inst)
-}
-
-// ValidateYAML validates YAML against the JSON Schema for Owner.
-// YAML is interpreted using the schema's JSON property names.
-func (Owner) ValidateYAML(data []byte) error {
-	jsonData, err := __gen_jsonschema_yamlToJSON(data)
-	if err != nil {
-		return err
-	}
-	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(jsonData))
 	if err != nil {
 		return err
 	}
@@ -151,9 +105,9 @@ func (o Owner) MarshalJSON() ([]byte, error) {
 	type Alias Owner
 	type Wrapper struct {
 		Alias
-		IF         json.RawMessage `json:"if" yaml:"yaml_if"`
-		IFaces     json.RawMessage `json:"ifs" yaml:"yaml_ifs"`
-		OptionalIF json.RawMessage `json:"optional_if,omitzero" yaml:"yaml_optional"`
+		IF         json.RawMessage `json:"if"`
+		IFaces     json.RawMessage `json:"ifs"`
+		OptionalIF json.RawMessage `json:"optional_if,omitzero"`
 	}
 	wrapper := Wrapper{Alias: Alias(o)}
 	var err error
@@ -190,9 +144,9 @@ func (o *Owner) UnmarshalJSON(data []byte) (err error) {
 	type Alias Owner
 	type Wrapper struct {
 		Alias
-		IF         json.RawMessage `json:"if" yaml:"yaml_if"`
-		IFaces     json.RawMessage `json:"ifs" yaml:"yaml_ifs"`
-		OptionalIF json.RawMessage `json:"optional_if,omitzero" yaml:"yaml_optional"`
+		IF         json.RawMessage `json:"if"`
+		IFaces     json.RawMessage `json:"ifs"`
+		OptionalIF json.RawMessage `json:"optional_if,omitzero"`
 	}
 	var wrapper Wrapper
 	if err = json.Unmarshal(data, &wrapper); err != nil {
@@ -236,35 +190,6 @@ func (o *Owner) UnmarshalJSON(data []byte) (err error) {
 	return nil
 }
 
-// UnmarshalYAML translates YAML into the JSON data model before decoding
-// Owner with its JSON contract.
-func (o *Owner) UnmarshalYAML(node *yaml.Node) error {
-	data, err := __gen_jsonschema_yamlNodeToJSON(node)
-	if err != nil {
-		return err
-	}
-	var next Owner
-	if err := json.Unmarshal(data, &next); err != nil {
-		return err
-	}
-	*o = next
-	return nil
-}
-
-// UnmarshalYAML translates YAML into the JSON data model before decoding
-// Plain with its JSON contract.
-func (p *Plain) UnmarshalYAML(node *yaml.Node) error {
-	data, err := __gen_jsonschema_yamlNodeToJSON(node)
-	if err != nil {
-		return err
-	}
-	var next Plain
-	if err := json.Unmarshal(data, &next); err != nil {
-		return err
-	}
-	*p = next
-	return nil
-}
 func __jsonMarshal__v1_interfaces_options__IFace__6af605dbb1d39d3a8bf61c632fa0f85e2b2d752230aeb3822843f2fa9b62d5b5(value IFace) (json.RawMessage, error) {
 	if value == nil {
 		return nil, fmt.Errorf("cannot marshal nil registered interface IFace")

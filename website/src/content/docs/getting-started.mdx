@@ -81,6 +81,24 @@ go mod tidy
 `jsonschema_gen.go` is compiled during normal builds, so the files never define
 the same methods together.
 
+## Programmatic generation
+
+Generators can use the same declaration values without a build-tagged
+registration file or schema accessor:
+
+```go
+config := polytype.Declare[model.Envelope]()
+err := codegen.Gen(config,
+    codegen.Target("./model"),
+    codegen.TypeScript("./web/generated", true),
+    codegen.Devalue("./transport/codec_gen.go", "transport", "example.com/project/transport"),
+)
+```
+
+Select `codegen.JSONSchema()` or `codegen.GoJSON()` when those outputs are
+needed. `polytype.Compose` combines multiple declarations and sealed-union
+settings into one request.
+
 ## 4. Generate TypeScript with the Go JSON boundary
 
 For a Go and TypeScript integration, pin an explicit release that contains both
@@ -98,16 +116,18 @@ enums automatically receives generated JSON codecs, and every marked enum
 `MarshalJSON`/`UnmarshalJSON` pair that rejects non-members. The run writes
 `types.ts` and, when requested, `index.ts` alongside the schema and Go outputs.
 
-The `devalue`, `devalue/codegen`, and `grammar` packages require `v1.0.0-rc.10` or newer; the `typescript` package requires the release after it. The combined TypeScript and codec surface requires `v1.0.0-rc.8` or newer: `v1.0.0-rc.4` includes
-TypeScript declarations but predates generated owner codecs, and releases before
-`v1.0.0-rc.7` predate the marker-based enum and sealed-union registration. Pin
-the version explicitly.
+Pin one module version for the generator and imported runtime packages so their
+APIs stay in sync.
 
 The TypeScript files are structural declarations. They do not contain runtime
 decoders or validators. TypeScript code can use `JSON.parse` and
-`JSON.stringify`, but must validate untrusted runtime data itself. The broader
-executed Go/JavaScript transport proof remains tracked by
-[#71](https://github.com/tylergannon/polytype/issues/71).
+`JSON.stringify`, but must validate untrusted runtime data itself.
+
+Each CLI run owns its TypeScript output directory. Give different target Go
+packages different output directories because a later run replaces the
+generated `types.ts`. A custom generator can combine roots from several
+packages by lowering them together with `grammar` and calling
+`typescript.Generate` once.
 
 ## 5. Use the generated schema and Go boundary
 

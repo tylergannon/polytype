@@ -10,8 +10,6 @@ import (
 	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
-
-	yaml "go.yaml.in/yaml/v4"
 )
 
 //go:embed jsonschema
@@ -74,14 +72,6 @@ func __gen_jsonschema_panic(fname string, err error) {
 
 func __polytype_marshal(value any) ([]byte, error) {
 	return jsonv2.Marshal(value, json.DefaultOptionsV1(), jsonv2.FormatNilSliceAsNull(false))
-}
-
-func __gen_jsonschema_yamlNodeToJSON(node *yaml.Node) ([]byte, error) {
-	var value any
-	if err := node.Decode(&value); err != nil {
-		return nil, err
-	}
-	return __polytype_marshal(value)
 }
 
 func (FancyStruct) Schema() json.RawMessage {
@@ -167,20 +157,6 @@ func (f *FancyStruct) UnmarshalJSON(data []byte) (err error) {
 	return nil
 }
 
-// UnmarshalYAML translates YAML into the JSON data model before decoding
-// FancyStruct with its JSON contract.
-func (f *FancyStruct) UnmarshalYAML(node *yaml.Node) error {
-	data, err := __gen_jsonschema_yamlNodeToJSON(node)
-	if err != nil {
-		return err
-	}
-	var next FancyStruct
-	if err := json.Unmarshal(data, &next); err != nil {
-		return err
-	}
-	*f = next
-	return nil
-}
 func __jsonMarshal__interfaces__TestInterface__b99650f5b4c7f2fe7b18a3b48f4a76abba1f4c6308b5160be95058ce4ca0acad(value TestInterface) (json.RawMessage, error) {
 	if value == nil {
 		return nil, fmt.Errorf("cannot marshal nil registered interface TestInterface")

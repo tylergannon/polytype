@@ -5,7 +5,6 @@ go 1.27
 require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/tylergannon/polytype v0.2.1
-	go.yaml.in/yaml/v4 v4.0.0-rc.6
 )
 
 require (

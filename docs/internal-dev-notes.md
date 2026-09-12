@@ -7,8 +7,9 @@ applyTo: '**'
 > Historical snapshot: this document records early implementation experiments.
 > Current support and release boundaries are in [`docs/spec/v1.md`](spec/v1.md)
 > and the current examples. The old TODO entries below are retained as raw
-> history; completed provider, enum, entrypoint, YAML, and Optional/Nullable
-> work is not implied to remain pending.
+> history; completed provider, enum, entrypoint, and Optional/Nullable work is
+> not implied to remain pending. The experimental YAML surface was removed
+> before v1.
 
 Owner: opencode
 

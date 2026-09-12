@@ -20,34 +20,9 @@ type BuilderArgs struct {
 	// Relative paths are resolved against the invocation working directory.
 	TypeScriptDir    string
 	TypeScriptBarrel bool
-	// UnmarshalFormats selects whether generated JSON decoding also accepts YAML.
-	// The zero value preserves the CLI default and generates JSON support only.
-	UnmarshalFormats UnmarshalFormats
-}
-
-type UnmarshalFormats string
-
-const (
-	UnmarshalFormatsJSON UnmarshalFormats = "json"
-	UnmarshalFormatsBoth UnmarshalFormats = "both"
-)
-
-func (f UnmarshalFormats) generatesJSON() bool {
-	return f == "" || f == UnmarshalFormatsJSON || f == UnmarshalFormatsBoth
-}
-
-func (f UnmarshalFormats) generatesYAML() bool {
-	return f == UnmarshalFormatsBoth
-}
-
-func (f UnmarshalFormats) valid() bool {
-	return f == "" || f == UnmarshalFormatsJSON || f == UnmarshalFormatsBoth
 }
 
 func Run(args BuilderArgs) (err error) {
-	if !args.UnmarshalFormats.valid() {
-		return fmt.Errorf("invalid unmarshal formats %q", args.UnmarshalFormats)
-	}
 	if args.TypeScriptBarrel && args.TypeScriptDir == "" {
 		return fmt.Errorf("--typescript-barrel requires --typescript")
 	}
@@ -69,7 +44,6 @@ func Run(args BuilderArgs) (err error) {
 	}
 	builder.Pretty = args.Pretty
 	builder.Validate = args.Validate
-	builder.UnmarshalFormats = args.UnmarshalFormats
 
 	// A NewJSONSchemaBuilder registration's stub takes no arguments; if its
 	// receiver type's underlying type is a pointer or interface, Go forbids

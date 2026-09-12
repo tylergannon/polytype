@@ -12,8 +12,8 @@ func (m SealedUnionMarker) polytypeConfiguration() ConfigurationSpec { return m.
 // SealedUnion declares the discriminator property for the sealed interface
 // I. A sealed interface is one whose own body declares an unexported method;
 // its variants are inferred from the same-package struct types that declare
-// that method directly, so membership needs no declaration. The
-// The default property is "type" and needs no declaration; SealedUnion sets a
+// that method directly, so membership needs no declaration. The default
+// property is "type" and needs no declaration; SealedUnion sets a
 // different property for every use of I in every generated schema, codec, and
 // TypeScript output. The optional inflector determines each variant's value
 // from its concrete Go type name. Pascal is the default; Snake and Camel are

@@ -40,7 +40,6 @@ type genOptions struct {
 	noChanges        bool
 	force            bool
 	validate         bool
-	formats          string
 	typeScriptDir    string
 	typeScriptBarrel bool
 }
@@ -52,8 +51,7 @@ func newGenFlagSet(errorHandling flag.ErrorHandling) (*flag.FlagSet, *genOptions
 	genCmd.StringVar(&options.target, "target", "", "Path to target package (default to local wd)")
 	genCmd.BoolVar(&options.noChanges, "no-changes", false, "Fail if any schema or requested TypeScript output changes are detected")
 	genCmd.BoolVar(&options.force, "force", false, "Force regeneration of schemas and requested TypeScript output, and allow removal of generated validation methods")
-	genCmd.BoolVar(&options.validate, "validate", false, "Generate schema validation methods for the selected formats")
-	genCmd.StringVar(&options.formats, "formats", "json", "Generated decoding and validation formats: json or both")
+	genCmd.BoolVar(&options.validate, "validate", false, "Generate JSON Schema validation methods")
 	genCmd.StringVar(&options.typeScriptDir, "typescript", "", "Generate structural TypeScript declarations in this directory")
 	genCmd.BoolVar(&options.typeScriptBarrel, "typescript-barrel", false, "Generate an index.ts type-only export (requires --typescript)")
 	return genCmd, options
@@ -81,11 +79,6 @@ func handleGen(firstArg int) {
 		log.Fatalf("%s is not a directory", options.target)
 	}
 
-	unmarshalFormats, err := parseUnmarshalFormats(options.formats)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// Check environment variable
 	options.noChanges = options.noChanges || os.Getenv("JSONSCHEMA_NO_CHANGES") != ""
 
@@ -93,7 +86,7 @@ func handleGen(firstArg int) {
 		log.Fatal("Cannot use --force and --no-changes together")
 	}
 
-	if err = builder.Run(builder.BuilderArgs{
+	if err := builder.Run(builder.BuilderArgs{
 		TargetDir:        options.target,
 		Pretty:           options.pretty,
 		NoChanges:        options.noChanges,
@@ -101,18 +94,7 @@ func handleGen(firstArg int) {
 		Validate:         options.validate,
 		TypeScriptDir:    options.typeScriptDir,
 		TypeScriptBarrel: options.typeScriptBarrel,
-		UnmarshalFormats: unmarshalFormats,
 	}); err != nil {
 		log.Fatal(err)
-	}
-}
-
-func parseUnmarshalFormats(value string) (builder.UnmarshalFormats, error) {
-	formats := builder.UnmarshalFormats(value)
-	switch formats {
-	case builder.UnmarshalFormatsJSON, builder.UnmarshalFormatsBoth:
-		return formats, nil
-	default:
-		return "", fmt.Errorf("invalid --formats value %q: expected json or both", value)
 	}
 }

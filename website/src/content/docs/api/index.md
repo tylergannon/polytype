@@ -15,6 +15,9 @@ import "github.com/tylergannon/polytype"
 
 ## Index
 
+- [func Camel\(name string\) string](<#Camel>)
+- [func Pascal\(name string\) string](<#Pascal>)
+- [func Snake\(name string\) string](<#Snake>)
 - [type Configuration](<#Configuration>)
   - [func Compose\(configs ...Configuration\) Configuration](<#Compose>)
 - [type ConfigurationSpec](<#ConfigurationSpec>)
@@ -56,10 +59,37 @@ import "github.com/tylergannon/polytype"
   - [func WithStructFunctionMethod\[T, U any\]\(val U, f func\(T, U\) json.Marshaler\) SchemaMethodOption](<#WithStructFunctionMethod>)
 - [type SchemaMethodOptionObj](<#SchemaMethodOptionObj>)
 - [type SealedUnionMarker](<#SealedUnionMarker>)
-  - [func SealedUnion\[I any\]\(discriminator string\) SealedUnionMarker](<#SealedUnion>)
+  - [func SealedUnion\[I any\]\(discriminator string, inflectors ...func\(string\) string\) SealedUnionMarker](<#SealedUnion>)
 - [type SealedUnionSpec](<#SealedUnionSpec>)
 - [type TypeSpec](<#TypeSpec>)
 
+
+<a name="Camel"></a>
+## func Camel
+
+```go
+func Camel(name string) string
+```
+
+Camel converts a Go type name to lower camelCase for use as a discriminator value.
+
+<a name="Pascal"></a>
+## func Pascal
+
+```go
+func Pascal(name string) string
+```
+
+Pascal returns a Go type name unchanged. It is the default discriminator inflection and preserves the historical concrete\-type\-name wire value.
+
+<a name="Snake"></a>
+## func Snake
+
+```go
+func Snake(name string) string
+```
+
+Snake converts a Go type name to lower snake\_case for use as a discriminator value.
 
 <a name="Configuration"></a>
 ## type Configuration
@@ -182,7 +212,7 @@ RenderProviders requests generation of RenderedSchema\(\) and provider execution
 func (d *Declaration[T]) StringerEnum[F any](field FieldRef[F]) *Declaration[T]
 ```
 
-StringerEnum marks field as an enum whose values are compared via fmt.Stringer \(equivalent to WithStringerEnum\).
+StringerEnum emits an integer enum field using its constant names instead of its underlying integer values \(equivalent to WithStringerEnum\).
 
 <a name="DeclarationSpec"></a>
 ## type DeclarationSpec
@@ -497,15 +527,15 @@ type SealedUnionMarker struct {
 ### func SealedUnion
 
 ```go
-func SealedUnion[I any](discriminator string) SealedUnionMarker
+func SealedUnion[I any](discriminator string, inflectors ...func(string) string) SealedUnionMarker
 ```
 
-SealedUnion declares the discriminator property for the sealed interface I. A sealed interface is one whose own body declares an unexported method; its variants are inferred from the same\-package struct types that declare that method directly, so membership needs no declaration. The discriminator is the only per\-union setting: the default property is "type" and needs no declaration; SealedUnion sets a different property for every use of I in every generated schema, codec, and TypeScript output. Discriminator values are unchanged: the concrete type name.
+SealedUnion declares the discriminator property for the sealed interface I. A sealed interface is one whose own body declares an unexported method; its variants are inferred from the same\-package struct types that declare that method directly, so membership needs no declaration. The default property is "type" and needs no declaration; SealedUnion sets a different property for every use of I in every generated schema, codec, and TypeScript output. The optional inflector determines each variant's value from its concrete Go type name. Pascal is the default; Snake and Camel are also provided. Executable codegen configuration may supply any non\-nil func\(string\) string. Build\-tagged source markers accept the named Pascal, Snake, and Camel functions.
 
 The declaration must appear in the build\-tagged file of the package that declares I, exactly once per interface, with a string literal argument:
 
 ```
-var _ = polytype.SealedUnion[Animal]("kind")
+var _ = polytype.SealedUnion[Animal]("kind", polytype.Snake)
 ```
 
 A declaration in another package, a duplicate declaration, a declaration for a non\-sealed interface or a non\-interface type, a non\-literal argument, or an invalid property name is a generation error naming the interface.
@@ -519,6 +549,7 @@ SealedUnionSpec configures the discriminator property of one inferred sealed int
 type SealedUnionSpec struct {
     Type          TypeSpec
     Discriminator string
+    Inflect       func(string) string
 }
 ```
 
@@ -556,7 +587,6 @@ Package codegen runs polytype generation from executable configuration values. I
   - [func Target\(dir string\) Option](<#Target>)
   - [func TypeScript\(dir string, barrel ...bool\) Option](<#TypeScript>)
   - [func Validation\(\) Option](<#Validation>)
-  - [func YAML\(\) Option](<#YAML>)
 - [type Options](<#Options>)
 - [type TypeScriptOptions](<#TypeScriptOptions>)
 
@@ -664,15 +694,6 @@ func Validation() Option
 
 Validation selects JSON Schema, its Go accessors, and generated validators.
 
-<a name="YAML"></a>
-### func YAML
-
-```go
-func YAML() Option
-```
-
-YAML also emits the supported YAML decoding and validation entrypoints.
-
 <a name="Options"></a>
 ## type Options
 
@@ -687,7 +708,6 @@ type Options struct {
     JSONSchema bool
     GoCode     bool
     Validate   bool
-    YAML       bool
 
     TypeScript *TypeScriptOptions
     Devalue    *DevalueOptions
@@ -1387,7 +1407,7 @@ type Ref struct{ Target Name }
 <a name="Required"></a>
 ## type Required
 
-Required is a required non\-null field. Ordinary omitempty/omitzero tags do not become Optional; lowering must diagnose their valid\-domain limitation.
+Required is a required non\-null field. Direct pointers and ordinary omitempty/omitzero tags are rejected during lowering; authors must state nullability or omission with Nullable or Optional.
 
 ```go
 type Required struct{ Type Type }
