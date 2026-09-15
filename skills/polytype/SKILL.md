@@ -273,7 +273,10 @@ discriminators, and shared `$defs`, read
 from compiling examples in this repository and checked for drift by the Go
 test suite.
 
-Known limitations (fail fast, don't fight them): no maps or recursive types;
+Known limitations (fail fast, don't fight them): no maps; recursive types work
+with `GoJSON()`, `TypeScript()`, and `Devalue()` through programmatic
+`codegen.Gen` but not with `JSONSchema()` or schema-backed validation (deferred);
+recursive embedding where both types need owner codecs is rejected;
 registered interfaces support scalar `I`, `Optional[I]`, and direct
 one-dimensional `[]I` fields, but not `Nullable[I]`, fixed arrays, nested
 slices, named slice containers, or Optional/Nullable interface slices; external

@@ -7,8 +7,11 @@
 // and JSON names before constructing this model. The builder's TypeDefinitions
 // adapter produces this model for the TypeScript backend.
 //
-// Types form a finite DAG. References may share definitions but may not introduce
-// recursion. Objects are closed, ordered sets of properties. Ordinary values are
+// Named definitions may reference one another, including recursive and mutually
+// recursive references through Ref edges. Inline constructor nodes still form a
+// finite DAG: a back-edge is valid only when it passes through a named
+// definition. Nonproductive alias loops (Ref-only cycles) are rejected.
+// Objects are closed, ordered sets of properties. Ordinary values are
 // non-null; absence and null are separate, direct-field constructors. Unions are
 // field-only constructors with explicit, resolved tags, including singleton
 // unions. There is no general anyOf, any, map, or opaque-provider constructor.

@@ -571,7 +571,7 @@ func (r *ScanResult) resolveTypeExpr(_expr Expr, seen SeenTypes) error {
 				var added bool
 				seen, added = seen.Add(named.ID())
 				if !added {
-					return fmt.Errorf("cyclic dependency found at %s", named.Position())
+					return nil
 				}
 				if r.alreadyTraversedLocally[expr.Name] {
 					return nil

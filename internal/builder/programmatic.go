@@ -46,8 +46,10 @@ type ProgrammaticConfig struct {
 }
 
 // LoadProgrammatic loads target and constructs the existing generation engine
-// from executable declarations.
-func LoadProgrammatic(target string, config ProgrammaticConfig, mapSchemas bool) (SchemaBuilder, error) {
+// from executable declarations. discoverCodecs walks types to populate the
+// enum and sealed-union codec metadata needed by GoJSON. mapSchemas builds
+// JSON Schema nodes; it implies discoverCodecs.
+func LoadProgrammatic(target string, config ProgrammaticConfig, discoverCodecs, mapSchemas bool) (SchemaBuilder, error) {
 	pkgs, err := syntax.Load(target)
 	if err != nil {
 		return SchemaBuilder{}, err
@@ -55,12 +57,12 @@ func LoadProgrammatic(target string, config ProgrammaticConfig, mapSchemas bool)
 	if len(pkgs) == 0 {
 		return SchemaBuilder{}, fmt.Errorf("no packages found for %s", target)
 	}
-	return NewProgrammatic(pkgs[0], config, mapSchemas)
+	return NewProgrammatic(pkgs[0], config, discoverCodecs, mapSchemas)
 }
 
 // NewProgrammatic constructs the existing generation engine from executable
 // declarations instead of source marker calls.
-func NewProgrammatic(pkg *decorator.Package, config ProgrammaticConfig, mapSchemas bool) (SchemaBuilder, error) {
+func NewProgrammatic(pkg *decorator.Package, config ProgrammaticConfig, discoverCodecs, mapSchemas bool) (SchemaBuilder, error) {
 	data, err := syntax.LoadPackage(pkg)
 	if err != nil {
 		return SchemaBuilder{}, err
@@ -121,7 +123,7 @@ func NewProgrammatic(pkg *decorator.Package, config ProgrammaticConfig, mapSchem
 			data.SchemaMethods = append(data.SchemaMethods, method)
 		}
 	}
-	return newFromScan(data, nil, mapSchemas)
+	return newFromScan(data, nil, discoverCodecs, mapSchemas)
 }
 
 func discriminatorValues(union ConfiguredUnion, iface syntax.IfaceImplementations) (values map[string]string, err error) {

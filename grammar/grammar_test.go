@@ -291,6 +291,55 @@ func requireDefinition(t *testing.T, defs typegrammar.Definitions, name typegram
 	return typegrammar.Definition{}
 }
 
+func TestLoadAndLowerRecursiveTypes(t *testing.T) {
+	source := `package fixture
+
+import "github.com/tylergannon/polytype"
+
+// Node is a recursive tree.
+type Node struct {
+	Label    string  ` + "`json:\"label\"`" + `
+	Children []Node  ` + "`json:\"children\"`" + `
+}
+
+// LinkedA and LinkedB form a mutual recursion through Nullable pointers.
+type LinkedA struct {
+	Value int                                ` + "`json:\"value\"`" + `
+	Next  polytype.Nullable[*LinkedB]        ` + "`json:\"next\"`" + `
+}
+
+type LinkedB struct {
+	Tag  string                              ` + "`json:\"tag\"`" + `
+	Back polytype.Nullable[*LinkedA]         ` + "`json:\"back\"`" + `
+}
+`
+	dir := writeFixture(t, map[string]string{"fixture.go": source})
+	pkg, err := grammar.Load(dir)
+	require.NoError(t, err)
+
+	nodeType := namedType(t, pkg, "Node")
+	linkedAType := namedType(t, pkg, "LinkedA")
+	defs, nodes, err := pkg.Lower([]grammar.Root{
+		{Type: nodeType},
+		{Type: linkedAType},
+	})
+	require.NoError(t, err)
+	require.NoError(t, defs.Validate())
+	require.Len(t, nodes, 2)
+
+	nodeName := typegrammar.Name{PackagePath: "example.com/grammarfixture", Name: "Node"}
+	linkedAName := typegrammar.Name{PackagePath: "example.com/grammarfixture", Name: "LinkedA"}
+	linkedBName := typegrammar.Name{PackagePath: "example.com/grammarfixture", Name: "LinkedB"}
+
+	requireDefinition(t, defs, nodeName)
+	requireDefinition(t, defs, linkedAName)
+	requireDefinition(t, defs, linkedBName)
+
+	ref, ok := nodes[0].(*typegrammar.Ref)
+	require.True(t, ok, "root Node should lower to Ref")
+	require.Equal(t, nodeName, ref.Target)
+}
+
 func writeFixture(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root, err := filepath.Abs("..")

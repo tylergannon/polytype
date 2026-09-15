@@ -299,9 +299,9 @@ func TestTypeDefinitionsSourceAdmissionRejectsInvalidCompositions(t *testing.T) 
 		want    string
 	}{
 		{
-			name: "cycle",
+			name: "bare_pointer_recursive",
 			body: `type Root struct { Next *Root ` + "`json:\"next\"`" + ` }`,
-			want: "cyclic dependency",
+			want: "bare pointer field",
 		},
 		{
 			name: "map",
