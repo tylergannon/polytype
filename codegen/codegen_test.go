@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tylergannon/polytype"
+	"github.com/tylergannon/polytype/codegen"
 	"github.com/tylergannon/polytype/internal/testutils"
 )
 
@@ -51,7 +53,8 @@ func TestProgrammaticGenerationSelectsOutputsWithoutRegistration(t *testing.T) {
 		fixture := copyProgrammaticFixture(t, repoRoot)
 		runGo(t, fixture, "run", "./cmd/gojson")
 
-		require.FileExists(t, filepath.Join(fixture, "model", "jsonschema_gen.go"))
+		require.FileExists(t, filepath.Join(fixture, "model", "polytype_gen.go"))
+		require.NoFileExists(t, filepath.Join(fixture, "model", "jsonschema_gen.go"))
 		_, err := os.Stat(filepath.Join(fixture, "model", "jsonschema"))
 		require.ErrorIs(t, err, os.ErrNotExist)
 		runGo(t, fixture, "test", "./model")
@@ -66,7 +69,8 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 		fixture := copyRecursiveFixture(t, repoRoot)
 		runGo(t, fixture, "run", "./cmd/generate")
 
-		require.FileExists(t, filepath.Join(fixture, "model", "jsonschema_gen.go"))
+		require.FileExists(t, filepath.Join(fixture, "model", "polytype_gen.go"))
+		require.NoFileExists(t, filepath.Join(fixture, "model", "jsonschema_gen.go"))
 		require.FileExists(t, filepath.Join(fixture, "generated", "typescript", "types.ts"))
 		require.FileExists(t, filepath.Join(fixture, "generated", "codec", "codec_gen.go"))
 		_, err := os.Stat(filepath.Join(fixture, "model", "jsonschema"))
@@ -84,13 +88,13 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 			require.NoError(t, err)
 			return data
 		}
-		goJSON1 := read("model/jsonschema_gen.go")
+		goJSON1 := read("model/polytype_gen.go")
 		ts1 := read("generated/typescript/types.ts")
 		dv1 := read("generated/codec/codec_gen.go")
 
 		runGo(t, fixture, "run", "./cmd/generate")
 
-		require.Equal(t, goJSON1, read("model/jsonschema_gen.go"), "Go JSON output changed")
+		require.Equal(t, goJSON1, read("model/polytype_gen.go"), "Go JSON output changed")
 		require.Equal(t, ts1, read("generated/typescript/types.ts"), "TypeScript output changed")
 		require.Equal(t, dv1, read("generated/codec/codec_gen.go"), "devalue output changed")
 	})
@@ -115,10 +119,69 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 		exit, _, stderr, err := testutils.RunCommand("go", fixture, "run", "./cmd/schema")
 		require.NoError(t, err)
 		require.NotEqual(t, 0, exit, "expected schema generation to fail for recursive types")
-		require.Contains(t, stderr, "circular dependency")
+		require.Contains(t, stderr, "JSON Schema cannot express the recursive type model.")
 		_, statErr := os.Stat(filepath.Join(fixture, "model", "jsonschema"))
 		require.ErrorIs(t, statErr, os.ErrNotExist, "schema directory should not be created")
 	})
+}
+
+// TestGenWithDeclarationFilesPresent runs the generator program from issue
+// #129 (testdata/recursive_declarations/gen) against packages whose
+// declaration files hold Declare[Tree](), a Compose call, and
+// Declare(Tree.Schema). A programmatic configuration does not read them, so
+// every output succeeds beside each one; JSON Schema alone fails, once,
+// naming the output and the option that avoids it.
+func TestGenWithDeclarationFilesPresent(t *testing.T) {
+	repoRoot, err := filepath.Abs("..")
+	require.NoError(t, err)
+
+	fixture := copyNamedFixture(t, repoRoot, "testdata/recursive_declarations")
+	gen := filepath.Join(t.TempDir(), "gen")
+	runGo(t, fixture, "build", "-o", gen, "./gen")
+	run := func(t *testing.T, target, out string) (int, string) {
+		t.Helper()
+		t.Setenv("TARGET", target)
+		t.Setenv("OUT", out)
+		exit, stdout, stderr, err := testutils.RunCommand(gen, fixture)
+		require.NoError(t, err)
+		return exit, stdout + stderr
+	}
+
+	for _, target := range []string{"noarg", "compose", "entrypoint"} {
+		t.Run(target, func(t *testing.T) {
+			for _, out := range []string{"", "ts", "devalue"} {
+				exit, output := run(t, target, out)
+				require.Equal(t, 0, exit, "OUT=%q: %s", out, output)
+			}
+			pkg := filepath.Join(fixture, target)
+			codec, err := os.ReadFile(filepath.Join(pkg, "polytype_gen.go"))
+			require.NoError(t, err)
+			require.Contains(t, string(codec), `"kind"`)
+			require.NotContains(t, string(codec), "errNoDiscriminator")
+			require.NoFileExists(t, filepath.Join(pkg, "jsonschema_gen.go"))
+			require.NoDirExists(t, filepath.Join(pkg, "jsonschema"))
+			require.FileExists(t, filepath.Join(pkg, "ts", "types.ts"))
+			require.FileExists(t, filepath.Join(pkg, "devalue_gen.go"))
+
+			exit, output := run(t, target, "schema")
+			require.NotEqual(t, 0, exit, output)
+			require.Equal(t, 1, strings.Count(output, "JSON Schema cannot express the recursive type "+target+".Node"), output)
+			require.Contains(t, output, "Only the JSON Schema output has this limit")
+			require.Contains(t, output, "select codegen.GoJSON() instead of codegen.JSONSchema()")
+			require.NotContains(t, output, "rendering struct field")
+		})
+	}
+	// The codecs generated through codegen.Gen round-trip the issue's value.
+	runGo(t, fixture, "test", "./...")
+}
+
+// TestGenWithoutOutputNamesDeclaredType proves a declaration without a schema
+// entrypoint and no selected output is rejected by name.
+func TestGenWithoutOutputNamesDeclaredType(t *testing.T) {
+	type Tree struct{}
+	err := codegen.Gen(polytype.Declare[Tree]())
+	require.ErrorContains(t, err, "no output selected for Tree")
+	require.ErrorContains(t, err, "must select at least one output")
 }
 
 func TestCodecDiscoveryPackageQualifiedCollision(t *testing.T) {
@@ -127,7 +190,7 @@ func TestCodecDiscoveryPackageQualifiedCollision(t *testing.T) {
 
 	fixture := copyNamedFixture(t, repoRoot, "testdata/collision")
 	runGo(t, fixture, "run", "./cmd/generate")
-	require.FileExists(t, filepath.Join(fixture, "model", "jsonschema_gen.go"))
+	require.FileExists(t, filepath.Join(fixture, "model", "polytype_gen.go"))
 
 	exit, stdout, stderr, err := testutils.RunCommand("go", fixture, "run", "./cmd/prove")
 	require.NoError(t, err)

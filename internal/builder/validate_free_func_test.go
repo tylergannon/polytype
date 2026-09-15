@@ -95,14 +95,14 @@ var _ = polytype.Declare(Root.Schema)
 }
 
 // TestFreeFunctionRootForRegisteredInterfaceGeneratesFreeFunction proves
-// that a free-function schema root for a type registered via the legacy
-// NewInterfaceImpl (recorded in Scan.Interfaces, not Scan.LocalNamedTypes)
-// is correctly classified as needing a free function, not a method: before
-// this fix, hasInvalidMethodReceiverBase only consulted LocalNamedTypes, so
-// this exact shape would be misrouted into SchemaMethods() and generate an
-// uncompilable `func (Value) ValueSchema()` (Go forbids an interface
-// receiver base). This is a fast, source-level check of the classification
-// only; TestInterfaceFuncTypeSchemaCallable in
+// that a free-function schema root for a sealed interface (recorded in
+// Scan.Interfaces, not Scan.LocalNamedTypes) is correctly classified as
+// needing a free function, not a method: before this fix,
+// hasInvalidMethodReceiverBase only consulted LocalNamedTypes, so this exact
+// shape would be misrouted into SchemaMethods() and generate an uncompilable
+// `func (Value) ValueSchema()` (Go forbids an interface receiver base).
+// This is a fast, source-level check of the classification only;
+// TestInterfaceFuncTypeSchemaCallable in
 // testfixtures/entrypoints/entrypoints_test.go is the real compile-and-call
 // proof, run through TestBasic's full go-build-and-test harness.
 func TestFreeFunctionRootForRegisteredInterfaceGeneratesFreeFunction(t *testing.T) {
@@ -129,10 +129,7 @@ import (
 
 func ValueSchema(Value) json.RawMessage { panic("not implemented") }
 
-var (
-	_ = polytype.NewInterfaceImpl[Value](First{})
-	_ = polytype.Declare(ValueSchema)
-)
+var _ = polytype.Declare(ValueSchema)
 `,
 	})
 
@@ -171,10 +168,7 @@ import (
 
 func ValueSchema(Value) json.RawMessage { panic("not implemented") }
 
-var (
-	_ = polytype.NewInterfaceImpl[Value](First{})
-	_ = polytype.Declare(ValueSchema)
-)
+var _ = polytype.Declare(ValueSchema)
 `,
 	})
 

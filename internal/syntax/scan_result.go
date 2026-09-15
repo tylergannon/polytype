@@ -241,6 +241,13 @@ type ScanResult struct {
 	// temp variable used during resolution only.
 	resolveQueue            []TypeSpec
 	alreadyTraversedLocally map[string]bool
+	// declarations reports whether this scan reads root declarations
+	// (Declare and the NewJSONSchema* markers) from its package's source.
+	// Only a declaration-file run on its own target package does: a
+	// programmatic run takes its roots from executable configuration, and a
+	// dependency package never contributes roots. SealedUnion markers are
+	// read by every scan because a discriminator belongs to the interface.
+	declarations bool
 }
 
 func (s ScanResult) GetPackage(pkgPath string) (ScanResult, bool) {
@@ -268,12 +275,24 @@ func (s seenPackages) add(pkg *decorator.Package) (seenPackages, bool) {
 	return s.see(pkg), true
 }
 
-// LoadPackage is the main entry point that creates a ScanResult for the given package.
+// LoadPackage is the main entry point that creates a ScanResult for the given package,
+// reading its declaration markers the way a declaration-file (CLI) run does.
 // Note: we pass a non-nil map to loadPackageInternal(...) so we can safely store references
 // to local types without panicking.
 func LoadPackage(pkg *decorator.Package) (res ScanResult, err error) {
 	res = newScanResult(pkg, map[string]ScanResult{})
+	res.declarations = true
 	// Pass an empty map so we never do `typesToMap[foo] = true` on a nil map.
+	err = res.loadPackageInternal(seenPackages{}, make(map[string]bool))
+	return
+}
+
+// LoadConfiguredPackage creates a ScanResult for generation from executable
+// configuration. The configuration supplies the roots, so root declarations
+// in the package's source are not read and cannot fail the scan; SealedUnion
+// markers still apply.
+func LoadConfiguredPackage(pkg *decorator.Package) (res ScanResult, err error) {
+	res = newScanResult(pkg, map[string]ScanResult{})
 	err = res.loadPackageInternal(seenPackages{}, make(map[string]bool))
 	return
 }
@@ -284,6 +303,7 @@ func loadPackageForTest(pkg *decorator.Package, typesToInclude ...string) (ScanR
 		types[typeName] = true
 	}
 	scanResult := newScanResult(pkg, map[string]ScanResult{})
+	scanResult.declarations = true
 	err := scanResult.loadPackageInternal(seenPackages{}, types)
 	return scanResult, err
 }
@@ -409,7 +429,11 @@ func (r *ScanResult) loadPackageInternal(seen seenPackages, typesToMap map[strin
 
 	r.MarkerCalls = _decls.varDecls.MarkerFuncs()
 	for _, decl := range r.MarkerCalls {
-		switch decl.CallExpr.MustIdentifyFunc().TypeName {
+		name := decl.CallExpr.MustIdentifyFunc().TypeName
+		if !r.declarations && name != MarkerFuncSealedUnion {
+			continue
+		}
+		switch name {
 		case MarkerFuncNewJSONSchemaMethod:
 			method, err := decl.ParseSchemaMethod()
 			if err != nil {
@@ -453,8 +477,11 @@ func (r *ScanResult) loadPackageInternal(seen seenPackages, typesToMap map[strin
 				return err
 			}
 
+		case funcCompose:
+			return fmt.Errorf("polytype.Compose at %s is not supported in a declaration file: declare each root and sealed union as its own var _ = polytype.Declare(...) or var _ = polytype.SealedUnion[I](...); Compose combines configuration passed to codegen.Gen", decl.CallExpr.Position())
+
 		default:
-			return fmt.Errorf("unsupported marker function: %s", decl.CallExpr.MustIdentifyFunc())
+			return fmt.Errorf("polytype.%s at %s is not a declaration marker; a declaration file accepts polytype.Declare and polytype.SealedUnion", name, decl.CallExpr.Position())
 		}
 	}
 

@@ -76,8 +76,12 @@ func parseFluentChain(outer CallExpr) (CallExpr, []fluentChainLink, bool) {
 // loadPackageInternal.
 func (m MarkerFunctionCall) ParseFluentDeclaration(localFuncs []FuncDecl) (method SchemaMethod, isMethodRoot bool, err error) {
 	funcArgs := m.CallExpr.Args()
-	if len(funcArgs) != 1 {
-		return SchemaMethod{}, false, fmt.Errorf("polytype.Declare expects exactly one argument (the schema func), at %s", m.CallExpr.Position())
+	if len(funcArgs) > 1 {
+		return SchemaMethod{}, false, fmt.Errorf("polytype.Declare accepts at most one schema entrypoint, at %s", m.CallExpr.Position())
+	}
+	if len(funcArgs) == 0 {
+		method, err = m.parseEntrypointlessDeclaration()
+		return method, true, err
 	}
 
 	var receiver TypeID
@@ -120,6 +124,33 @@ func (m MarkerFunctionCall) ParseFluentDeclaration(localFuncs []FuncDecl) (metho
 		MarkerCall:       m,
 		Options:          opts,
 	}, isMethodRoot, nil
+}
+
+// parseEntrypointlessDeclaration resolves polytype.Declare[T](), which selects
+// T as a root without a schema entrypoint: T gets the outputs that need no
+// schema (Go JSON codecs, TypeScript) and no schema file or accessor. The
+// chain methods that render a schema through its accessor need one.
+func (m MarkerFunctionCall) parseEntrypointlessDeclaration() (SchemaMethod, error) {
+	index, ok := m.CallExpr.Concrete.Fun.(*dst.IndexExpr)
+	if !ok {
+		return SchemaMethod{}, fmt.Errorf("polytype.Declare needs a type argument or a schema entrypoint, such as polytype.Declare[T]() or polytype.Declare(T.Schema), at %s", m.CallExpr.Position())
+	}
+	receiver, err := unwrapSchemaMethodReceiver(m.CallExpr.NewExpr(index.Index))
+	if err != nil {
+		return SchemaMethod{}, err
+	}
+	for _, link := range m.fluentLinks {
+		switch link.methodName {
+		case "Accessor", "Method", "Function", "RenderProviders":
+			return SchemaMethod{}, fmt.Errorf("polytype.Declare[%s]().%s renders a JSON Schema and requires a schema entrypoint, such as polytype.Declare(%s.Schema), at %s",
+				receiver.TypeName, link.methodName, receiver.TypeName, NewCallExpr(link.call, m.CallExpr.pkg, m.CallExpr.file).Position())
+		}
+	}
+	opts, err := parseFluentChainOptions(m.fluentLinks, receiver, m)
+	if err != nil {
+		return SchemaMethod{}, err
+	}
+	return SchemaMethod{Receiver: receiver, MarkerCall: m, Options: opts}, nil
 }
 
 func findLocalFuncDecl(funcDecls []FuncDecl, name string) (*dst.FuncDecl, bool) {

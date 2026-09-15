@@ -29,14 +29,17 @@ func (s *SchemaBuilder) TypeDefinitions() (typegrammar.Definitions, error) {
 		builder: s,
 		index:   make(map[typegrammar.Name]int),
 	}
-	for _, method := range s.SchemaMethods() {
-		name := typegrammar.Name{PackagePath: method.Receiver.PkgPath, Name: method.Receiver.TypeName}
-		if err := l.named(name); err != nil {
-			return nil, fmt.Errorf("build type definitions for %s: %w", name, err)
+	roots := append(s.SchemaMethods(), s.SchemaFreeFuncs()...)
+	// SchemaMethods drops a root whose type cannot carry a method, which
+	// matters only for a schema entrypoint. A root declared without one
+	// (Declare[T]()) is lowered whatever its type.
+	for _, method := range s.Scan.SchemaMethods {
+		if method.SchemaMethodName == "" && s.hasInvalidMethodReceiverBase(method.Receiver.TypeName) {
+			roots = append(roots, method)
 		}
 	}
-	for _, fn := range s.SchemaFreeFuncs() {
-		name := typegrammar.Name{PackagePath: fn.Receiver.PkgPath, Name: fn.Receiver.TypeName}
+	for _, root := range roots {
+		name := typegrammar.Name{PackagePath: root.Receiver.PkgPath, Name: root.Receiver.TypeName}
 		if err := l.named(name); err != nil {
 			return nil, fmt.Errorf("build type definitions for %s: %w", name, err)
 		}

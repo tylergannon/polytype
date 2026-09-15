@@ -5,12 +5,13 @@ package codec
 import (
 	"encoding/json"
 	"fmt"
-	devalue "github.com/tylergannon/polytype/devalue"
 	"math"
 	pkg_model "recursivefixture/model"
 	"slices"
 	"strconv"
 	"time"
+
+	devalue "github.com/tylergannon/polytype/devalue"
 )
 
 // dvAt renders a JSON-pointer-style path for a diagnostic. The root value has

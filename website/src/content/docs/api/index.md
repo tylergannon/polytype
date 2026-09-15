@@ -109,7 +109,7 @@ type Configuration interface {
 func Compose(configs ...Configuration) Configuration
 ```
 
-Compose combines declarations and union settings into one configuration.
+Compose combines declarations and union settings into one configuration for a generator program, such as one calling codegen.Gen. A declaration file lists each Declare and SealedUnion as its own var \_ = declaration instead; the polytype CLI rejects a Compose call there.
 
 <a name="ConfigurationSpec"></a>
 ## type ConfigurationSpec
@@ -159,6 +159,8 @@ Both forms produce an ordinary configuration value:
 config := polytype.Declare[Person]()
 config := polytype.Declare(Person.Schema)
 ```
+
+A declaration file read by the polytype CLI accepts both forms too: Declare\[Person\]\(\) gives Person the generated Go JSON codecs, and TypeScript with \-\-typescript, but no schema file or accessor.
 
 <a name="Declaration[T].Accessor"></a>
 ### func \(\*Declaration\[T\]\) Accessor
@@ -1094,7 +1096,7 @@ Package typegrammar defines the accepted, resolved static type\-definition gramm
 
 A definition describes a Go type's JSON value structure, retaining numeric kinds, pointer/value identity, collection shape, and field\-local registrations. Source loading must resolve aliases, embedding/field selection, registrations, and JSON names before constructing this model. The builder's TypeDefinitions adapter produces this model for the TypeScript backend.
 
-Types form a finite DAG. References may share definitions but may not introduce recursion. Objects are closed, ordered sets of properties. Ordinary values are non\-null; absence and null are separate, direct\-field constructors. Unions are field\-only constructors with explicit, resolved tags, including singleton unions. There is no general anyOf, any, map, or opaque\-provider constructor.
+Named definitions may reference one another, including recursive and mutually recursive references through Ref edges. Inline constructor nodes still form a finite DAG: a back\-edge is valid only when it passes through a named definition. Nonproductive alias loops \(Ref\-only cycles\) are rejected. Objects are closed, ordered sets of properties. Ordinary values are non\-null; absence and null are separate, direct\-field constructors. Unions are field\-only constructors with explicit, resolved tags, including singleton unions. There is no general anyOf, any, map, or opaque\-provider constructor.
 
 This is the static structural subset of the v1 contract, not a Go\-source parser, arbitrary JSON Schema grammar, or claim of codec conformance. Runtime provider output, unresolved external schema refs and unproved custom wire mappings must be diagnosed by lowering, not replaced with a permissive node. Backends must define their projection explicitly: for example TypeScript's number cannot enforce all Go ranges, and its object types are not validators.
 
@@ -1177,7 +1179,7 @@ func (defs Definitions) Validate() error
 
 Validate admits exactly the constructors and compositions documented by this package. It checks all definitions, including unused ones. It neither mutates nor normalizes the graph, executes user code, nor validates runtime JSON.
 
-The graph's edges are child types, references, object field operands and union implementations. Rejecting every back edge establishes a finite DAG; each constructor can therefore be projected by structural induction. Sharing is permitted and checked once per relevant context, rather than mistaken for recursion. Source\-level admissibility \(including aliases, tags, interface satisfaction, custom hooks and supported package discovery\) remains lowering's obligation because those facts are not recoverable from a resolved graph.
+Named recursion through Ref edges and union implementations is admitted: a definition may reference itself or a mutually\-dependent definition provided the cycle passes through at least one productive constructor \(Object, Slice, Array, Pointer\). Nonproductive alias loops where every edge is a Ref are rejected. Literal cycles of constructor pointers \(hand\-built graphs where a node's child pointer points back to itself\) remain rejected. Sharing is permitted and checked once per relevant context.
 
 <details><summary>Example</summary>
 <p>

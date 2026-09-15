@@ -16,8 +16,6 @@ import (
 //go:embed jsonschema
 var __gen_jsonschema_fs embed.FS
 
-var errNoDiscriminator = errors.New("no discriminator property 'type' found")
-
 // Each marked enum type is referenced here through its first typed constant
 // so that its enum() marker is used from production code and keeps the shape
 // the generator requires.

@@ -288,8 +288,9 @@ same explicit module release.
 ## Limitations and debugging
 
 Not supported: map types, channels, functions, inline interfaces, recursive or
-circular type references (detected and rejected), unsupported registered-
-interface containers (fixed arrays, nested/named/optional/nullable slices), and
+circular type references in JSON Schema output (detected and rejected; declare
+the root as `Declare[T]()` for Go JSON codecs and TypeScript), unsupported
+registered-interface containers (fixed arrays, nested/named/optional/nullable slices), and
 external package types other than `time.Time` (rendered as a string with RFC3339
 guidance). Max nesting depth 100.
 

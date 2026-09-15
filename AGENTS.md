@@ -64,7 +64,7 @@ Task runner is `just` (justfile), not `make`.
 ### Two-Phase Generation Pipeline
 
 1. **Phase 1 — JSON schema files**: Scans Go types via AST, generates `.json` files in `jsonschema/` subdirectory
-2. **Phase 2 — Go code**: Generates `jsonschema_gen.go` with `embed.FS` for runtime schema access
+2. **Phase 2 — Go code**: Generates `jsonschema_gen.go` with `embed.FS` for runtime schema access, or `polytype_gen.go` (codecs only) when no root has a schema entrypoint
 
 ### Package Layout
 
@@ -83,7 +83,7 @@ Task runner is `just` (justfile), not `make`.
 
 ### Registration System
 
-Declarations are executable configuration values. The CLI also reads the same calls as AST expressions from build-tagged `schema.go` files. `Declare(fn)` — a method expression (`T.Schema`) or a free function taking `T` — is the traditional entry point; `Declare[T]()` selects a root without requiring JSON Schema. Chain options onto the returned `*Declaration[T]`:
+Declarations are executable configuration values. The CLI also reads the same calls as AST expressions from build-tagged `schema.go` files, one `var _ =` per declaration (`Compose` is for generator programs; the CLI rejects it there). `Declare(fn)` — a method expression (`T.Schema`) or a free function taking `T` — is the traditional entry point; `Declare[T]()` selects a root without requiring JSON Schema. Chain options onto the returned `*Declaration[T]`:
 
 - `Declare(T.Schema)` — primary registration
 - `.StringerEnum(Field[T, F]("Field"))` — emit an integer enum field's constant names as strings
@@ -108,7 +108,7 @@ Pass `--validate` to generation, and add a panic stub such as `func (Person) Val
 ### Limitations
 
 - No support for maps, channels, functions, or inline interfaces
-- Circular/recursive references are detected and rejected
+- Circular/recursive references are rejected for JSON Schema output (with one diagnostic naming the recursive type); Go JSON codecs, TypeScript, and devalue support them
 - External package types limited to `time.Time` (rendered as string with RFC3339 guidance)
 - Max nesting depth: 100
 

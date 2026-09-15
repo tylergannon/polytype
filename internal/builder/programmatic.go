@@ -61,14 +61,15 @@ func LoadProgrammatic(target string, config ProgrammaticConfig, discoverCodecs, 
 }
 
 // NewProgrammatic constructs the existing generation engine from executable
-// declarations instead of source marker calls.
+// declarations instead of source marker calls. Root declarations in the
+// package's source are not read, so a declaration file for the CLI never
+// affects or fails a programmatic run; its SealedUnion markers still apply
+// unless config overrides them.
 func NewProgrammatic(pkg *decorator.Package, config ProgrammaticConfig, discoverCodecs, mapSchemas bool) (SchemaBuilder, error) {
-	data, err := syntax.LoadPackage(pkg)
+	data, err := syntax.LoadConfiguredPackage(pkg)
 	if err != nil {
 		return SchemaBuilder{}, err
 	}
-	data.SchemaMethods = nil
-	data.SchemaFuncs = nil
 
 	for _, union := range config.SealedUnions {
 		if union.PackagePath != data.Pkg.PkgPath {
@@ -123,7 +124,11 @@ func NewProgrammatic(pkg *decorator.Package, config ProgrammaticConfig, discover
 			data.SchemaMethods = append(data.SchemaMethods, method)
 		}
 	}
-	return newFromScan(data, nil, discoverCodecs, mapSchemas)
+	schemas := noSchemas
+	if mapSchemas {
+		schemas = allSchemas
+	}
+	return newFromScan(data, nil, discoverCodecs, schemas)
 }
 
 func discriminatorValues(union ConfiguredUnion, iface syntax.IfaceImplementations) (values map[string]string, err error) {

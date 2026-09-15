@@ -23,6 +23,5 @@ var (
 	_ = polytype.NewJSONSchemaFunc[FuncType](FuncTypeSchema)
 	_ = polytype.NewJSONSchemaBuilder[BuilderType](BuilderTypeSchema)
 	_ = polytype.Declare(PointerFuncTypeSchema)
-	_ = polytype.NewInterfaceImpl[InterfaceFuncType](InterfaceFuncImpl{})
 	_ = polytype.Declare(InterfaceFuncTypeSchema)
 )

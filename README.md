@@ -123,7 +123,7 @@ JSON Schema directory or a schema accessor. Select the projections you need:
 codegen.Gen(config, codegen.Target("./model"), codegen.JSONSchema())
 
 // Generated MarshalJSON/UnmarshalJSON support for enums and sealed unions,
-// without JSON Schema.
+// without JSON Schema, in polytype_gen.go.
 codegen.Gen(config, codegen.Target("./model"), codegen.GoJSON())
 ```
 
@@ -148,8 +148,16 @@ config := polytype.Declare[Order]().
     StringerEnum(polytype.Field[Order, OrderStatus]("Status"))
 ```
 
+A declaration file accepts the no-argument form as well:
+`var _ = polytype.Declare[Order]()` gives `Order` the CLI's Go JSON codecs,
+and TypeScript with `--typescript`, but no schema file or accessor, so it
+cannot be combined with `--validate`.
+
 Combine roots and sealed-union settings with `polytype.Compose`. JSON Schema,
 Go JSON, TypeScript, and devalue all consume the resulting configuration.
+`Compose` builds a value for a generator program; a declaration file lists each
+root and `SealedUnion` setting as its own `var _ =` declaration, and the CLI
+rejects a `Compose` call there.
 
 ## 🔍 Why this tool
 
@@ -173,6 +181,7 @@ mutually exclusive build-tagged files:
 |---|---|---|---|
 | `schema.go` | `//go:build jsonschema` | You | Panic stubs + marker registrations; compiled only during generation |
 | `jsonschema_gen.go` | `//go:build !jsonschema` | Generated | Real schema, validation, and selected codec methods over an embedded `jsonschema/` directory |
+| `polytype_gen.go` | `//go:build !jsonschema` | Generated | Replaces `jsonschema_gen.go` when no schema is generated: codec methods only |
 
 Your package compiles at every stage — before generation (stubs) and after
 (generated implementations).
@@ -879,9 +888,12 @@ prompting), use `ObjectSchema` and add fields with `AddProperty` /
 
 - No map types, channels, functions, or inline interfaces
 - Recursive JSON Schema and schema-backed validation are not yet supported.
-  Recursive types work with `GoJSON()`, `TypeScript()`, and `Devalue()` through
-  the [programmatic generation](#programmatic-generation) API; `JSONSchema()`
-  rejects them before writing. Recursive embedding where the embedded type also
+  Recursive types work with Go JSON codecs, TypeScript, and devalue: declare
+  the root without a schema entrypoint (`var _ = polytype.Declare[Tree]()`) in
+  a declaration file, or select `GoJSON()`, `TypeScript()`, and `Devalue()`
+  through the [programmatic generation](#programmatic-generation) API. JSON
+  Schema output rejects them before writing, with one diagnostic naming the
+  recursive type. Recursive embedding where the embedded type also
   needs generated owner codecs (sealed union fields at both levels) is rejected
   with a competing-MarshalJSON diagnostic
 - Registered interfaces support scalar fields and direct `[]I` fields, but not

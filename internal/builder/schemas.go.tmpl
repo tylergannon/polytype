@@ -36,8 +36,6 @@ import (
 var __gen_jsonschema_fs embed.FS
 {{ end }}
 
-var errNoDiscriminator = errors.New("no discriminator property '{{$discriminatorProp}}' found")
-
 {{- if gt (len .EnumMarkers) 0 }}
 // Each marked enum type is referenced here through its first typed constant
 // so that its enum() marker is used from production code and keeps the shape
@@ -475,7 +473,7 @@ func {{.UnmarshalerFunc}}(data []byte) ({{.TypeNameWithPrefix}}, error) {
 		return nil, fmt.Errorf("no discriminator property '%s' found", {{printf "%q" .DiscriminatorPropName}})
 	{{- else }}
 	} else if _tempDiscriminator, ok := temp["{{$discriminatorProp}}"]; !ok {
-		return nil, errNoDiscriminator
+		return nil, fmt.Errorf("no discriminator property '%s' found", "{{$discriminatorProp}}")
 	{{- end }}
 	} else if discriminator, err = __jsonschema__decodeDiscriminator(_tempDiscriminator); err != nil {
 		return nil, __jsonschema__unmarshalDiscriminatorError(_tempDiscriminator, err)

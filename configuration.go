@@ -120,7 +120,10 @@ type configurationGroup struct{ spec ConfigurationSpec }
 
 func (g configurationGroup) polytypeConfiguration() ConfigurationSpec { return g.spec }
 
-// Compose combines declarations and union settings into one configuration.
+// Compose combines declarations and union settings into one configuration
+// for a generator program, such as one calling codegen.Gen. A declaration
+// file lists each Declare and SealedUnion as its own var _ = declaration
+// instead; the polytype CLI rejects a Compose call there.
 func Compose(configs ...Configuration) Configuration {
 	spec, err := ResolveConfiguration(configs...)
 	spec.err = err

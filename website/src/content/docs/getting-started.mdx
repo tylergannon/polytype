@@ -97,7 +97,10 @@ err := codegen.Gen(config,
 
 Select `codegen.JSONSchema()` or `codegen.GoJSON()` when those outputs are
 needed. `polytype.Compose` combines multiple declarations and sealed-union
-settings into one request.
+settings into one request for a generator program. In `schema.go`, write each
+`Declare` and `SealedUnion` as its own `var _ =` declaration instead; there,
+`polytype.Declare[T]()` generates T's Go JSON codecs, and TypeScript with
+`--typescript`, without a schema file or accessor.
 
 ## 4. Generate TypeScript with the Go JSON boundary
 

@@ -11,8 +11,6 @@ import (
 	"fmt"
 )
 
-var errNoDiscriminator = errors.New("no discriminator property 'type' found")
-
 func __polytype_marshal(value any) ([]byte, error) {
 	return jsonv2.Marshal(value, json.DefaultOptionsV1(), jsonv2.FormatNilSliceAsNull(false))
 }

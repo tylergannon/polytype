@@ -45,6 +45,16 @@ func Run(args BuilderArgs) (err error) {
 	builder.Pretty = args.Pretty
 	builder.Validate = args.Validate
 
+	// ValidateJSON validates against the root's generated schema, and a root
+	// declared without a schema entrypoint (Declare[T]()) gets none.
+	if builder.Validate {
+		for _, root := range builder.roots() {
+			if root.SchemaMethodName == "" {
+				return fmt.Errorf("--validate cannot generate ValidateJSON for %s: it is declared without a schema entrypoint; declare it as polytype.Declare(%s.Schema), or remove --validate", root.Receiver.TypeName, root.Receiver.TypeName)
+			}
+		}
+	}
+
 	// A NewJSONSchemaBuilder registration's stub takes no arguments; if its
 	// receiver type's underlying type is a pointer or interface, Go forbids
 	// a method there, and the zero-argument signature can't be preserved as
