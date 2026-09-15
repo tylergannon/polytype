@@ -129,13 +129,15 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 // #129 (testdata/recursive_declarations/gen) against packages whose
 // declaration files hold Declare[Tree](), a Compose call, and
 // Declare(Tree.Schema). A programmatic configuration does not read them, so
-// every output succeeds beside each one; JSON Schema alone fails, once,
-// naming the output and the option that avoids it.
+// every output succeeds beside each one: the TypeScript compiles in strict
+// mode, and the Go JSON and devalue codecs round-trip the issue's value. JSON
+// Schema alone fails, once, naming the output and the option that avoids it.
 func TestGenWithDeclarationFilesPresent(t *testing.T) {
 	repoRoot, err := filepath.Abs("..")
 	require.NoError(t, err)
 
 	fixture := copyNamedFixture(t, repoRoot, "testdata/recursive_declarations")
+	tsc := filepath.Join(repoRoot, "node_modules", ".bin", "tsc")
 	gen := filepath.Join(t.TempDir(), "gen")
 	runGo(t, fixture, "build", "-o", gen, "./gen")
 	run := func(t *testing.T, target, out string) (int, string) {
@@ -160,8 +162,19 @@ func TestGenWithDeclarationFilesPresent(t *testing.T) {
 			require.NotContains(t, string(codec), "errNoDiscriminator")
 			require.NoFileExists(t, filepath.Join(pkg, "jsonschema_gen.go"))
 			require.NoDirExists(t, filepath.Join(pkg, "jsonschema"))
-			require.FileExists(t, filepath.Join(pkg, "ts", "types.ts"))
 			require.FileExists(t, filepath.Join(pkg, "devalue_gen.go"))
+			types, err := os.ReadFile(filepath.Join(pkg, "ts", "types.ts"))
+			require.NoError(t, err)
+			require.Contains(t, string(types), `"kind": "branch";`)
+			require.Contains(t, string(types), `"kind": "leaf";`)
+			t.Run("TypeScript compiles with strict mode", func(t *testing.T) {
+				if _, statErr := os.Stat(tsc); statErr != nil {
+					t.Skip("tsc not installed (run npm ci at repo root)")
+				}
+				exit, stdout, stderr, err := testutils.RunCommand(tsc, fixture, "--strict", "--noEmit", filepath.Join(pkg, "ts", "types.ts"))
+				require.NoError(t, err)
+				require.Equal(t, 0, exit, fmt.Sprintf("tsc failed:\n%s\n%s", stdout, stderr))
+			})
 
 			exit, output := run(t, target, "schema")
 			require.NotEqual(t, 0, exit, output)
@@ -171,7 +184,8 @@ func TestGenWithDeclarationFilesPresent(t *testing.T) {
 			require.NotContains(t, output, "rendering struct field")
 		})
 	}
-	// The codecs generated through codegen.Gen round-trip the issue's value.
+	// The Go JSON and devalue codecs generated through codegen.Gen round-trip
+	// the issue's value.
 	runGo(t, fixture, "test", "./...")
 }
 
