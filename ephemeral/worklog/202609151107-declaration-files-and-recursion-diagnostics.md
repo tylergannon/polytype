@@ -124,3 +124,27 @@ until /consensus.
   `spawn_task` calls late in the session -> read CI with `gh pr checks
   --watch`; the devalue goimports follow-up is recorded above instead of as a
   task chip.
+- user follow-ups after close-out: asked why npm is in a Go project (answer
+  from the repo: the root `package.json` from #108 pins `tsc` and JS devalue
+  as optional test oracles; CI's go job runs `npm ci --ignore-scripts`),
+  approved removing the leaked dirs, and asked for a clearer account of the
+  devalue goimports follow-up.
+- cleanup: removed the eleven `internal/builder/testfixtures/<name>_<digits>`
+  dirs from #93. Each is a single `schema.go`/`shared.go` that a test writes
+  under `os.MkdirTemp`; nothing refers to them, and
+  `asref_collision_dep_1423005799` was a live package in `go list ./...`.
+  Folded into this PR: a branch off main would inherit main's two lint
+  rewrites.
+- correction (devalue follow-up): the cause is
+  `builder.FormatCodeWithGoimports`, not the devalue template. It calls
+  `imports.Process` with `TabWidth` 0, so the printer drops indentation,
+  goimports' blank-line pass between import groups matches nothing, and the
+  closing gofmt pass re-sorts the single block alphabetically. The same
+  x/tools v0.49.0 with `TabWidth: 8` (the CLI's value) groups correctly
+  (checked in a scratch module). Regenerating a scratch copy of
+  `codegen/testdata/recursive` reproduces the base snapshot byte for byte, so
+  the lint-grouped snapshot in this PR no longer matches generator output. No
+  test compares them: the codegen test regenerates into a temp copy, and
+  `go generate ./...` skips testdata. Every other committed polytype-generated
+  Go file is already goimports-clean. One-line fix offered to the user, not
+  applied.
