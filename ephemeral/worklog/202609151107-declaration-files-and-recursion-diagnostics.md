@@ -151,3 +151,17 @@ until /consensus.
 - fix (user asked): `FormatCodeWithGoimports` now passes `TabWidth: 8`; the
   recursive codegen test compares regenerated devalue output with the committed
   snapshot (fails on the old formatter). No other generated file changed.
+- correction: the user was angry that I spent about 12 minutes investigating
+  before answering three direct questions, and that I used npm (they use pnpm
+  and/or VitePlus). Both are saved as memory. Earlier I said a full test run
+  takes about 2 minutes; measured, it is 37-46 s wall time. The 2 minutes
+  included lint and generation.
+- test timing (user asked): the time is in `internal/builder` (59 sequential
+  tests, 27 s) and in 720 `go` subprocesses (102 s serial, `TestBasic` alone
+  38 s). Seven packages never cache. Filed as
+  https://github.com/tylergannon/polytype/issues/131, with the fixes listed as
+  suggestions, not requirements. Friction: a `go` wrapper placed first on PATH
+  sees nothing, because `go test` puts GOROOT/bin first on its subprocesses'
+  PATH. Put the wrapper in a symlinked GOROOT/bin instead.
+- closeout: CI green on `6ce051b`. The user asked to merge, so squash-merge
+  after this commit's CI.
