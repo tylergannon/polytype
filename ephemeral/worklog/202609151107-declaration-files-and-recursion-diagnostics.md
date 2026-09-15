@@ -104,3 +104,15 @@ until /consensus.
   (config rejects unions outside the target); dropping it would silently
   change codegen's wire output. An invalid declaration-file marker stays a
   generation error, as documented.
+- review round 3 (`ephemeral/reviews/202609151425-issue-129-round-03.md`,
+  reported session 01a0a6b6-960e-72d3-8e8d-f384dfcdafb4): "no findings". The
+  reviewer withdrew round 2 finding 1 on the documented SealedUnion contract
+  and confirmed the other fixes. Consensus reached at round 3.
+- friction: `agent --session <id>` reported a new session ID on each resumed
+  round (after a "model at capacity" retry) -> always take the next round's
+  session from the latest outcome line, not the first launch.
+- follow-up (not in this PR): devalue/codegen emits its devalue import inside
+  the standard-library group, so `just lint` (goimports over testdata)
+  rewrites the committed #128 snapshot
+  `codegen/testdata/recursive/generated/codec/codec_gen.go`; the generator
+  should emit goimports-grouped imports.
