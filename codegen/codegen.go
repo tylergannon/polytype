@@ -142,7 +142,7 @@ func Generate(config polytype.Configuration, opts Options) error {
 		}
 	}
 
-	b, err := builder.LoadProgrammatic(opts.TargetDir, configured, opts.JSONSchema || opts.GoCode)
+	b, err := builder.LoadProgrammatic(opts.TargetDir, configured, opts.GoCode, opts.JSONSchema)
 	if err != nil {
 		return err
 	}

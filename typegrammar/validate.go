@@ -28,13 +28,13 @@ func (e *Error) Error() string {
 // package. It checks all definitions, including unused ones. It neither mutates
 // nor normalizes the graph, executes user code, nor validates runtime JSON.
 //
-// The graph's edges are child types, references, object field operands and
-// union implementations. Rejecting every back edge establishes a finite DAG;
-// each constructor can therefore be projected by structural induction. Sharing
-// is permitted and checked once per relevant context, rather than mistaken for
-// recursion. Source-level admissibility (including aliases, tags, interface
-// satisfaction, custom hooks and supported package discovery) remains lowering's
-// obligation because those facts are not recoverable from a resolved graph.
+// Named recursion through Ref edges and union implementations is admitted:
+// a definition may reference itself or a mutually-dependent definition
+// provided the cycle passes through at least one productive constructor
+// (Object, Slice, Array, Pointer). Nonproductive alias loops where every edge
+// is a Ref are rejected. Literal cycles of constructor pointers (hand-built
+// graphs where a node's child pointer points back to itself) remain rejected.
+// Sharing is permitted and checked once per relevant context.
 func (defs Definitions) Validate() error {
 	return defs.ValidateWithRoots(nil)
 }
@@ -50,9 +50,10 @@ func (defs Definitions) Validate() error {
 // in an anonymous position inside a definition.
 func (defs Definitions) ValidateWithRoots(roots []Type) error {
 	v := validator{
-		defs:   make(map[Name]Definition, len(defs)),
-		active: make(map[Type]string),
-		done:   make(map[visit]bool),
+		defs:        make(map[Name]Definition, len(defs)),
+		active:      make(map[Type]string),
+		done:        make(map[visit]bool),
+		namedActive: make(map[Name]bool),
 	}
 	for i, def := range defs {
 		at := location{path: fmt.Sprintf("definitions[%d]", i), source: def.Source}
@@ -65,7 +66,8 @@ func (defs Definitions) ValidateWithRoots(roots []Type) error {
 		v.defs[def.Name] = def
 	}
 	for _, def := range defs {
-		if err := v.walk(def.Type, location{path: def.Name.String(), source: def.Source}, true, true); err != nil {
+		at := location{path: def.Name.String(), source: def.Source}
+		if err := v.walkNamed(def.Name, at, true); err != nil {
 			return err
 		}
 	}
@@ -101,9 +103,10 @@ type visit struct {
 }
 
 type validator struct {
-	defs   map[Name]Definition
-	active map[Type]string
-	done   map[visit]bool
+	defs        map[Name]Definition
+	active      map[Type]string
+	done        map[visit]bool
+	namedActive map[Name]bool
 }
 
 func validName(n Name) bool {
@@ -119,6 +122,54 @@ func knownType(t Type) bool {
 		return !reflect.ValueOf(t).IsNil()
 	default:
 		return false
+	}
+}
+
+// walkNamed validates one named definition, tracking it by name so that
+// recursive references through Ref or union implementations are recognized
+// as valid back-edges rather than rejected as cycles. A nonproductive alias
+// loop (definition whose type is a Ref chain back to itself with no
+// structural constructor) is detected and rejected.
+func (v *validator) walkNamed(name Name, at location, directEnum bool) error {
+	if v.namedActive[name] {
+		return nil
+	}
+	def, exists := v.defs[name]
+	if !exists {
+		return at.fail("unresolved reference %s", name)
+	}
+	if !knownType(def.Type) {
+		return v.walk(def.Type, at, true, directEnum)
+	}
+	if v.isAliasLoop(name) {
+		return at.fail("nonproductive alias: %s resolves to itself through references alone", name)
+	}
+	v.namedActive[name] = true
+	err := v.walk(def.Type, at, true, directEnum)
+	delete(v.namedActive, name)
+	return err
+}
+
+// isAliasLoop detects a definition that resolves to itself through only Ref
+// nodes: A = Ref{B}, B = Ref{A}. Such a loop carries no structural payload
+// and would cause every backend to diverge.
+func (v *validator) isAliasLoop(start Name) bool {
+	visited := map[Name]bool{start: true}
+	current := v.defs[start].Type
+	for {
+		ref, ok := current.(*Ref)
+		if !ok {
+			return false
+		}
+		if visited[ref.Target] {
+			return true
+		}
+		visited[ref.Target] = true
+		def, exists := v.defs[ref.Target]
+		if !exists {
+			return false
+		}
+		current = def.Type
 	}
 }
 
@@ -168,7 +219,7 @@ func (v *validator) walk(t Type, at location, namedOwner, directEnum bool) error
 		if !exists {
 			err = at.fail("unresolved reference %s", n.Target)
 		} else {
-			err = v.walk(def.Type, at.child(" -> "+n.Target.String(), def.Source), true, directEnum)
+			err = v.walkNamed(n.Target, at.child(" -> "+n.Target.String(), def.Source), directEnum)
 		}
 	}
 	if err == nil {
@@ -238,13 +289,19 @@ func (v *validator) field(f FieldValue, at location, namedOwner bool) error {
 	return at.fail("nil or unsupported field constructor %T", f)
 }
 
-// These helpers run only after walk has established resolved, acyclic operands.
+// dereference follows Ref edges to the first non-Ref constructor. It
+// terminates on reference-only loops by tracking visited names.
 func (v *validator) dereference(t Type) Type {
+	visited := make(map[Name]bool)
 	for {
 		r, ok := t.(*Ref)
 		if !ok {
 			return t
 		}
+		if visited[r.Target] {
+			return t
+		}
+		visited[r.Target] = true
 		t = v.defs[r.Target].Type
 	}
 }
@@ -308,7 +365,7 @@ func (v *validator) union(n *Union, at location, namedOwner bool) error {
 		if !exists {
 			return variantAt.fail("unresolved implementation %s", variant.Implementation)
 		}
-		if err := v.walk(def.Type, variantAt, true, true); err != nil {
+		if err := v.walkNamed(variant.Implementation, variantAt, true); err != nil {
 			return err
 		}
 		payload, ok := v.dereference(def.Type).(*Object)

@@ -38,6 +38,17 @@ func New(pkg *decorator.Package) (SchemaBuilder, error) {
 	return NewForTypes(pkg, nil)
 }
 
+// NewForLoad constructs a builder from a loaded package without mapping schemas
+// or discovering codecs. The result is suitable for callers that only need
+// LowerRoots (the grammar path) and never render JSON Schema or Go codecs.
+func NewForLoad(pkg *decorator.Package) (SchemaBuilder, error) {
+	data, err := syntax.LoadPackage(pkg)
+	if err != nil {
+		return SchemaBuilder{}, err
+	}
+	return newFromScan(data, nil, false, false)
+}
+
 // NewForTypes constructs a builder for the selected registered schema roots.
 // An empty selection preserves New's behavior and maps every registered root.
 func NewForTypes(pkg *decorator.Package, typeNames []string) (SchemaBuilder, error) {
@@ -45,10 +56,10 @@ func NewForTypes(pkg *decorator.Package, typeNames []string) (SchemaBuilder, err
 	if err != nil {
 		return SchemaBuilder{}, err
 	}
-	return newFromScan(data, typeNames, true)
+	return newFromScan(data, typeNames, true, true)
 }
 
-func newFromScan(data syntax.ScanResult, typeNames []string, mapSchemas bool) (SchemaBuilder, error) {
+func newFromScan(data syntax.ScanResult, typeNames []string, discoverCodecs, mapSchemas bool) (SchemaBuilder, error) {
 	var err error
 	var builder = SchemaBuilder{
 		Scan:              data,
@@ -153,6 +164,34 @@ func newFromScan(data syntax.ScanResult, typeNames []string, mapSchemas bool) (S
 			}
 		}
 		builder.TypeProviders = append(builder.TypeProviders, TypeProviders{TypeName: typeName, Providers: providers})
+	}
+	if discoverCodecs && !mapSchemas {
+		// Walk selected roots to populate enumFields and customTypes for Go
+		// JSON codec generation without building JSON Schema nodes. This walk
+		// handles recursive types by tracking visited names.
+		visited := map[syntax.TypeID]bool{}
+		for _, m := range data.SchemaMethods {
+			if !selectedRoot(typeNames, m.Receiver.TypeName) {
+				continue
+			}
+			if err = builder.discoverCodecPlans(m.Receiver, visited); err != nil {
+				return builder, err
+			}
+		}
+		for _, f := range data.SchemaFuncs {
+			if !selectedRoot(typeNames, f.Receiver.TypeName) {
+				continue
+			}
+			if err = builder.discoverCodecPlans(f.Receiver, visited); err != nil {
+				return builder, err
+			}
+		}
+		if err := builder.validateOwnerCodecMethods(); err != nil {
+			return builder, err
+		}
+		if err := builder.validateEnumCodecMethods(); err != nil {
+			return builder, err
+		}
 	}
 	if mapSchemas {
 		// Map schema nodes and derive the generated Go codec plans only for
@@ -1034,6 +1073,117 @@ func (s SchemaBuilder) mapNamedType(t syntax.TypeID, seen syntax.SeenTypes) erro
 		return err
 	} else {
 		s.AddSchema(t, schema)
+	}
+	return nil
+}
+
+// discoverCodecPlans walks a type to populate enumFields and customTypes for
+// Go JSON codec generation without building JSON Schema nodes. It handles
+// recursive types via visited, which tracks package-qualified type IDs.
+func (s SchemaBuilder) discoverCodecPlans(t syntax.TypeID, visited map[syntax.TypeID]bool) error {
+	key := t.Concrete()
+	if visited[key] {
+		return nil
+	}
+	visited[key] = true
+
+	scanResult, err := s.loadScanResult(t)
+	if err != nil {
+		return err
+	}
+	if iface, ok := scanResult.Interfaces[t.TypeName]; ok {
+		return s.discoverCodecPlansInterface(iface, visited)
+	}
+	if _, ok := scanResult.Constants[t.TypeName]; ok {
+		return nil
+	}
+	return s.discoverCodecPlansNamed(t, visited)
+}
+
+func (s SchemaBuilder) discoverCodecPlansInterface(iface syntax.IfaceImplementations, visited map[syntax.TypeID]bool) error {
+	for _, impl := range iface.Impls {
+		if err := s.discoverCodecPlans(impl, visited); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s SchemaBuilder) discoverCodecPlansNamed(t syntax.TypeID, visited map[syntax.TypeID]bool) error {
+	scanResult, err := s.loadScanResult(t)
+	if err != nil {
+		return err
+	}
+	typeSpec, ok := scanResult.LocalNamedTypes[t.TypeName]
+	if !ok {
+		return nil
+	}
+	structType, ok := typeSpec.Type().Expr().(*dst.StructType)
+	if !ok {
+		return s.discoverFieldTypes(typeSpec.Derive(), visited)
+	}
+	st := syntax.NewStructType(structType, typeSpec)
+	enumFields, enumErr := s.resolveLocalEnumFields(st)
+	if enumErr != nil {
+		return enumErr
+	}
+	if len(enumFields) > 0 {
+		s.enumFields[t.TypeName] = enumFields
+	}
+	if props, err := s.resolveLocalInterfaceProps(st, nil, nil); err != nil {
+		return err
+	} else if err := validateOwnerCodecInterfaceFields(t.TypeName, props); err != nil {
+		return err
+	} else if len(props) > 0 {
+		s.customTypes[t.TypeName] = props
+	}
+
+	for _, prop := range st.Fields() {
+		if prop.Skip() {
+			continue
+		}
+		if err := s.discoverFieldTypes(prop.TypeExpr, visited); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// discoverFieldTypes walks a type expression to find named types that may need
+// codec discovery. It traverses pointers, slices, arrays, and wrappers.
+func (s SchemaBuilder) discoverFieldTypes(expr syntax.TypeExpr, visited map[syntax.TypeID]bool) error {
+	switch node := expr.Excerpt.(type) {
+	case *dst.Ident:
+		switch node.Name {
+		case "int", "int8", "int16", "int32", "int64",
+			"uint", "uint8", "uint16", "uint32", "uint64",
+			"string", "bool", "float32", "float64", "byte", "rune":
+			return nil
+		}
+		if syntax.IsTimeType(node.Path, node.Name) {
+			return nil
+		}
+		named := syntax.TypeID{TypeName: node.Name, PkgPath: node.Path}
+		if named.PkgPath == "" {
+			named.PkgPath = expr.Pkg().PkgPath
+		}
+		return s.discoverCodecPlans(named, visited)
+	case *dst.StarExpr:
+		return s.discoverFieldTypes(expr.Derive(node.X), visited)
+	case *dst.ParenExpr:
+		return s.discoverFieldTypes(expr.Derive(node.X), visited)
+	case *dst.ArrayType:
+		return s.discoverFieldTypes(expr.Derive(node.Elt), visited)
+	case *dst.IndexExpr:
+		return s.discoverFieldTypes(expr.Derive(node.Index), visited)
+	case *dst.StructType:
+		for _, field := range syntax.NewStructType(node, *expr.TypeSpec).Fields() {
+			if !field.Skip() {
+				if err := s.discoverFieldTypes(field.TypeExpr, visited); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -2200,6 +2350,10 @@ func (i InterfaceProp) PointerInitializers(receiver string) []string {
 // )
 // ```
 func (s SchemaBuilder) resolveLocalInterfaceProps(t syntax.StructType, seenProps syntax.SeenProps, embeddedPath []EmbeddedField) (props []InterfaceProp, err error) {
+	return s.resolveLocalInterfacePropsVisited(t, seenProps, embeddedPath, nil)
+}
+
+func (s SchemaBuilder) resolveLocalInterfacePropsVisited(t syntax.StructType, seenProps syntax.SeenProps, embeddedPath []EmbeddedField, visitedEmbeds map[string]bool) (props []InterfaceProp, err error) {
 	if t.Pkg().PkgPath != s.Scan.Pkg.PkgPath {
 		return nil, nil
 	}
@@ -2247,10 +2401,20 @@ func (s SchemaBuilder) resolveLocalInterfaceProps(t syntax.StructType, seenProps
 			return nil, fmt.Errorf("resolving embedded type: %w", err)
 		} else if selector, ok := embeddedField(prop.Field.Type, _t.Name()); !ok {
 			return nil, fmt.Errorf("unsupported embedded field type %T at %s", prop.Field.Type, prop.Position())
-		} else if propsTemp, err := s.resolveLocalInterfaceProps(_t, seenProps, append(slices.Clone(embeddedPath), selector)); err != nil {
-			return nil, fmt.Errorf("resolving embedded local interface properties: %w", err)
 		} else {
-			props = append(props, propsTemp...)
+			embedKey := _t.Pkg().PkgPath + "." + _t.Name()
+			if visitedEmbeds[embedKey] {
+				continue
+			}
+			if visitedEmbeds == nil {
+				visitedEmbeds = make(map[string]bool)
+			}
+			visitedEmbeds[embedKey] = true
+			if propsTemp, err := s.resolveLocalInterfacePropsVisited(_t, seenProps, append(slices.Clone(embeddedPath), selector), visitedEmbeds); err != nil {
+				return nil, fmt.Errorf("resolving embedded local interface properties: %w", err)
+			} else {
+				props = append(props, propsTemp...)
+			}
 		}
 	}
 	return props, nil

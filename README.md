@@ -878,7 +878,12 @@ prompting), use `ObjectSchema` and add fields with `AddProperty` /
 ## ⚠️ Limitations
 
 - No map types, channels, functions, or inline interfaces
-- No circular/recursive type references (detected and rejected)
+- Recursive JSON Schema and schema-backed validation are not yet supported.
+  Recursive types work with `GoJSON()`, `TypeScript()`, and `Devalue()` through
+  the [programmatic generation](#programmatic-generation) API; `JSONSchema()`
+  rejects them before writing. Recursive embedding where the embedded type also
+  needs generated owner codecs (sealed union fields at both levels) is rejected
+  with a competing-MarshalJSON diagnostic
 - Registered interfaces support scalar fields and direct `[]I` fields, but not
   fixed arrays, nested/named slices, or Optional/Nullable interface slices
 - External package types unsupported, except `time.Time` (rendered as a string

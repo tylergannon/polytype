@@ -276,9 +276,14 @@ func TestValidateRejectsCycles(t *testing.T) {
 		name  string
 		graph func() g.Definitions
 	}{
-		{"direct_ref", func() g.Definitions { return g.Definitions{definition("A", &g.Ref{Target: name("A")})} }},
-		{"indirect_ref", func() g.Definitions {
-			return g.Definitions{definition("A", &g.Ref{Target: name("B")}), definition("B", &g.Slice{Element: &g.Ref{Target: name("A")}})}
+		{"nonproductive_alias_direct", func() g.Definitions {
+			return g.Definitions{definition("A", &g.Ref{Target: name("A")})}
+		}},
+		{"nonproductive_alias_indirect", func() g.Definitions {
+			return g.Definitions{
+				definition("A", &g.Ref{Target: name("B")}),
+				definition("B", &g.Ref{Target: name("A")}),
+			}
 		}},
 		{"pointer_node", func() g.Definitions {
 			p := &g.Pointer{}
@@ -291,14 +296,95 @@ func TestValidateRejectsCycles(t *testing.T) {
 			b.Fields = []g.Field{required("A", "a", a)}
 			return g.Definitions{definition("A", a)}
 		}},
-		{"union_implementation", func() g.Definitions {
-			u := union("owner")
-			u.Variants[0].Implementation = name("Owner")
-			return unionDefinitions(&u)
-		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) { _ = requireInvalid(t, tc.graph()) })
 	}
+}
+
+func TestValidateNamedRecursion(t *testing.T) {
+	t.Run("self_referencing_object", func(t *testing.T) {
+		requireValid(t, g.Definitions{
+			definition("Node", &g.Object{Fields: []g.Field{
+				required("Name", "name", &g.Scalar{Kind: g.String}),
+				{GoName: "Children", JSONName: "children", Value: &g.Required{
+					Type: &g.Slice{Element: &g.Ref{Target: name("Node")}},
+				}},
+			}}),
+		})
+	})
+	t.Run("optional_self_reference", func(t *testing.T) {
+		requireValid(t, g.Definitions{
+			definition("Node", &g.Object{Fields: []g.Field{
+				required("Value", "value", &g.Scalar{Kind: g.Int}),
+				{GoName: "Parent", JSONName: "parent", Value: &g.Optional{
+					Type: &g.Ref{Target: name("Node")},
+				}},
+			}}),
+		})
+	})
+	t.Run("nullable_self_reference", func(t *testing.T) {
+		requireValid(t, g.Definitions{
+			definition("Node", &g.Object{Fields: []g.Field{
+				required("Value", "value", &g.Scalar{Kind: g.Int}),
+				{GoName: "Parent", JSONName: "parent", Value: &g.Nullable{
+					Type: &g.Ref{Target: name("Node")},
+				}},
+			}}),
+		})
+	})
+	t.Run("pointer_to_self", func(t *testing.T) {
+		requireValid(t, g.Definitions{
+			definition("Node", &g.Object{Fields: []g.Field{
+				required("Value", "value", &g.Scalar{Kind: g.Int}),
+				{GoName: "Next", JSONName: "next", Value: &g.Required{
+					Type: &g.Pointer{Element: &g.Ref{Target: name("Node")}},
+				}},
+			}}),
+		})
+	})
+	t.Run("mutual_recursion", func(t *testing.T) {
+		requireValid(t, g.Definitions{
+			definition("Branch", &g.Object{Fields: []g.Field{
+				{GoName: "Children", JSONName: "children", Value: &g.Required{
+					Type: &g.Slice{Element: &g.Ref{Target: name("Leaf")}},
+				}},
+			}}),
+			definition("Leaf", &g.Object{Fields: []g.Field{
+				required("Value", "value", &g.Scalar{Kind: g.String}),
+				{GoName: "Parent", JSONName: "parent", Value: &g.Optional{
+					Type: &g.Ref{Target: name("Branch")},
+				}},
+			}}),
+		})
+	})
+	t.Run("productive_ref_alias", func(t *testing.T) {
+		requireValid(t, g.Definitions{
+			definition("A", &g.Ref{Target: name("B")}),
+			definition("B", &g.Slice{Element: &g.Ref{Target: name("A")}}),
+		})
+	})
+	t.Run("recursive_union_implementation", func(t *testing.T) {
+		u := union("owner")
+		u.Variants[0].Implementation = name("Owner")
+		requireValid(t, unionDefinitions(&u))
+	})
+	t.Run("recursive_through_union_variant", func(t *testing.T) {
+		requireValid(t, g.Definitions{
+			definition("Branch", &g.Object{Fields: []g.Field{
+				{GoName: "Children", JSONName: "children", Value: &g.UnionSlice{Union: g.Union{
+					Interface:     name("Node"),
+					Discriminator: "type",
+					Variants: []g.Variant{
+						{Implementation: name("Leaf"), Tag: "Leaf"},
+						{Implementation: name("Branch"), Tag: "Branch"},
+					},
+				}}},
+			}}),
+			definition("Leaf", &g.Object{Fields: []g.Field{
+				required("Value", "value", &g.Scalar{Kind: g.String}),
+			}}),
+		})
+	})
 }
 
 func TestValidateRejectsNilNodes(t *testing.T) {

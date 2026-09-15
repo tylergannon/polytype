@@ -50,7 +50,7 @@ func Load(dir string) (*Package, error) {
 	if errs := pkgs[0].Errors; len(errs) > 0 {
 		return nil, fmt.Errorf("package %s has errors: %s", pkgs[0].PkgPath, errs[0])
 	}
-	b, err := builder.New(pkgs[0])
+	b, err := builder.NewForLoad(pkgs[0])
 	if err != nil {
 		return nil, err
 	}
