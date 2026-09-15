@@ -116,3 +116,11 @@ until /consensus.
   rewrites the committed #128 snapshot
   `codegen/testdata/recursive/generated/codec/codec_gen.go`; the generator
   should emit goimports-grouped imports.
+- final state: PR https://github.com/tylergannon/polytype/pull/130 (branch
+  `claude/issue-129-completion-83272e`); CI green on `0e5c753`
+  (test-and-generate, website build-and-deploy, conventional-pr-title).
+  Review discussion posted as a PR comment. Not merged.
+- friction: the host PreToolUse hook also timed out for `ccd_pr` and
+  `spawn_task` calls late in the session -> read CI with `gh pr checks
+  --watch`; the devalue goimports follow-up is recorded above instead of as a
+  task chip.
