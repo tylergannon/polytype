@@ -91,6 +91,9 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 		goJSON1 := read("model/polytype_gen.go")
 		ts1 := read("generated/typescript/types.ts")
 		dv1 := read("generated/codec/codec_gen.go")
+		committed, err := os.ReadFile(filepath.Join("testdata", "recursive", "generated", "codec", "codec_gen.go"))
+		require.NoError(t, err)
+		require.Equal(t, string(committed), string(dv1), "committed devalue snapshot differs from generator output")
 
 		runGo(t, fixture, "run", "./cmd/generate")
 

@@ -148,3 +148,6 @@ until /consensus.
   `go generate ./...` skips testdata. Every other committed polytype-generated
   Go file is already goimports-clean. One-line fix offered to the user, not
   applied.
+- fix (user asked): `FormatCodeWithGoimports` now passes `TabWidth: 8`; the
+  recursive codegen test compares regenerated devalue output with the committed
+  snapshot (fails on the old formatter). No other generated file changed.
