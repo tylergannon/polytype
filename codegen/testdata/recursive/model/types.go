@@ -35,11 +35,11 @@ func (Section) block() {}
 
 // MutualA and MutualB demonstrate mutual recursion through pointers.
 type MutualA struct {
-	Value int                          `json:"value"`
+	Value int                         `json:"value"`
 	Peer  polytype.Nullable[*MutualB] `json:"peer"`
 }
 
 type MutualB struct {
-	Label string                       `json:"label"`
+	Label string                      `json:"label"`
 	Peer  polytype.Nullable[*MutualA] `json:"peer"`
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"go/constant"
+	"go/parser"
 	"go/token"
 	"go/types"
 	"io"
@@ -46,23 +47,61 @@ func NewForLoad(pkg *decorator.Package) (SchemaBuilder, error) {
 	if err != nil {
 		return SchemaBuilder{}, err
 	}
-	return newFromScan(data, nil, false, false)
+	return newFromScan(data, nil, false, noSchemas)
 }
 
 // NewForTypes constructs a builder for the selected registered schema roots.
-// An empty selection preserves New's behavior and maps every registered root.
+// An empty selection preserves New's behavior and walks every registered root:
+// a root declared with a schema entrypoint gets JSON Schema, and a root
+// declared without one (Declare[T]()) gets only the outputs that need none.
 func NewForTypes(pkg *decorator.Package, typeNames []string) (SchemaBuilder, error) {
 	data, err := syntax.LoadPackage(pkg)
 	if err != nil {
 		return SchemaBuilder{}, err
 	}
-	return newFromScan(data, typeNames, true, true)
+	return newFromScan(data, typeNames, true, entrypointSchemas)
 }
 
-func newFromScan(data syntax.ScanResult, typeNames []string, discoverCodecs, mapSchemas bool) (SchemaBuilder, error) {
+// schemaSelection says which roots get a JSON Schema.
+type schemaSelection int
+
+const (
+	// noSchemas maps no schema: grammar-only and codec-only runs.
+	noSchemas schemaSelection = iota
+	// entrypointSchemas maps a schema for each root that declares a schema
+	// entrypoint. A declaration file selects outputs per root this way.
+	entrypointSchemas
+	// allSchemas maps a schema for every root: a programmatic run that
+	// selects JSON Schema.
+	allSchemas
+)
+
+// hasSchema reports whether root gets a JSON Schema.
+func (s SchemaBuilder) hasSchema(root syntax.SchemaMethod) bool {
+	switch s.schemaRoots {
+	case allSchemas:
+		return true
+	case entrypointSchemas:
+		return root.SchemaMethodName != ""
+	default:
+		return false
+	}
+}
+
+// roots returns every declared root, method entrypoints first.
+func (s SchemaBuilder) roots() []syntax.SchemaMethod {
+	roots := slices.Clone(s.Scan.SchemaMethods)
+	for _, fn := range s.Scan.SchemaFuncs {
+		roots = append(roots, syntax.SchemaMethod(fn))
+	}
+	return roots
+}
+
+func newFromScan(data syntax.ScanResult, typeNames []string, discoverCodecs bool, schemas schemaSelection) (SchemaBuilder, error) {
 	var err error
 	var builder = SchemaBuilder{
 		Scan:              data,
+		schemaRoots:       schemas,
 		schemas:           schemaMap{},
 		customTypes:       map[string][]InterfaceProp{},
 		Subdir:            defaultSubdir,
@@ -75,7 +114,6 @@ func newFromScan(data syntax.ScanResult, typeNames []string, discoverCodecs, map
 		Rendered:          map[string]bool{},
 		RefTypes:          map[syntax.TypeID]bool{},
 		RefDefs:           map[string]refDef{},
-		GenerateSchemas:   true,
 	}
 	// First, collect providers so they're available during mapping
 	collectOpts := func(recv syntax.TypeID, opts []syntax.SchemaMethodOptionInfo) {
@@ -165,63 +203,62 @@ func newFromScan(data syntax.ScanResult, typeNames []string, discoverCodecs, map
 		}
 		builder.TypeProviders = append(builder.TypeProviders, TypeProviders{TypeName: typeName, Providers: providers})
 	}
-	if discoverCodecs && !mapSchemas {
-		// Walk selected roots to populate enumFields and customTypes for Go
-		// JSON codec generation without building JSON Schema nodes. This walk
-		// handles recursive types by tracking visited names.
-		visited := map[syntax.TypeID]bool{}
-		for _, m := range data.SchemaMethods {
-			if !selectedRoot(typeNames, m.Receiver.TypeName) {
-				continue
+	if !discoverCodecs && schemas == noSchemas {
+		// Grammar-only backends never enter the JSON Schema projection.
+		return builder, nil
+	}
+	// Mapping a root's schema nodes also derives its Go codec plans. A root
+	// without a schema only walks its types for the codec plans; that walk
+	// handles recursive types by tracking visited names.
+	visited := map[syntax.TypeID]bool{}
+	for _, root := range builder.roots() {
+		if !selectedRoot(typeNames, root.Receiver.TypeName) {
+			continue
+		}
+		if builder.hasSchema(root) {
+			if err = builder.mapType(root.Receiver, syntax.SeenTypes{}); err != nil {
+				return builder, rootSchemaError(root.Receiver.TypeName, err)
 			}
-			if err = builder.discoverCodecPlans(m.Receiver, visited); err != nil {
+			builder.GenerateSchemas = builder.GenerateSchemas || root.SchemaMethodName != ""
+		} else if discoverCodecs {
+			if err = builder.discoverCodecPlans(root.Receiver, visited); err != nil {
 				return builder, err
 			}
-		}
-		for _, f := range data.SchemaFuncs {
-			if !selectedRoot(typeNames, f.Receiver.TypeName) {
-				continue
-			}
-			if err = builder.discoverCodecPlans(f.Receiver, visited); err != nil {
-				return builder, err
-			}
-		}
-		if err := builder.validateOwnerCodecMethods(); err != nil {
-			return builder, err
-		}
-		if err := builder.validateEnumCodecMethods(); err != nil {
-			return builder, err
 		}
 	}
-	if mapSchemas {
-		// Map schema nodes and derive the generated Go codec plans only for
-		// outputs that need them. Grammar-only backends never enter the JSON
-		// Schema projection.
-		for _, m := range data.SchemaMethods {
-			if !selectedRoot(typeNames, m.Receiver.TypeName) {
-				continue
-			}
-			if err = builder.mapType(m.Receiver, syntax.SeenTypes{}); err != nil {
-				return builder, err
-			}
-		}
-		for _, f := range data.SchemaFuncs {
-			if !selectedRoot(typeNames, f.Receiver.TypeName) {
-				continue
-			}
-			if err = builder.mapType(f.Receiver, syntax.SeenTypes{}); err != nil {
-				return builder, err
-			}
-		}
-		if err := builder.validateOwnerCodecMethods(); err != nil {
-			return builder, err
-		}
-		if err := builder.validateEnumCodecMethods(); err != nil {
-			return builder, err
-		}
+	if err := builder.validateOwnerCodecMethods(); err != nil {
+		return builder, err
 	}
-
+	if err := builder.validateEnumCodecMethods(); err != nil {
+		return builder, err
+	}
 	return builder, nil
+}
+
+// recursiveSchemaError reports a type that contains itself, found while
+// mapping a root's JSON Schema. A schema inlines every type it references,
+// so it cannot express the cycle; the other outputs are unaffected.
+type recursiveSchemaError struct {
+	root     string
+	typeName string
+	position token.Position
+}
+
+func (e *recursiveSchemaError) Error() string {
+	return fmt.Sprintf("JSON Schema cannot express the recursive type %s (%s), reached from root %s: a schema inlines types, and this type contains itself. "+
+		"Only the JSON Schema output has this limit; Go JSON codecs, TypeScript and devalue support recursive types and are unaffected. "+
+		"If you do not need a schema for %s, select codegen.GoJSON() instead of codegen.JSONSchema(), or in a declaration file declare it without a schema entrypoint: polytype.Declare[%s]()",
+		e.typeName, e.position, e.root, e.root, e.root)
+}
+
+// rootSchemaError reports a recursive type once, naming the root being
+// mapped, instead of once per level of the field path that reached it.
+func rootSchemaError(root string, err error) error {
+	if recursive, ok := errors.AsType[*recursiveSchemaError](err); ok {
+		recursive.root = root
+		return recursive
+	}
+	return err
 }
 
 func selectedRoot(typeNames []string, candidate string) bool {
@@ -323,8 +360,10 @@ type SchemaBuilder struct {
 	BuildTag          string
 	DiscriminatorProp string
 	// GenerateSchemas controls schema accessors and embedding in generated Go
-	// code. Codec-only generation leaves it false and writes no schema assets.
+	// code. It is set when some root with a schema entrypoint gets a schema;
+	// codec-only generation leaves it false and embeds no schema assets.
 	GenerateSchemas bool
+	schemaRoots     schemaSelection
 
 	// Field provider options per type (by receiver type name)
 	TypeProvidersMap map[string][]FieldProvider
@@ -878,7 +917,7 @@ func (s SchemaBuilder) find(t syntax.TypeID) (token.Position, error) {
 
 func (s SchemaBuilder) mapInterface(iface syntax.IfaceImplementations, seen syntax.SeenTypes) error {
 	if seen.Seen(iface.TypeSpec.ID()) {
-		return fmt.Errorf("circular dependency found for type %s, defined at %s", iface.TypeSpec.ID(), iface.TypeSpec.Position())
+		return &recursiveSchemaError{typeName: iface.TypeSpec.Pkg().Name + "." + iface.TypeSpec.Name(), position: iface.TypeSpec.Position()}
 	}
 	seen = seen.See(iface.TypeSpec.ID())
 	if err := s.checkSeen(seen); err != nil {
@@ -1051,7 +1090,7 @@ func (s SchemaBuilder) mapNamedType(t syntax.TypeID, seen syntax.SeenTypes) erro
 		return fmt.Errorf("mapNamedType: type %s not found", t.TypeName)
 	}
 	if seen.Seen(t) {
-		return fmt.Errorf("circular dependency found for type %s at %s", t.TypeName, typeSpec.Position())
+		return &recursiveSchemaError{typeName: typeSpec.Pkg().Name + "." + typeSpec.Name(), position: typeSpec.Position()}
 	}
 	if structType, ok := typeSpec.Type().Expr().(*dst.StructType); ok {
 		enumFields, enumErr := s.resolveLocalEnumFields(syntax.NewStructType(structType, typeSpec))
@@ -1775,11 +1814,52 @@ func (s *SchemaBuilder) RenderGoCode() (err error) {
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(filepath.Join(s.Scan.Pkg.Dir, "jsonschema_gen.go"), result, 0644)
+	// The file is named for what it holds. The other name is removed when an
+	// earlier run wrote it, so switching between schema and codec-only output
+	// never leaves two generated files declaring the same methods.
+	name, other := syntax.GeneratedCodecFile, syntax.GeneratedSchemaFile
+	if s.GenerateSchemas {
+		name, other = syntax.GeneratedSchemaFile, syntax.GeneratedCodecFile
+	}
+	otherPath := filepath.Join(s.Scan.Pkg.Dir, other)
+	stale, err := ownedGeneratedFile(otherPath)
 	if err != nil {
 		return err
 	}
+	if err = os.WriteFile(filepath.Join(s.Scan.Pkg.Dir, name), result, 0644); err != nil {
+		return err
+	}
+	if stale {
+		return os.Remove(otherPath)
+	}
 	return nil
+}
+
+// generatedGoHeader opens every Go file this generator writes.
+const generatedGoHeader = "// Code generated by polytype. DO NOT EDIT."
+
+// ownedGeneratedFile reports whether path holds Go code this generator wrote.
+// A handwritten file, or another tool's generated file, of the same name is
+// not polytype's to remove.
+func ownedGeneratedFile(path string) (bool, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.PackageClauseOnly|parser.ParseComments)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect stale generated file: %w", err)
+	}
+	for _, group := range file.Comments {
+		if group.Pos() > file.Package {
+			break
+		}
+		for _, comment := range group.List {
+			if comment.Text == generatedGoHeader {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func (s SchemaBuilder) RenderSchemas(noChanges, force bool) (changedSchemas map[string]bool, orphaned []string, err error) {
@@ -1787,16 +1867,23 @@ func (s SchemaBuilder) RenderSchemas(noChanges, force bool) (changedSchemas map[
 	changedSchemas = make(map[string]bool)
 	expected := make(map[string]bool)
 
-	if err = os.MkdirAll(targetDir, 0755); err != nil {
+	var roots []syntax.SchemaMethod
+	for _, root := range s.roots() {
+		if s.hasSchema(root) {
+			roots = append(roots, root)
+		}
+	}
+	if len(roots) == 0 {
+		// No root has a schema: create nothing, but still prune what an
+		// earlier run wrote.
+		if _, statErr := os.Stat(targetDir); errors.Is(statErr, os.ErrNotExist) {
+			return changedSchemas, nil, nil
+		}
+	} else if err = os.MkdirAll(targetDir, 0755); err != nil {
 		return nil, nil, fmt.Errorf("could not create subdir %s: %w", targetDir, err)
 	}
-	for _, method := range s.Scan.SchemaMethods {
-		artifactName := s.schemaArtifactName(method.Receiver)
-		expected[artifactName] = true
-		expected[artifactName+".sum"] = true
-	}
-	for _, fn := range s.Scan.SchemaFuncs {
-		artifactName := s.schemaArtifactName(fn.Receiver)
+	for _, root := range roots {
+		artifactName := s.schemaArtifactName(root.Receiver)
 		expected[artifactName] = true
 		expected[artifactName+".sum"] = true
 	}
@@ -1808,19 +1895,12 @@ func (s SchemaBuilder) RenderSchemas(noChanges, force bool) (changedSchemas map[
 		return nil, nil, err
 	}
 
-	for _, method := range s.Scan.SchemaMethods {
+	for _, root := range roots {
 		var changed bool
-		if changed, err = s.writeSchema(method.Receiver, targetDir, noChanges); err != nil {
+		if changed, err = s.writeSchema(root.Receiver, targetDir, noChanges); err != nil {
 			return nil, nil, err
 		}
-		changedSchemas[method.Receiver.TypeName] = changed || force
-	}
-	for _, fn := range s.Scan.SchemaFuncs {
-		var changed bool
-		if changed, err = s.writeSchema(fn.Receiver, targetDir, noChanges); err != nil {
-			return nil, nil, err
-		}
-		changedSchemas[fn.Receiver.TypeName] = changed || force
+		changedSchemas[root.Receiver.TypeName] = changed || force
 	}
 	if !noChanges && len(orphaned) > 0 {
 		orphaned, err = pruneOrphanedSchemaArtifacts(targetDir, expected, false)

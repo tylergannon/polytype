@@ -40,7 +40,9 @@ above under the same module.
   registrations. Compiled only during generation, never in production.
 - `jsonschema_gen.go` — `//go:build !jsonschema`. Generated. Real schema,
   validation, and selected codec methods over an `embed.FS` of
-  `jsonschema/*.json`.
+  `jsonschema/*.json`. When no schema is generated (every root is
+  `Declare[T]()`), the same file is `polytype_gen.go` and holds codec methods
+  only.
 
 The build tags make them mutually exclusive, so the package always compiles —
 before and after generation. Commit all generated outputs: `jsonschema_gen.go`
@@ -99,7 +101,11 @@ err := codegen.Gen(config,
 Select `codegen.JSONSchema()` for schema files and `codegen.GoJSON()` for
 generated enum or sealed-union JSON codecs. Passing a schema function to
 `Declare` records its accessor name. Combine declarations and union settings
-with `polytype.Compose`.
+with `polytype.Compose`; that is for generator programs only. In `schema.go`,
+write each `Declare` and `SealedUnion` as its own `var _ =` declaration (the
+CLI rejects `Compose` there). `var _ = polytype.Declare[T]()` in `schema.go`
+generates T's Go JSON codecs, and TypeScript with `--typescript`, without a
+schema file or accessor.
 
 ## TypeScript declarations and the Go JSON boundary
 
@@ -274,8 +280,9 @@ from compiling examples in this repository and checked for drift by the Go
 test suite.
 
 Known limitations (fail fast, don't fight them): no maps; recursive types work
-with `GoJSON()`, `TypeScript()`, and `Devalue()` through programmatic
-`codegen.Gen` but not with `JSONSchema()` or schema-backed validation (deferred);
+with Go JSON codecs, TypeScript, and devalue (`Declare[T]()` in `schema.go`, or
+`GoJSON()`, `TypeScript()`, and `Devalue()` through `codegen.Gen`) but not with
+JSON Schema or schema-backed validation (deferred);
 recursive embedding where both types need owner codecs is rejected;
 registered interfaces support scalar `I`, `Optional[I]`, and direct
 one-dimensional `[]I` fields, but not `Nullable[I]`, fixed arrays, nested
@@ -299,7 +306,7 @@ the generated JSON validator and codecs.
 
 - `go generate ./...` runs clean and a second run produces no diff.
 - `go build ./...` and `go test ./...` pass.
-- Generated `jsonschema/*.json`, `jsonschema_gen.go`, any requested
+- Generated `jsonschema/*.json`, `jsonschema_gen.go` (or `polytype_gen.go`), any requested
   TypeScript declarations, and any generated devalue codec file are committed.
 - Field doc comments read as LLM-facing descriptions.
 - A pre-commit hook or CI check guards against schema drift.

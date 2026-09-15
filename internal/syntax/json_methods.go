@@ -11,6 +11,14 @@ import (
 	"strings"
 )
 
+// Names of the Go file generated into a package: GeneratedSchemaFile when it
+// embeds JSON Schema, otherwise GeneratedCodecFile. A package holds at most
+// one of them.
+const (
+	GeneratedSchemaFile = "jsonschema_gen.go"
+	GeneratedCodecFile  = "polytype_gen.go"
+)
+
 // JSONMethod identifies a handwritten production JSON codec method. Generated
 // output and generation-only declaration stubs are deliberately excluded.
 type JSONMethod struct {
@@ -35,7 +43,7 @@ func FindProductionJSONMethods(dir string, receivers []string) ([]JSONMethod, er
 	var methods []JSONMethod
 	for _, entry := range entries {
 		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || name == "jsonschema_gen.go" {
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || name == GeneratedSchemaFile || name == GeneratedCodecFile {
 			continue
 		}
 		matches, err := IsProductionGoFile(filepath.Join(dir, name))
@@ -63,14 +71,22 @@ func FindGeneratedJSONMethods(dir string, receivers []string) ([]JSONMethod, err
 	for _, receiver := range receivers {
 		wanted[receiver] = true
 	}
-	filename := filepath.Join(dir, "jsonschema_gen.go")
-	if _, err := os.Stat(filename); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
+	var methods []JSONMethod
+	for _, name := range []string{GeneratedSchemaFile, GeneratedCodecFile} {
+		filename := filepath.Join(dir, name)
+		if _, err := os.Stat(filename); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
 		}
-		return nil, err
+		fileMethods, err := findJSONMethodsInFile(token.NewFileSet(), filename, wanted)
+		if err != nil {
+			return nil, err
+		}
+		methods = append(methods, fileMethods...)
 	}
-	return findJSONMethodsInFile(token.NewFileSet(), filename, wanted)
+	return methods, nil
 }
 
 func findJSONMethodsInFile(fset *token.FileSet, filename string, wanted map[string]bool) ([]JSONMethod, error) {

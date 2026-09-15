@@ -1,0 +1,167 @@
+# Issue 129 — declaration-file path, recursion diagnostic, spec row, gen cosmetics
+
+Branch: `claude/issue-129-completion-83272e` (worktree). Base: `dafd00d` (main == origin/main at start).
+
+Goal (user, via /goal): finish #129 completely and verified; no new proof
+machinery; new examples proving outputs for the issue's new inputs; broken
+test examples reproducing the reported breakage; adversarial review via `agy`
+until /consensus.
+
+- decision: #129 Defect 4 names `docs/spec/v1.md` in its acceptance criteria, and
+  the user asked for #129 "completely done", so editing that spec row is in scope
+  despite the agent-protocol "no docs/ without permission" default.
+- baseline: `go test ./...` green at `dafd00d` (43s wall).
+- repro (scratch module, CLI built from the worktree): all five defects
+  reproduce exactly as reported (Compose exits 0 and leaves an uncompilable
+  embed; no-arg Declare rejected by the CLI and by codegen.Gen when a
+  declaration file is present; nested "rendering struct field:" recursion
+  error; GoJSON output named jsonschema_gen.go with an unused 'type'
+  errNoDiscriminator).
+- decision: plan in `ephemeral/issue-129-plan.md` (reject Compose in
+  declaration files; programmatic and dependency scans read only SealedUnion
+  markers; CLI no-arg roots get Go codecs/TypeScript but no schema).
+- friction: the host PreToolUse hook for Write/Edit timed out on every call
+  ("host client may be unreachable") -> file edits done through a scratchpad
+  exact-replacement script (rep.py) and heredocs until the hook recovers.
+- proof: each new test was run against baseline `dafd00d` and fails there
+  with the issue's own symptoms ("Unsupported MarkerFunction Compose" + exit 0;
+  "polytype.Declare expects exactly one argument"; the nested
+  "rendering struct field: rendering interface: ... circular dependency"
+  chain; codec-only output named `jsonschema_gen.go`; a no-output error
+  without the type name). The baseline CLI on the new
+  `codegen/testdata/recursive_declarations/compose` package writes
+  `jsonschema/` + `jsonschema_gen.go` and then `go build` fails ("pattern
+  jsonschema: cannot embed directory jsonschema: contains no embeddable
+  files") -- the reported D1 break, reproduced in-tree.
+- decision: declaration-mode scans (CLI, `grammar.Load`) reject a top-level
+  `polytype.X(...)` that is not `Declare`/`SealedUnion`; configured-mode scans
+  (`codegen.Gen`, and every dependency-package scan) read only `SealedUnion`.
+  `grammar.Load` stays in declaration mode because lowering applies root
+  options (`EnumV1` from `.StringerEnum`), so a Compose there is now an error
+  too instead of a stdout line and a silent skip.
+- discovery: the CLI's `TypeDefinitions` selected roots through
+  `SchemaMethods()`, which drops a root whose type cannot carry a method; an
+  entrypoint-less `Declare[I]()` (interface) or `Declare[P]()` (named pointer)
+  therefore vanished from `--typescript` output with exit 0 (`export {};`).
+  Fixed by lowering entrypoint-less roots whatever their type: the interface
+  now fails with the same lowering diagnostic `codegen.Gen` gives, and the
+  pointer is emitted. `TestEntrypointlessRootIsLoweredWhateverItsType` fails
+  on the pre-fix lowering with the empty output.
+- decision: D3 wording keeps the issue's suggested sentence shape and adds the
+  root and the declaration-file alternative ("Only the JSON Schema output has
+  this limit; Go JSON codecs, TypeScript and devalue support recursive types
+  and are unaffected").
+- friction: the TestBasic golden harness panics on the first mismatch (it
+  uses the parent `t`), aborting the remaining subtests and leaking numbered
+  temp dirs into `internal/builder/testfixtures/` -> regenerate goldens one
+  case at a time (`-run 'TestBasic/<name>$'`). Eleven such leaked dirs from
+  #93 are committed on main; flagged as a separate task, not touched here.
+- lint: `just lint` (goimports over testdata) rewrites two #128 files on main
+  (`codegen/testdata/recursive/generated/codec/codec_gen.go` import grouping,
+  `codegen/testdata/recursive/model/types.go` tag alignment); kept, since the
+  memory rule is to leave lint clean. Tests regenerate that codec file into a
+  temp copy, so the committed snapshot is not compared.
+- correction: user pointed out Edit/Write hook timeouts should just be routed
+  around with Bash edits (auto/bypass permissions); did that for the rest of
+  the session.
+- review round 1 (`ephemeral/reviews/202609151349-issue-129-round-01.md`,
+  agent session 01a0a69e-8555-74d2-a611-937eb410ba32): two issues.
+  (1) Mode-switch cleanup removed any file of the other name that carried a
+  generic `Code generated ... DO NOT EDIT.` header, so another tool's
+  `jsonschema_gen.go` was deleted by a codec-only run. Fixed: only a file
+  opening with polytype's exact header is removed, inspected before the new
+  file is written; the switch test now keeps another tool's file (fails on the
+  old check). (2) The issue-input fixture's devalue and TypeScript outputs were
+  only checked for existence. Fixed with existing mechanisms: a root-level
+  fixture test round-trips the issue's value through `noarg.StringifyTree` /
+  `ParseTree` (outside `noarg`, which CLI output also builds), and the codegen
+  test asserts literal `"kind"` discriminators and runs the repository's
+  optional `tsc --strict --noEmit` gate per target. Challenged the requested
+  TypeScript bad-discriminator case: AGENTS.md forbids TypeScript test code.
+- friction: without root `node_modules`, every tsc/devalue-JS test skips
+  silently in a local run -> run `npm ci --ignore-scripts` at the repo root
+  (as CI does) before trusting a local green.
+- review round 2 (`ephemeral/reviews/202609151410-issue-129-round-02.md`;
+  the resumed run reported session 01a0a6ab-3a40-7f43-8b60-247114abee6b after
+  a "model at capacity" retry). Accepted the TypeScript bad-discriminator
+  challenge. Two issues. (2) The scanner read Declare/SealedUnion calls from
+  ordinary Go files as declarations, so executable configuration values in
+  the target package joined CLI roots or failed the scan. (1) configured scans
+  parsed a production-file `SealedUnion` with a runtime inflector as a marker
+  and failed `codegen.Gen`.
+- decision: only a declaration file (a file the production build does not
+  compile, per the existing `IsProductionGoFile`) is read as declarations, by
+  every scan; ordinary-file polytype calls are executable configuration and
+  are skipped before dispatch. Fixes both findings; tests fail on the prior
+  scanner with the reviewer's exact error. Behavior change: undocumented
+  markers in untagged files are no longer read (README and SealedUnion godoc
+  already require the build-tagged file).
+- decision (disputed with reviewer): `codegen.Gen` keeps honoring a
+  declaration file's `SealedUnion` markers, which its configuration overrides.
+  README/godoc promise the build-tagged discriminator applies to "every
+  generated schema, codec, and TypeScript output"; baseline codegen honored
+  it; a dependency package's interface can be configured no other way
+  (config rejects unions outside the target); dropping it would silently
+  change codegen's wire output. An invalid declaration-file marker stays a
+  generation error, as documented.
+- review round 3 (`ephemeral/reviews/202609151425-issue-129-round-03.md`,
+  reported session 01a0a6b6-960e-72d3-8e8d-f384dfcdafb4): "no findings". The
+  reviewer withdrew round 2 finding 1 on the documented SealedUnion contract
+  and confirmed the other fixes. Consensus reached at round 3.
+- friction: `agent --session <id>` reported a new session ID on each resumed
+  round (after a "model at capacity" retry) -> always take the next round's
+  session from the latest outcome line, not the first launch.
+- follow-up (not in this PR): devalue/codegen emits its devalue import inside
+  the standard-library group, so `just lint` (goimports over testdata)
+  rewrites the committed #128 snapshot
+  `codegen/testdata/recursive/generated/codec/codec_gen.go`; the generator
+  should emit goimports-grouped imports.
+- final state: PR https://github.com/tylergannon/polytype/pull/130 (branch
+  `claude/issue-129-completion-83272e`); CI green on `0e5c753`
+  (test-and-generate, website build-and-deploy, conventional-pr-title).
+  Review discussion posted as a PR comment. Not merged.
+- friction: the host PreToolUse hook also timed out for `ccd_pr` and
+  `spawn_task` calls late in the session -> read CI with `gh pr checks
+  --watch`; the devalue goimports follow-up is recorded above instead of as a
+  task chip.
+- user follow-ups after close-out: asked why npm is in a Go project (answer
+  from the repo: the root `package.json` from #108 pins `tsc` and JS devalue
+  as optional test oracles; CI's go job runs `npm ci --ignore-scripts`),
+  approved removing the leaked dirs, and asked for a clearer account of the
+  devalue goimports follow-up.
+- cleanup: removed the eleven `internal/builder/testfixtures/<name>_<digits>`
+  dirs from #93. Each is a single `schema.go`/`shared.go` that a test writes
+  under `os.MkdirTemp`; nothing refers to them, and
+  `asref_collision_dep_1423005799` was a live package in `go list ./...`.
+  Folded into this PR: a branch off main would inherit main's two lint
+  rewrites.
+- correction (devalue follow-up): the cause is
+  `builder.FormatCodeWithGoimports`, not the devalue template. It calls
+  `imports.Process` with `TabWidth` 0, so the printer drops indentation,
+  goimports' blank-line pass between import groups matches nothing, and the
+  closing gofmt pass re-sorts the single block alphabetically. The same
+  x/tools v0.49.0 with `TabWidth: 8` (the CLI's value) groups correctly
+  (checked in a scratch module). Regenerating a scratch copy of
+  `codegen/testdata/recursive` reproduces the base snapshot byte for byte, so
+  the lint-grouped snapshot in this PR no longer matches generator output. No
+  test compares them: the codegen test regenerates into a temp copy, and
+  `go generate ./...` skips testdata. Every other committed polytype-generated
+  Go file is already goimports-clean. One-line fix offered to the user, not
+  applied.
+- fix (user asked): `FormatCodeWithGoimports` now passes `TabWidth: 8`; the
+  recursive codegen test compares regenerated devalue output with the committed
+  snapshot (fails on the old formatter). No other generated file changed.
+- correction: the user was angry that I spent about 12 minutes investigating
+  before answering three direct questions, and that I used npm (they use pnpm
+  and/or VitePlus). Both are saved as memory. Earlier I said a full test run
+  takes about 2 minutes; measured, it is 37-46 s wall time. The 2 minutes
+  included lint and generation.
+- test timing (user asked): the time is in `internal/builder` (59 sequential
+  tests, 27 s) and in 720 `go` subprocesses (102 s serial, `TestBasic` alone
+  38 s). Seven packages never cache. Filed as
+  https://github.com/tylergannon/polytype/issues/131, with the fixes listed as
+  suggestions, not requirements. Friction: a `go` wrapper placed first on PATH
+  sees nothing, because `go test` puts GOROOT/bin first on its subprocesses'
+  PATH. Put the wrapper in a symlinked GOROOT/bin instead.
+- closeout: CI green on `6ce051b`. The user asked to merge, so squash-merge
+  after this commit's CI.

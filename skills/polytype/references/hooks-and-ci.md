@@ -35,7 +35,7 @@ pre-commit:
       glob: "*.go"          # skip the hook entirely when no Go files are staged
       run: |
         go generate ./...
-        git add '*jsonschema_gen.go' '*jsonschema/*' 2>/dev/null || true
+        git add '*jsonschema_gen.go' '*polytype_gen.go' '*jsonschema/*' 2>/dev/null || true
         git add 'web/src/generated/*' 2>/dev/null || true # use your configured TypeScript directory
 ```
 

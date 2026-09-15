@@ -27,6 +27,7 @@ func FormatCodeWithGoimports(source []byte) ([]byte, error) {
 	options := &imports.Options{
 		Comments:  true, // Preserve comments
 		TabIndent: true, // Use tabs for indentation
+		TabWidth:  8,    // As the goimports command; 0 leaves import groups unseparated
 	}
 
 	formatted, err := imports.Process("", source, options)

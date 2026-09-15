@@ -15,8 +15,6 @@ import (
 //go:embed jsonschema
 var __gen_jsonschema_fs embed.FS
 
-var errNoDiscriminator = errors.New("no discriminator property 'type' found")
-
 func __gen_jsonschema_panic(fname string, err error) {
 	panic(fmt.Sprintf("error reading %s from embedded FS: %s", fname, err.Error()))
 }
@@ -242,7 +240,7 @@ func __jsonUnmarshal__uniontypes__Shape__47932c2de6ab4b045f3b027a0ed0585382b4cc8
 	if err != nil {
 		return nil, err
 	} else if _tempDiscriminator, ok := temp["type"]; !ok {
-		return nil, errNoDiscriminator
+		return nil, fmt.Errorf("no discriminator property '%s' found", "type")
 	} else if discriminator, err = __jsonschema__decodeDiscriminator(_tempDiscriminator); err != nil {
 		return nil, __jsonschema__unmarshalDiscriminatorError(_tempDiscriminator, err)
 	}
@@ -313,7 +311,7 @@ func __jsonUnmarshal__uniontypes__PaymentMethod__3518dd514c46878508abbe640e74edf
 	if err != nil {
 		return nil, err
 	} else if _tempDiscriminator, ok := temp["type"]; !ok {
-		return nil, errNoDiscriminator
+		return nil, fmt.Errorf("no discriminator property '%s' found", "type")
 	} else if discriminator, err = __jsonschema__decodeDiscriminator(_tempDiscriminator); err != nil {
 		return nil, __jsonschema__unmarshalDiscriminatorError(_tempDiscriminator, err)
 	}

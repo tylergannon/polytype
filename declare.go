@@ -20,6 +20,10 @@ type Declaration[T any] struct {
 //
 //	config := polytype.Declare[Person]()
 //	config := polytype.Declare(Person.Schema)
+//
+// A declaration file read by the polytype CLI accepts both forms too:
+// Declare[Person]() gives Person the generated Go JSON codecs, and TypeScript
+// with --typescript, but no schema file or accessor.
 func Declare[T any](entrypoint ...func(T) json.RawMessage) *Declaration[T] {
 	spec := DeclarationSpec{}
 	var err error

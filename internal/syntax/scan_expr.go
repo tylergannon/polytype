@@ -2,7 +2,6 @@ package syntax
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/dave/dst"
@@ -14,6 +13,7 @@ const (
 	MarkerFuncNewJSONSchemaFunc    = "NewJSONSchemaFunc"    // NewJSONSchemaFunc
 	MarkerFuncDeclare              = "Declare"              // Declare (v1 fluent entrypoint)
 	MarkerFuncSealedUnion          = "SealedUnion"          // SealedUnion[I](discriminator, inflector?)
+	funcCompose                    = "Compose"              // executable configuration only; never a marker
 )
 
 // TypeID is our structured representation of a type. It can represent named types,
@@ -59,14 +59,11 @@ func (m MarkerFunctionCall) String() string {
 	return fmt.Sprintf("%s %s Args{%s}", m.CallExpr.MustIdentifyFunc(), m.TypeArgument(), strings.Join(args, ","))
 }
 
-var markerFunctions = []string{
-	MarkerFuncNewJSONSchemaBuilder,
-	MarkerFuncNewJSONSchemaMethod,
-	MarkerFuncNewJSONSchemaFunc,
-	MarkerFuncDeclare,
-	MarkerFuncSealedUnion,
-}
-
+// ParseValueExprForMarkerFunctionCall returns every call to a function of the
+// polytype package among a var spec's values, including functions that are
+// not declaration markers: in a declaration file the loader rejects those
+// with their position rather than letting them drop out of the configuration
+// unnoticed.
 func ParseValueExprForMarkerFunctionCall(e ValueSpec) []MarkerFunctionCall {
 	var results []MarkerFunctionCall
 	for _, arg := range e.Value().Values {
@@ -78,10 +75,6 @@ func ParseValueExprForMarkerFunctionCall(e ValueSpec) []MarkerFunctionCall {
 
 		if id, ok := callExpr.IdentifyFunc(); ok {
 			if id.PkgPath != SchemaPackagePath {
-				continue
-			}
-			if !slices.Contains(markerFunctions, id.TypeName) {
-				fmt.Println("Unsupported MarkerFunction", id.TypeName)
 				continue
 			}
 			results = append(results, MarkerFunctionCall{

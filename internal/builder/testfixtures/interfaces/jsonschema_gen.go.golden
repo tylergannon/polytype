@@ -15,8 +15,6 @@ import (
 //go:embed jsonschema
 var __gen_jsonschema_fs embed.FS
 
-var errNoDiscriminator = errors.New("no discriminator property 'type' found")
-
 // Each marked enum type is referenced here through its first typed constant
 // so that its enum() marker is used from production code and keeps the shape
 // the generator requires.
@@ -201,7 +199,7 @@ func __jsonUnmarshal__interfaces__TestInterface__b99650f5b4c7f2fe7b18a3b48f4a76a
 	if err != nil {
 		return nil, err
 	} else if _tempDiscriminator, ok := temp["type"]; !ok {
-		return nil, errNoDiscriminator
+		return nil, fmt.Errorf("no discriminator property '%s' found", "type")
 	} else if discriminator, err = __jsonschema__decodeDiscriminator(_tempDiscriminator); err != nil {
 		return nil, __jsonschema__unmarshalDiscriminatorError(_tempDiscriminator, err)
 	}

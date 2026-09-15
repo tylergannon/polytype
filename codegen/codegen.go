@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/tylergannon/polytype"
 	devaluegen "github.com/tylergannon/polytype/devalue/codegen"
@@ -113,7 +114,11 @@ func Generate(config polytype.Configuration, opts Options) error {
 	}
 	if !outputsSelected(opts) {
 		if !hasEntrypoint {
-			return errors.New("codegen: no output selected; use JSONSchema, GoJSON, TypeScript, or Devalue")
+			names := make([]string, len(spec.Declarations))
+			for i, declaration := range spec.Declarations {
+				names[i] = declaration.Type.Name
+			}
+			return fmt.Errorf("codegen: no output selected for %s: a declaration without a schema entrypoint must select at least one output (JSONSchema, GoJSON, TypeScript, or Devalue)", strings.Join(names, ", "))
 		}
 		opts.JSONSchema = true
 		opts.GoCode = true
@@ -148,7 +153,6 @@ func Generate(config polytype.Configuration, opts Options) error {
 	}
 	b.Pretty = opts.Pretty
 	b.Validate = opts.Validate
-	b.GenerateSchemas = opts.JSONSchema && hasEntrypoint
 	if err := b.ApplyTransforms(); err != nil {
 		return err
 	}
