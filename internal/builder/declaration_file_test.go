@@ -80,6 +80,44 @@ func TestDeclarationFileRejectsNonMarkerCallsBeforeWriting(t *testing.T) {
 	}
 }
 
+// ordinaryConfiguration is executable configuration in an ordinary Go file,
+// as a generator program would import it: a Compose value, a root, and a
+// sealed union whose inflector only executable configuration may supply.
+const ordinaryConfiguration = `package fixture
+
+import (
+	"strings"
+
+	"github.com/tylergannon/polytype"
+)
+
+type Other struct {
+	Name string ` + "`json:\"name\"`" + `
+}
+
+var OtherConfig = polytype.Declare[Other]()
+
+var NodeUnion = polytype.SealedUnion[Node]("tag", strings.ToLower)
+
+var Config = polytype.Compose(polytype.Declare[Tree](), NodeUnion)
+`
+
+// TestOrdinaryFileIsNotReadAsDeclarations proves only a declaration file is
+// read as declarations: configuration values in ordinary Go neither fail the
+// CLI nor join its roots or unions.
+func TestOrdinaryFileIsNotReadAsDeclarations(t *testing.T) {
+	dir := writeMultiFileFixture(t, map[string]string{
+		"types.go":  recursiveTypes,
+		"config.go": ordinaryConfiguration,
+		"schema.go": declarationFile("var _ = polytype.Declare[Tree]()\n"),
+	})
+	require.NoError(t, Run(BuilderArgs{TargetDir: dir, TypeScriptDir: filepath.Join(dir, "ts")}))
+	generated, err := os.ReadFile(filepath.Join(dir, "ts", "types.ts"))
+	require.NoError(t, err)
+	require.NotContains(t, string(generated), "Other")
+	require.Contains(t, string(generated), `"type": "Branch";`)
+}
+
 func TestEntrypointlessDeclarationGeneratesCodecsWithoutSchema(t *testing.T) {
 	dir := writeMultiFileFixture(t, map[string]string{
 		"types.go":  recursiveTypes,
@@ -210,11 +248,13 @@ func TestRecursiveSchemaErrorNamesTheOutputOnce(t *testing.T) {
 
 // TestProgrammaticLoadIgnoresRootDeclarations proves a programmatic run takes
 // its roots only from its configuration: declaration-file roots, even a
-// Compose call the CLI rejects, neither fail nor join it, while a
-// SealedUnion marker still sets its interface's discriminator.
+// Compose call the CLI rejects, neither fail nor join it, and neither does
+// configuration in ordinary Go, while a declaration file's SealedUnion marker
+// still sets its interface's discriminator.
 func TestProgrammaticLoadIgnoresRootDeclarations(t *testing.T) {
 	dir := writeMultiFileFixture(t, map[string]string{
-		"types.go": recursiveTypes,
+		"types.go":  recursiveTypes,
+		"config.go": ordinaryConfiguration,
 		"schema.go": declarationFile("var _ = polytype.Compose(polytype.Declare[Tree]())\n" +
 			"var _ = polytype.Declare[Watcher]()\n" +
 			"var _ = polytype.SealedUnion[Node](\"kind\")\n"),

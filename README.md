@@ -834,7 +834,9 @@ Per-union discriminator property and value inflection are declared once with
 `polytype.SealedUnion[I](name, inflector?)` in the interface's own package.
 
 These declarations are executable configuration values. The CLI also reads
-the same calls from the AST of a build-tagged `schema.go`.
+the same calls from the AST of a build-tagged `schema.go`, and only there: a
+value in an ordinary Go file is configuration for a generator program, not a
+declaration.
 
 `NewJSONSchemaMethod`/`NewJSONSchemaFunc` with their remaining `With*`
 options remain supported for source compatibility; each carries a `Deprecated:` godoc comment naming its

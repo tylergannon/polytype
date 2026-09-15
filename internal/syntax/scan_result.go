@@ -433,6 +433,17 @@ func (r *ScanResult) loadPackageInternal(seen seenPackages, typesToMap map[strin
 		if !r.declarations && name != MarkerFuncSealedUnion {
 			continue
 		}
+		// Ordinary Go may hold executable configuration, such as a value for
+		// a generator program. Only a declaration file, compiled solely for
+		// generation, is read as declarations.
+		position := decl.CallExpr.Position()
+		production, err := IsProductionGoFile(position.Filename)
+		if err != nil {
+			return err
+		}
+		if production {
+			continue
+		}
 		switch name {
 		case MarkerFuncNewJSONSchemaMethod:
 			method, err := decl.ParseSchemaMethod()
@@ -478,10 +489,10 @@ func (r *ScanResult) loadPackageInternal(seen seenPackages, typesToMap map[strin
 			}
 
 		case funcCompose:
-			return fmt.Errorf("polytype.Compose at %s is not supported in a declaration file: declare each root and sealed union as its own var _ = polytype.Declare(...) or var _ = polytype.SealedUnion[I](...); Compose combines configuration passed to codegen.Gen", decl.CallExpr.Position())
+			return fmt.Errorf("polytype.Compose at %s is not supported in a declaration file: declare each root and sealed union as its own var _ = polytype.Declare(...) or var _ = polytype.SealedUnion[I](...); Compose combines configuration passed to codegen.Gen", position)
 
 		default:
-			return fmt.Errorf("polytype.%s at %s is not a declaration marker; a declaration file accepts polytype.Declare and polytype.SealedUnion", name, decl.CallExpr.Position())
+			return fmt.Errorf("polytype.%s at %s is not a declaration marker; a declaration file accepts polytype.Declare and polytype.SealedUnion", name, position)
 		}
 	}
 

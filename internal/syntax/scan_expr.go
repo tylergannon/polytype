@@ -61,8 +61,9 @@ func (m MarkerFunctionCall) String() string {
 
 // ParseValueExprForMarkerFunctionCall returns every call to a function of the
 // polytype package among a var spec's values, including functions that are
-// not declaration markers: the loader rejects those with their position
-// rather than letting them drop out of the configuration unnoticed.
+// not declaration markers: in a declaration file the loader rejects those
+// with their position rather than letting them drop out of the configuration
+// unnoticed.
 func ParseValueExprForMarkerFunctionCall(e ValueSpec) []MarkerFunctionCall {
 	var results []MarkerFunctionCall
 	for _, arg := range e.Value().Values {
