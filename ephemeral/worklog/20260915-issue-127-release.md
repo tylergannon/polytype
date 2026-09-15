@@ -13,4 +13,6 @@
   concise record. Original implementation/review history and raw logs are
   preserved on `codex/issue-127-plan` (implementation through `2958e67`).
 - Clean delivery-worktree baseline: `go test ./...` passed before applying
-  the implementation. Final independent review and CI pending.
+  the implementation.
+- Final GPT Sol independent review found no material defect. The round-3 named-container reproduction emitted both nested union discriminators after generation and runtime were run in separate Go invocations; the first combined invocation compiled stale code before generation.
+- Independent baseline `go test ./...`, final uncached `go test -count=1 ./...`, `just build-tagged`, and diff whitespace check passed. Final review is `ephemeral/issue-127-final-validation.md`; draft PR and CI state are owned by the release manager.
