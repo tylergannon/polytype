@@ -242,3 +242,96 @@ So:
     the fixture is really in, so moving both sides in lockstep preserves the
     property under test. Not a weakening: the alias names must still be
     generated correctly for it to pass.
+
+## Session 2026-09-15 (continued): branch `claude/test-suite-speed`
+
+Step 4 (`t.Parallel()`) taken up after all of #131/#132/#136 landed on main.
+
+### Committed
+
+- `82372fa` test: run internal/builder tests in parallel (71 insertions;
+  10.9s -> 5.3s contended)
+- `683d456` test: run codegen tests in parallel and stop mutating process env.
+  `t.Setenv` is forbidden alongside `t.Parallel`, so `testutils.RunCommandEnv`
+  was added and `TestGenWithDeclarationFilesPresent` now passes `TARGET`/`OUT`
+  to the child directly. **No `t.Setenv`, `t.Chdir`, `os.Setenv` or `os.Chdir`
+  remains anywhere in the tree outside testfixtures** -- verified by grep.
+- `83d4d92` test: load a table's fixture cases in one `packages.Load`.
+  Adds `fixtureCase`/`loadedCase`/`loadFixtureCases` to
+  `internal/builder/fixture_module_test.go` and `builderFor` to
+  `lowering_helpers_test.go`; converts
+  `TestSealedUnionDiagnosticsNameTheType` as the exemplar.
+- `3cbc0cb` test: run grammar tests in parallel. 5.07s -> 0.60s.
+- `1fa035a` test: build the polytype CLI once per package. Four command tests
+  used `go run .` (a full relink each) and two more built their own copy:
+  six links per run, now one, via `TestMain`. 3.51s -> 2.01s.
+
+### Measurement discipline
+
+Per-package times from a parallel `go test ./...` run are contention-inflated
+and must not be compared against each other. Everything above is measured with
+the package run in isolation, on an otherwise idle machine.
+
+**Corrected claim:** the earlier reading that `internal/syntax` costs ~6.4s was
+contention. Isolated it is 1.75s, and the sum of its individual test times is
+0.53s, so parallelising it is not worth doing.
+
+### Negative result: codegen
+
+Adding `t.Parallel()` to the eight fixture subtests in
+`codegen/codegen_test.go` made the package **slower** (4.44s -> ~5.1s,
+consistent over three runs). Each subtest spawns `go run`, which is already an
+internally parallel build, so running eight at once oversubscribes the CPU.
+Reverted. The real fix there is to build each `cmd/*` generator once instead of
+`go run`-ing it per subtest, which is the same shape as issue #137.
+
+### Delegated (isolated worktrees, mechanical batching conversions)
+
+Note for future delegation: agent worktrees were provisioned from `ecddb2b`,
+NOT from this branch's tip, so each agent had to fast-forward to
+`claude/test-suite-speed` before it could see the exemplar.
+
+All four merged into `claude/test-suite-speed`:
+
+- `sealed_union_discriminator_test.go` (7 cases), `enum_marker_test.go` (3),
+  `unsupported_interface_containers_test.go` (6),
+  `typegrammar_adapter_test.go` (5 + 4),
+  `validate_free_func_test.go` (5).
+- Reviewed by diff. One correction applied on top (`7872ebe`): the
+  interface-container conversion dropped `require.Empty(pkgs[0].Errors)`
+  along with the per-case load it guarded; restored as
+  `require.Empty(loaded.pkg.Errors)`.
+- `TestFluentDeclarationParityWithLegacy` was **not** converted, correctly:
+  it already loads once outside all four subtests, which are assertion
+  groups over one shared builder, not four fixtures. My count of nine
+  convertible tables was wrong; it was seven.
+- `TestTypeScriptOutputPreflightRejectsInvalidGeneratorResults` was dropped
+  from the list before delegation: it calls `prepareTypeScriptOutput`
+  directly and never loads a package.
+
+### `TestBasic` idempotent reload
+
+The phase reloaded all thirteen fixtures to regenerate two. By then the tree
+holds generated output, so the eleven discarded packages are the expensive
+ones. Narrowing the load patterns took `TestBasic` 4.39s -> 2.03s and the
+phase itself 2.3s -> 0.10s.
+
+### Final state
+
+Whole suite `go test -count=1 ./...`: **11.4s** (was 36.8s before #136, 21.7s
+after it, 16.2s at the start of this branch). A no-change re-run is **0.64s**
+-- every package caches.
+
+Isolated per-package, idle machine: builder 4.66s, codegen 4.45s,
+polytype 1.97s, typescript 1.29s, syntax 0.80s, grammar 0.67s.
+
+`just lint` clean, `just build-tagged` clean, `go test -race -count=2
+-shuffle=on ./internal/builder/` passes.
+
+### Where the remaining time is
+
+`internal/builder` is now CPU-bound, not latency-bound: user 11.0s / sys
+14.7s at 485% CPU for 4.66s wall. Sys still exceeds user, which means
+subprocess spawning -- roughly sixty non-table tests still do one
+`packages.Load` each. Collapsing those into a package-wide shared fixture
+module is the next structural step and is worth its own issue.

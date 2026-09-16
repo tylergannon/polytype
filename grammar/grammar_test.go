@@ -53,6 +53,7 @@ type Todo struct {
 `
 
 func TestLowerAnonymousAndCrossPackageRoots(t *testing.T) {
+	t.Parallel()
 	dir := writeFixture(t, map[string]string{
 		"fixture.go":   holderSource,
 		"todo/todo.go": todoSource,
@@ -92,6 +93,7 @@ func TestLowerAnonymousAndCrossPackageRoots(t *testing.T) {
 // A shape the field lowering refuses must be refused by the root bridge in the
 // same words, so a caller cannot tell which path found it.
 func TestRefusedRootsMatchFieldLoweringText(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		shape string
@@ -100,6 +102,7 @@ func TestRefusedRootsMatchFieldLoweringText(t *testing.T) {
 		{"anonymous_interface", "interface{ Do() }"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			fieldErr := lowerField(t, tc.shape)
 			rootErr := lowerRoot(t, tc.shape)
 			require.Error(t, fieldErr)
@@ -114,6 +117,7 @@ func TestRefusedRootsMatchFieldLoweringText(t *testing.T) {
 // older wording. The root bridge still has to speak the grammar's sentence,
 // which it shares with the field lowering by construction.
 func TestRefusedRootsUseGrammarWording(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		shape string
@@ -125,6 +129,7 @@ func TestRefusedRootsUseGrammarWording(t *testing.T) {
 		{"sealed_interface", "Shape", "registered interface example.com/grammarfixture.Shape is valid only as a configured direct field"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := lowerRoot(t, tc.shape)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.want)
@@ -136,6 +141,7 @@ func TestRefusedRootsUseGrammarWording(t *testing.T) {
 // error: the bridge hands named types to the dst lowering rather than
 // reimplementing it.
 func TestAcceptedRootMatchesFieldLowering(t *testing.T) {
+	t.Parallel()
 	source := shapeFixture("[]*Meta")
 	dir := writeFixture(t, map[string]string{"fixture.go": source})
 	pkg, err := grammar.Load(dir)
@@ -158,6 +164,7 @@ func TestAcceptedRootMatchesFieldLowering(t *testing.T) {
 // Validate refuses a byte-like slice wherever a definition reaches one, and
 // must refuse it as a root in the same words.
 func TestRefusedAnonymousRootPassesAdmissionBoundary(t *testing.T) {
+	t.Parallel()
 	dir := writeFixture(t, map[string]string{"fixture.go": shapeFixture("int")})
 	pkg, err := grammar.Load(dir)
 	require.NoError(t, err)
@@ -170,6 +177,7 @@ func TestRefusedAnonymousRootPassesAdmissionBoundary(t *testing.T) {
 }
 
 func TestLowerRejectsUnloadablePackage(t *testing.T) {
+	t.Parallel()
 	_, err := grammar.Load(filepath.Join(t.TempDir(), "missing"))
 	require.Error(t, err)
 }
@@ -292,6 +300,7 @@ func requireDefinition(t *testing.T, defs typegrammar.Definitions, name typegram
 }
 
 func TestLoadAndLowerRecursiveTypes(t *testing.T) {
+	t.Parallel()
 	source := `package fixture
 
 import "github.com/tylergannon/polytype"

@@ -33,6 +33,7 @@ var _ = polytype.Declare(Root.Schema)
 // plan is asserted directly; TestNestedNamedContainerTraversal is the
 // runtime round trip through the same traversal.
 func TestNamedContainerTraversesReachableCodecs(t *testing.T) {
+	t.Parallel()
 	types := `type Root struct {
 	Items Items ` + "`json:\"items\"`" + `
 }
@@ -64,6 +65,7 @@ func (Leaf) block() {}
 // layers of named containers: type Outer []Inner, type Inner []Wrapper where
 // Wrapper contains a sealed union.
 func TestNestedNamedContainerTraversal(t *testing.T) {
+	t.Parallel()
 	types := `type Root struct {
 	Data Outer ` + "`json:\"data\"`" + `
 }
@@ -105,6 +107,7 @@ import (
 )
 
 func TestNestedNamedContainerRoundTrip(t *testing.T) {
+	t.Parallel()
 	want := Root{Data: Outer{{Value: Circle{Radius: 5}}, {Value: Square{Side: 3}}}}
 	data, err := json.Marshal(want)
 	if err != nil { t.Fatal(err) }
@@ -135,6 +138,7 @@ func TestNestedNamedContainerRoundTrip(t *testing.T) {
 // (discoverCodecs=true, mapSchemas=false) traverses named containers. This
 // is the exact code path the codegen.Gen(GoJSON()) API uses.
 func TestDiscoverCodecPlansNamedContainer(t *testing.T) {
+	t.Parallel()
 	types := `type Root struct {
 	Items Items ` + "`json:\"items\"`" + `
 }

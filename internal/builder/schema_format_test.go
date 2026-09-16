@@ -11,6 +11,7 @@ import (
 )
 
 func TestWriteSchemaUsesSchemaHardlines(t *testing.T) {
+	t.Parallel()
 	typeID := syntax.TypeID{PkgPath: "example.com/test", TypeName: "Example"}
 	builder := SchemaBuilder{schemas: map[string]schema.JSONSchema{
 		typeID.TypeName: schema.ObjectNode{
@@ -46,6 +47,7 @@ func TestWriteSchemaUsesSchemaHardlines(t *testing.T) {
 }
 
 func TestWriteTemplateSchemaUsesSchemaHardlines(t *testing.T) {
+	t.Parallel()
 	typeID := syntax.TypeID{PkgPath: "example.com/test", TypeName: "Example"}
 	builder := SchemaBuilder{
 		schemas: map[string]schema.JSONSchema{

@@ -14,6 +14,7 @@ import (
 )
 
 func TestProgrammaticGenerationSelectsOutputsWithoutRegistration(t *testing.T) {
+	t.Parallel()
 	repoRoot, err := filepath.Abs("..")
 	require.NoError(t, err)
 
@@ -62,6 +63,7 @@ func TestProgrammaticGenerationSelectsOutputsWithoutRegistration(t *testing.T) {
 }
 
 func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
+	t.Parallel()
 	repoRoot, err := filepath.Abs("..")
 	require.NoError(t, err)
 
@@ -136,6 +138,7 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 // mode, and the Go JSON and devalue codecs round-trip the issue's value. JSON
 // Schema alone fails, once, naming the output and the option that avoids it.
 func TestGenWithDeclarationFilesPresent(t *testing.T) {
+	t.Parallel()
 	repoRoot, err := filepath.Abs("..")
 	require.NoError(t, err)
 
@@ -145,9 +148,10 @@ func TestGenWithDeclarationFilesPresent(t *testing.T) {
 	runGo(t, fixture, "build", "-o", gen, "./gen")
 	run := func(t *testing.T, target, out string) (int, string) {
 		t.Helper()
-		t.Setenv("TARGET", target)
-		t.Setenv("OUT", out)
-		exit, stdout, stderr, err := testutils.RunCommand(gen, fixture)
+		// Passed to the generator directly rather than through t.Setenv, which
+		// Go forbids alongside t.Parallel.
+		env := []string{"TARGET=" + target, "OUT=" + out}
+		exit, stdout, stderr, err := testutils.RunCommandEnv(gen, fixture, env)
 		require.NoError(t, err)
 		return exit, stdout + stderr
 	}
@@ -195,6 +199,7 @@ func TestGenWithDeclarationFilesPresent(t *testing.T) {
 // TestGenWithoutOutputNamesDeclaredType proves a declaration without a schema
 // entrypoint and no selected output is rejected by name.
 func TestGenWithoutOutputNamesDeclaredType(t *testing.T) {
+	t.Parallel()
 	type Tree struct{}
 	err := codegen.Gen(polytype.Declare[Tree]())
 	require.ErrorContains(t, err, "no output selected for Tree")
@@ -202,6 +207,7 @@ func TestGenWithoutOutputNamesDeclaredType(t *testing.T) {
 }
 
 func TestCodecDiscoveryPackageQualifiedCollision(t *testing.T) {
+	t.Parallel()
 	repoRoot, err := filepath.Abs("..")
 	require.NoError(t, err)
 
@@ -216,6 +222,7 @@ func TestCodecDiscoveryPackageQualifiedCollision(t *testing.T) {
 }
 
 func TestCodecDiscoveryNestedErrorPropagation(t *testing.T) {
+	t.Parallel()
 	repoRoot, err := filepath.Abs("..")
 	require.NoError(t, err)
 
@@ -227,6 +234,7 @@ func TestCodecDiscoveryNestedErrorPropagation(t *testing.T) {
 }
 
 func TestRecursiveEmbeddingTerminates(t *testing.T) {
+	t.Parallel()
 	repoRoot, err := filepath.Abs("..")
 	require.NoError(t, err)
 
@@ -238,6 +246,7 @@ func TestRecursiveEmbeddingTerminates(t *testing.T) {
 }
 
 func TestRecursiveDevalueJSInterop(t *testing.T) {
+	t.Parallel()
 	repoRoot, err := filepath.Abs("..")
 	require.NoError(t, err)
 

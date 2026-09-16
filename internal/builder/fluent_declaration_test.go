@@ -200,6 +200,7 @@ func TestFluentDeclarationParityWithLegacy(t *testing.T) {
 	builder := writeFluentFixture(t, fluentParityFixture)
 
 	t.Run("providers", func(t *testing.T) {
+		t.Parallel()
 		legacy, fluent := loweredObject(t, builder, "Legacy"), loweredObject(t, builder, "Fluent")
 		require.Equal(t, []typegrammar.FieldValue{&typegrammar.Provided{}, &typegrammar.Provided{}, &typegrammar.Provided{}}, fieldValues(legacy))
 		require.Equal(t, fieldValues(legacy), fieldValues(fluent))
@@ -210,6 +211,7 @@ func TestFluentDeclarationParityWithLegacy(t *testing.T) {
 	})
 
 	t.Run("pointer root providers", func(t *testing.T) {
+		t.Parallel()
 		legacy, fluent := loweredObject(t, builder, "LegacyPointer"), loweredObject(t, builder, "FluentPointer")
 		require.Equal(t, []typegrammar.FieldValue{&typegrammar.Provided{}, &typegrammar.Provided{}}, fieldValues(legacy))
 		require.Equal(t, fieldValues(legacy), fieldValues(fluent))
@@ -220,6 +222,7 @@ func TestFluentDeclarationParityWithLegacy(t *testing.T) {
 	})
 
 	t.Run("ref", func(t *testing.T) {
+		t.Parallel()
 		require.ElementsMatch(t, []string{"LegacyShared", "FluentShared"}, refTypeNames(builder))
 		for _, owner := range []string{"LegacyOwner", "FluentOwner"} {
 			value := requireField(t, loweredObject(t, builder, owner).Fields, "value")
@@ -232,6 +235,7 @@ func TestFluentDeclarationParityWithLegacy(t *testing.T) {
 	// not change the wire values; and an explicit .StringerEnum on a field
 	// of the marked type still selects name mode for that field.
 	t.Run("enum marker", func(t *testing.T) {
+		t.Parallel()
 		widget := loweredObject(t, builder, "Widget")
 		direct := loweredEnum(t, builder, requireField(t, widget.Fields, "direct").Value)
 		require.Equal(t, typegrammar.EnumValues, direct.Mode)

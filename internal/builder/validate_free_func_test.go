@@ -33,6 +33,7 @@ func writeMultiFileFixture(t *testing.T, files map[string]string) string {
 // this check, generation would succeed and simply produce no ValidateJSON
 // for that type -- a silent partial result.
 func TestValidateRejectsFreeFunctionPointerRoot(t *testing.T) {
+	t.Parallel()
 	dir := writeTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -54,23 +55,14 @@ var _ = polytype.Declare(PointerRootSchema)
 	require.ErrorContains(t, err, "--validate cannot generate ValidateJSON for PointerRoot")
 }
 
-func TestSchemaGenerationRejectsImplicitPointerAndOmissionSemantics(t *testing.T) {
-	tests := []struct {
-		name   string
-		source string
-		wants  []string
-	}{
-		{name: "bare pointer", source: "type Root struct { Child *string `json:\"child\"` }", wants: []string{"bare pointer field Root.Child", "use polytype.Nullable[T]"}},
-		{name: "embedded bare pointer", source: "type Child struct{}\ntype Root struct { *Child }", wants: []string{"bare pointer field Root.Child", "use polytype.Nullable[T]"}},
-		{name: "omitempty", source: "type Root struct { Value string `json:\"value,omitempty\"` }", wants: []string{`ordinary field Root.Value uses json:",omitempty"`, "use polytype.Optional[T]"}},
-		{name: "embedded omitempty", source: "type Child struct{}\ntype Root struct { Child `json:\",omitempty\"` }", wants: []string{`ordinary field Root.Child uses json:",omitempty"`, "use polytype.Optional[T]"}},
-		{name: "omitzero", source: "type Root struct { Value string `json:\"value,omitzero\"` }", wants: []string{`ordinary field Root.Value uses json:",omitzero"`, "use polytype.Optional[T]"}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			dir := writeMultiFileFixture(t, map[string]string{
-				"types.go": "package fixture\n\n" + test.source + "\n",
-				"schema.go": `//go:build jsonschema
+// implicitPointerFixtureFiles is the file set
+// TestSchemaGenerationRejectsImplicitPointerAndOmissionSemantics writes per
+// case, split out so its table can be materialized into one module and
+// loaded together.
+func implicitPointerFixtureFiles(source string) map[string]string {
+	return map[string]string{
+		"types.go": "package fixture\n\n" + source + "\n",
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
@@ -84,9 +76,34 @@ func (Root) Schema() json.RawMessage { panic("not implemented") }
 
 var _ = polytype.Declare(Root.Schema)
 `,
-			})
+	}
+}
 
-			err := Run(BuilderArgs{TargetDir: dir})
+func TestSchemaGenerationRejectsImplicitPointerAndOmissionSemantics(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		source string
+		wants  []string
+	}{
+		{name: "bare pointer", source: "type Root struct { Child *string `json:\"child\"` }", wants: []string{"bare pointer field Root.Child", "use polytype.Nullable[T]"}},
+		{name: "embedded bare pointer", source: "type Child struct{}\ntype Root struct { *Child }", wants: []string{"bare pointer field Root.Child", "use polytype.Nullable[T]"}},
+		{name: "omitempty", source: "type Root struct { Value string `json:\"value,omitempty\"` }", wants: []string{`ordinary field Root.Value uses json:",omitempty"`, "use polytype.Optional[T]"}},
+		{name: "embedded omitempty", source: "type Child struct{}\ntype Root struct { Child `json:\",omitempty\"` }", wants: []string{`ordinary field Root.Child uses json:",omitempty"`, "use polytype.Optional[T]"}},
+		{name: "omitzero", source: "type Root struct { Value string `json:\"value,omitzero\"` }", wants: []string{`ordinary field Root.Value uses json:",omitzero"`, "use polytype.Optional[T]"}},
+	}
+
+	fixtures := make([]fixtureCase, 0, len(tests))
+	for _, test := range tests {
+		fixtures = append(fixtures, fixtureCase{name: test.name, files: implicitPointerFixtureFiles(test.source)})
+	}
+	cases := loadFixtureCases(t, fixtures)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			loaded := cases[test.name]
+			err := RunLoaded(loaded.pkg, BuilderArgs{TargetDir: loaded.dir})
 			for _, want := range test.wants {
 				require.ErrorContains(t, err, want)
 			}
@@ -106,6 +123,7 @@ var _ = polytype.Declare(Root.Schema)
 // TestInterfaceFuncTypeSchemaCallable in testfixtures/entrypoints is the
 // compile-and-call proof through TestBasic.
 func TestFreeFunctionRootsForInvalidReceiversAreClassifiedAsFreeFunctions(t *testing.T) {
+	t.Parallel()
 	builder := loadBuilder(t, writeMultiFileFixture(t, map[string]string{
 		"types.go": `package fixture
 
@@ -151,6 +169,7 @@ var (
 // rejection fires for a registered-interface free-function root, not just a
 // named-pointer one, since hasInvalidMethodReceiverBase classifies both.
 func TestValidateRejectsFreeFunctionInterfaceRoot(t *testing.T) {
+	t.Parallel()
 	dir := writeMultiFileFixture(t, map[string]string{
 		"types.go": `package fixture
 
@@ -188,6 +207,7 @@ var _ = polytype.Declare(ValueSchema)
 // could ever be generated for it) instead of silently writing a
 // `.json.tmpl` that nothing can execute.
 func TestRenderProvidersRejectsFreeFunctionPointerRoot(t *testing.T) {
+	t.Parallel()
 	dir := writeTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -217,6 +237,7 @@ var _ = polytype.Declare(PointerRootSchema).RenderProviders()
 // original zero-argument stub's callers or, if the same builder function
 // is reused for two such types, collide as a duplicate declaration.
 func TestBuilderRejectsInvalidReceiverPointerRoot(t *testing.T) {
+	t.Parallel()
 	dir := writeTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture

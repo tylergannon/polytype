@@ -7,6 +7,7 @@ import (
 )
 
 func TestStringModeEnumRejectsDuplicateUnderlyingValuesBeforeWriting(t *testing.T) {
+	t.Parallel()
 	targetDir := writeEnumCodecFixture(t, `type Color int
 const (
 	ColorRed Color = 1
@@ -20,6 +21,7 @@ type Owner struct { Color Color `+"`json:\"color\"`"+` }
 }
 
 func TestStringModeEnumRejectsDuplicateUnderlyingAliasAcrossDeclarationsBeforeWriting(t *testing.T) {
+	t.Parallel()
 	targetDir := writeEnumCodecFixture(t, `type Color int
 const ColorRed Color = 1
 const ColorCrimson = ColorRed
@@ -31,6 +33,7 @@ type Owner struct { Color Color `+"`json:\"color\"`"+` }
 }
 
 func TestNonAdaptedEnumsAllowAliasValues(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name   string
 		types  string
@@ -68,6 +71,7 @@ type Owner struct { Color Color ` + "`json:\"color\"`" + ` }
 }
 
 func TestStringModeEnumRejectsUnsupportedContainerBeforeWriting(t *testing.T) {
+	t.Parallel()
 	targetDir := writeEnumCodecFixture(t, `type Color int
 const ColorRed Color = 1
 type Owner struct { Colors []Color `+"`json:\"colors\"`"+` }
@@ -78,6 +82,7 @@ type Owner struct { Colors []Color `+"`json:\"colors\"`"+` }
 }
 
 func TestEnumRejectsPointerFieldBeforeWriting(t *testing.T) {
+	t.Parallel()
 	targetDir := writeEnumCodecFixture(t, `type Color int
 const ColorRed Color = 1
 type Owner struct { Color *Color `+"`json:\"color,omitempty\"`"+` }
@@ -88,6 +93,7 @@ type Owner struct { Color *Color `+"`json:\"color,omitempty\"`"+` }
 }
 
 func TestRegisteredEnumRejectsJSONStringOptionBeforeWriting(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name         string
 		option       string
@@ -106,6 +112,7 @@ func TestRegisteredEnumRejectsJSONStringOptionBeforeWriting(t *testing.T) {
 }
 
 func TestStringModeEnumRejectsProductionJSONHooksBeforeWriting(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name string
 		hook string
@@ -126,6 +133,7 @@ type Owner struct { Color Color `+"`json:\"color\"`"+` }
 }
 
 func TestEnumOnlyOwnerReusesOwnerCodecCollisionAudit(t *testing.T) {
+	t.Parallel()
 	targetDir := writeEnumCodecFixture(t, `type Color int
 const ColorRed Color = 1
 type Owner struct { Color Color `+"`json:\"color\"`"+` }

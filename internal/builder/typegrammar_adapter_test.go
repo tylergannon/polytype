@@ -14,6 +14,7 @@ import (
 )
 
 func TestTypeDefinitionsPreservesRegisteredSourceGrammar(t *testing.T) {
+	t.Parallel()
 	source := `//go:build jsonschema
 
 package fixture
@@ -222,6 +223,7 @@ var (
 }
 
 func TestTypeDefinitionsRejectsUnresolvedWireMappings(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		body string
@@ -264,17 +266,13 @@ func provide(string) json.Marshaler { return json.RawMessage(` + "`\"provided\"`
 		},
 	}
 
+	fixtures := make([]fixtureCase, 0, len(tests))
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			option := ""
-			if test.name == "provider" {
-				option = ", polytype.WithFunction(Root{}.Value, provide)"
-			}
-			// A byte slice has no grammar node at all, so the single lowering
-			// refuses it for every output; the other shapes lower permissively
-			// for JSON Schema and are refused only by the strict backends.
-			mayFailToBuild := test.name == "byte slice"
-			source := fmt.Sprintf(`//go:build jsonschema
+		option := ""
+		if test.name == "provider" {
+			option = ", polytype.WithFunction(Root{}.Value, provide)"
+		}
+		source := fmt.Sprintf(`//go:build jsonschema
 
 package fixture
 
@@ -288,16 +286,24 @@ import (
 func (Root) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.NewJSONSchemaMethod(Root.Schema%s)
 `, test.body, option)
-			dir := writeTypeGrammarFixture(t, source)
-			packages, err := syntax.Load(dir)
-			require.NoError(t, err)
-			require.Len(t, packages, 1)
-			require.Empty(t, packages[0].Errors)
-			builder, err := New(packages[0])
+		fixtures = append(fixtures, fixtureCase{name: test.name, files: typeGrammarFixtureFiles(source)})
+	}
+	cases := loadFixtureCases(t, fixtures)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			loaded := cases[test.name]
+			require.Empty(t, loaded.pkg.Errors)
+			builder, err := New(loaded.pkg)
 			if err == nil {
 				_, err = builder.TypeDefinitions()
 			} else {
-				require.True(t, mayFailToBuild, "New must lower %s permissively: %v", test.name, err)
+				// A byte slice has no grammar node at all, so the single
+				// lowering refuses it for every output; the other shapes
+				// lower permissively for JSON Schema and are refused only by
+				// the strict backends.
+				require.True(t, test.name == "byte slice", "New must lower %s permissively: %v", test.name, err)
 			}
 			require.ErrorContains(t, err, test.want)
 		})
@@ -305,6 +311,7 @@ var _ = polytype.NewJSONSchemaMethod(Root.Schema%s)
 }
 
 func TestTypeDefinitionsSourceAdmissionRejectsInvalidCompositions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		body    string
@@ -337,9 +344,9 @@ type Root struct { Event Event ` + "`json:\"event\"`" + ` }
 			want: "does not implement the complete interface",
 		},
 	}
+	fixtures := make([]fixtureCase, 0, len(tests))
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			source := fmt.Sprintf(`//go:build jsonschema
+		source := fmt.Sprintf(`//go:build jsonschema
 
 package fixture
 
@@ -353,11 +360,15 @@ import (
 func (Root) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.NewJSONSchemaMethod(Root.Schema%s)
 `, test.body, test.options)
-			dir := writeTypeGrammarFixture(t, source)
-			packages, err := syntax.Load(dir)
-			require.NoError(t, err)
-			require.Len(t, packages, 1)
-			builder, err := New(packages[0])
+		fixtures = append(fixtures, fixtureCase{name: test.name, files: typeGrammarFixtureFiles(source)})
+	}
+	cases := loadFixtureCases(t, fixtures)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			loaded := cases[test.name]
+			builder, err := New(loaded.pkg)
 			if err == nil {
 				_, err = builder.TypeDefinitions()
 			}
@@ -367,6 +378,7 @@ var _ = polytype.NewJSONSchemaMethod(Root.Schema%s)
 }
 
 func TestTypeDefinitionsFailsFastOnPackageErrors(t *testing.T) {
+	t.Parallel()
 	dir := writeTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -389,6 +401,7 @@ var broken int = "not an int"
 // dropping such roots from generated TypeScript even though they have a
 // working JSON schema and Go accessor.
 func TestTypeDefinitionsIncludesFreeFunctionPointerRoot(t *testing.T) {
+	t.Parallel()
 	builder := loadTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -429,8 +442,17 @@ func writeTypeGrammarFixture(t *testing.T, source string) string {
 	dir := t.TempDir()
 	module := fmt.Sprintf("module example.com/typegrammarfixture\n\ngo 1.27\n\nrequire github.com/tylergannon/polytype v0.0.0\nreplace github.com/tylergannon/polytype => %s\n", root)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte(module), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "fixture.go"), []byte(source), 0o644))
+	for name, content := range typeGrammarFixtureFiles(source) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
 	return dir
+}
+
+// typeGrammarFixtureFiles is writeTypeGrammarFixture's file set, split out so
+// a table of cases can be materialized into one module and loaded together
+// via loadFixtureCases.
+func typeGrammarFixtureFiles(source string) map[string]string {
+	return map[string]string{"fixture.go": source}
 }
 
 func requireDefinition(t *testing.T, defs typegrammar.Definitions, name string) typegrammar.Definition {

@@ -59,6 +59,7 @@ func dirNames(t *testing.T, dir string) []string {
 }
 
 func TestDeclarationFileRejectsNonMarkerCallsBeforeWriting(t *testing.T) {
+	t.Parallel()
 	for name, test := range map[string]struct{ decls, want string }{
 		"Compose": {
 			decls: "var _ = polytype.Compose(\n\tpolytype.Declare[Tree](),\n\tpolytype.SealedUnion[Node](\"kind\"),\n)\n",
@@ -106,6 +107,7 @@ var Config = polytype.Compose(polytype.Declare[Tree](), NodeUnion)
 // read as declarations: configuration values in ordinary Go neither fail the
 // CLI nor join its roots or unions.
 func TestOrdinaryFileIsNotReadAsDeclarations(t *testing.T) {
+	t.Parallel()
 	dir := writeMultiFileFixture(t, map[string]string{
 		"types.go":  recursiveTypes,
 		"config.go": ordinaryConfiguration,
@@ -119,6 +121,7 @@ func TestOrdinaryFileIsNotReadAsDeclarations(t *testing.T) {
 }
 
 func TestEntrypointlessDeclarationGeneratesCodecsWithoutSchema(t *testing.T) {
+	t.Parallel()
 	dir := writeMultiFileFixture(t, map[string]string{
 		"types.go":  recursiveTypes,
 		"schema.go": declarationFile("var _ = polytype.Declare[Tree]()\nvar _ = polytype.SealedUnion[Node](\"kind\", polytype.Snake)\n"),
@@ -136,6 +139,7 @@ func TestEntrypointlessDeclarationGeneratesCodecsWithoutSchema(t *testing.T) {
 }
 
 func TestEntrypointlessDeclarationRejectsSchemaOnlyOptions(t *testing.T) {
+	t.Parallel()
 	dir := writeMultiFileFixture(t, map[string]string{
 		"types.go":  recursiveTypes,
 		"schema.go": declarationFile("var _ = polytype.Declare[Tree]()\n"),
@@ -158,6 +162,7 @@ func TestEntrypointlessDeclarationRejectsSchemaOnlyOptions(t *testing.T) {
 // is emitted, and an interface fails as a codegen root does instead of being
 // silently dropped.
 func TestEntrypointlessRootIsLoweredWhateverItsType(t *testing.T) {
+	t.Parallel()
 	dir := writeMultiFileFixture(t, map[string]string{
 		"types.go":  recursiveTypes + "\ntype TreePtr *Tree\n",
 		"schema.go": declarationFile("var _ = polytype.Declare[TreePtr]()\n"),
@@ -181,6 +186,7 @@ func TestEntrypointlessRootIsLoweredWhateverItsType(t *testing.T) {
 // leaving both files, whose methods would collide, and without removing
 // another generator's file of the same name.
 func TestSwitchingSchemaOutputReplacesGeneratedFile(t *testing.T) {
+	t.Parallel()
 	const types = `package fixture
 
 type Shape interface{ shape() }
@@ -221,6 +227,7 @@ type Drawing struct {
 }
 
 func TestRecursiveSchemaErrorNamesTheOutputOnce(t *testing.T) {
+	t.Parallel()
 	for name, test := range map[string]struct{ types, cycle string }{
 		"sealed union through a slice": {types: recursiveTypes, cycle: "fixture.Node"},
 		"self-recursive struct": {
@@ -252,6 +259,7 @@ func TestRecursiveSchemaErrorNamesTheOutputOnce(t *testing.T) {
 // configuration in ordinary Go, while a declaration file's SealedUnion marker
 // still sets its interface's discriminator.
 func TestProgrammaticLoadIgnoresRootDeclarations(t *testing.T) {
+	t.Parallel()
 	dir := writeMultiFileFixture(t, map[string]string{
 		"types.go":  recursiveTypes,
 		"config.go": ordinaryConfiguration,

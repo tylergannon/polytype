@@ -3,6 +3,7 @@ package builder
 import (
 	"testing"
 
+	"github.com/dave/dst/decorator"
 	"github.com/stretchr/testify/require"
 	"github.com/tylergannon/polytype/internal/syntax"
 	"github.com/tylergannon/polytype/typegrammar"
@@ -16,8 +17,15 @@ func loadBuilder(t *testing.T, targetDir string) SchemaBuilder {
 	pkgs, err := syntax.Load(targetDir)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
-	require.Empty(t, pkgs[0].Errors)
-	builder, err := New(pkgs[0])
+	return builderFor(t, pkgs[0])
+}
+
+// builderFor is loadBuilder against an already-loaded package, for tests that
+// batch every case of a table into a single decorator.Load (loadFixtureCases).
+func builderFor(t *testing.T, pkg *decorator.Package) SchemaBuilder {
+	t.Helper()
+	require.Empty(t, pkg.Errors)
+	builder, err := New(pkg)
 	require.NoError(t, err)
 	return builder
 }

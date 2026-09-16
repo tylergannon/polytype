@@ -14,6 +14,7 @@ import (
 // generating a second declaration of the same method and leaving the package
 // unable to compile.
 func TestEnumMarkerRejectsProductionJSONMethodsBeforeWriting(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name string
 		hook string
@@ -41,6 +42,7 @@ type Owner struct { Color Color `+"`json:\"color\"`"+` }
 // reproduce the first run's output byte for byte. Putting the same method in
 // any other file of the package instead makes the second run fail.
 func TestGeneratedEnumCodecsRegenerateCleanly(t *testing.T) {
+	t.Parallel()
 	targetDir := writeEnumCodecFixture(t, `type Color int
 func (Color) enum() {}
 const (

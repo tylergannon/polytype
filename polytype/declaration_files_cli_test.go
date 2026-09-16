@@ -29,11 +29,6 @@ func TestGenCommandDeclarationFilesForRecursiveTypes(t *testing.T) {
 		goDirective(t, repoRoot), repoRoot)), 0o644))
 	runGo(t, module, "mod", "tidy")
 
-	cli := filepath.Join(root, "polytype")
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	runGo(t, cwd, "build", "-o", cli, ".")
-
 	// generate runs the CLI in the package directory, as go:generate does.
 	generate := func(t *testing.T, pkg string, args ...string) (int, string) {
 		t.Helper()
