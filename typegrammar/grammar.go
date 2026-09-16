@@ -14,14 +14,18 @@
 // Objects are closed, ordered sets of properties. Ordinary values are
 // non-null; absence and null are separate, direct-field constructors. Unions are
 // field-only constructors with explicit, resolved tags, including singleton
-// unions. There is no general anyOf, any, map, or opaque-provider constructor.
+// unions. There is no general anyOf, any, or map constructor. A field whose
+// wire shape is supplied outside the grammar (a runtime schema provider or an
+// explicit schema reference) is the Provided form: it names the field and
+// carries no shape, so a backend must either honor the supplied schema or
+// refuse the field by name.
 //
 // This is the static structural subset of the v1 contract, not a Go-source
-// parser, arbitrary JSON Schema grammar, or claim of codec conformance. Runtime
-// provider output, unresolved external schema refs and unproved custom wire
-// mappings must be diagnosed by lowering, not replaced with a permissive node.
-// Backends must define their projection explicitly: for example TypeScript's
-// number cannot enforce all Go ranges, and its object types are not validators.
+// parser, arbitrary JSON Schema grammar, or claim of codec conformance.
+// Unresolved external types and unproved custom wire mappings must be
+// diagnosed by lowering, not replaced with a permissive node. Backends must
+// define their projection explicitly: for example TypeScript's number cannot
+// enforce all Go ranges, and its object types are not validators.
 //
 // New node kinds may be added in minor versions. Consumers must not treat a
 // type switch over the node types as exhaustive: always provide a default
@@ -116,6 +120,9 @@ const (
 type EnumMember struct {
 	Name  string
 	Value constant.Value
+	// Description is the constant's doc comment, for backends that document
+	// members (JSON Schema folds it into the enum's description).
+	Description string
 }
 
 // Object's properties retain resolved Go field order and are closed to unknown
@@ -188,6 +195,9 @@ type Union struct {
 	Interface     Name
 	Discriminator string
 	Variants      []Variant
+	// Source is the interface declaration's position, for diagnostics that
+	// name the union rather than one of its variants.
+	Source token.Position
 }
 
 // OptionalUnion and UnionSlice are the only other admitted interface forms:
@@ -202,9 +212,23 @@ type Variant struct {
 	Source         token.Position
 }
 
+// Provided is a direct field whose JSON Schema is supplied outside the static
+// grammar: by a runtime schema provider registered on the owning declaration
+// (Ref is empty) or by an explicit reference in the field's jsonschema tag
+// (Ref is the reference text). It carries no Type, because the Go field's
+// static shape is not the wire contract. Optional reports Optional[T] with
+// json:",omitzero"; a Nullable wrapper is refused by lowering. Backends that
+// cannot honor a supplied schema, such as TypeScript and devalue, refuse the
+// field by name.
+type Provided struct {
+	Ref      string
+	Optional bool
+}
+
 func (*Required) fieldValue()      {}
 func (*Optional) fieldValue()      {}
 func (*Nullable) fieldValue()      {}
 func (*Union) fieldValue()         {}
 func (*OptionalUnion) fieldValue() {}
 func (*UnionSlice) fieldValue()    {}
+func (*Provided) fieldValue()      {}

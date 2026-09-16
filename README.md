@@ -895,9 +895,8 @@ prompting), use `ObjectSchema` and add fields with `AddProperty` /
   a declaration file, or select `GoJSON()`, `TypeScript()`, and `Devalue()`
   through the [programmatic generation](#programmatic-generation) API. JSON
   Schema output rejects them before writing, with one diagnostic naming the
-  recursive type. Recursive embedding where the embedded type also
-  needs generated owner codecs (sealed union fields at both levels) is rejected
-  with a competing-MarshalJSON diagnostic
+  recursive type. Recursive embedding through a pointer (`type Container
+  struct { *Container }`) is rejected as a bare pointer field
 - Registered interfaces support scalar fields and direct `[]I` fields, but not
   fixed arrays, nested/named slices, or Optional/Nullable interface slices
 - External package types unsupported, except `time.Time` (rendered as a string

@@ -75,8 +75,8 @@ Task runner is `just` (justfile), not `make`.
 - **`devalue/codegen/`** — Emits strict Go encoders/decoders (`EncodeT`/`DecodeT`/`StringifyT`/`ParseT`) for a lowered definition graph; compile-and-run fixture in `testdata/fixture`
 - **`typescript/`** — Public TypeScript declaration backend over `typegrammar`; `Generate` returns the files plus the emitted identifier per definition. The marker-free fixture in `testdata/fixture` proves the library path matches `--typescript` byte for byte
 - **`internal/syntax/`** — AST parsing, package loading (uses `golang.org/x/tools/go/packages` with `jsonschema` build tag), type scanning, comment extraction
-- **`internal/builder/`** — Schema generation engine. `SchemaBuilder` orchestrates: type scanning → schema node construction → JSON output → Go code generation
-- **`internal/builder/model.go`** — Schema node types: `ObjectNode`, `PropertyNode`, `ArrayNode`, `UnionTypeNode`, `RefNode`, `TemplateHoleNode`
+- **`internal/builder/`** — Generation engine. `SchemaBuilder` lowers the declared roots once into `typegrammar.Definitions` (`typegrammar.go`), then projects that one lowering into JSON Schema (`internal/schema`), the Go codec plan (`codec_plan.go`), and the generated file. The strict grammar backends get the same lowering through `TypeDefinitions`/`LowerRoots`, which fail on the first shape only JSON Schema can render (provider fields, explicit refs, custom marshalers, interface roots)
+- **`internal/schema/`** — JSON Schema projection over `typegrammar`: `Generate(defs, roots, Options)` plus its output AST (`ObjectNode`, `PropertyNode`, `ArrayNode`, `UnionTypeNode`, `RefNode`, `TemplateHoleNode`) and the hardline printer
 - **`internal/common/`** — Struct tag parsing, helpers
 - **Root package (`polytype`)** — Declaration/registration API (`Declare`, `.StringerEnum`, `.Ref`, `SealedUnion`, ...) and runtime codec types (`Optional[T]`, `Nullable[T]`)
 - **`jsonschema/`** — Hand-rolled JSON Schema construction helpers (`JSONSchema`, `ObjectSchema`, `ParentSchema`, `StringSchema`, `ArraySchema`, `ConstSchema`, `EnumSchema`, ...) for writing provider functions

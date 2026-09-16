@@ -285,6 +285,18 @@ func (v *validator) field(f FieldValue, at location, namedOwner bool) error {
 		if n != nil {
 			return v.union(&n.Union, at, namedOwner)
 		}
+	case *Provided:
+		if n != nil {
+			if !namedOwner && n.Ref == "" {
+				// A provider hole is keyed by the owning declaration; an
+				// explicit reference names its schema itself.
+				return at.fail("provider-supplied schemas require a direct field of a named object owner")
+			}
+			if !utf8.ValidString(n.Ref) {
+				return at.fail("explicit schema reference is not valid UTF-8")
+			}
+			return nil
+		}
 	}
 	return at.fail("nil or unsupported field constructor %T", f)
 }

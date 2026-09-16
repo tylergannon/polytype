@@ -6,18 +6,29 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
 	"slices"
 	"strings"
 
 	"github.com/dave/dst"
 	"github.com/tylergannon/polytype/internal/common"
+	"github.com/tylergannon/polytype/internal/schema"
 	"github.com/tylergannon/polytype/internal/syntax"
 	"github.com/tylergannon/polytype/typegrammar"
 )
 
-// TypeDefinitions lowers the builder's selected roots and their reachable
-// named dependencies into the validated, static type grammar. It performs no
-// rendering and does not mutate builder state or output files.
+// TypeDefinitions returns the builder's roots and their reachable named
+// dependencies lowered into the validated, static type grammar, for the
+// backends that need every wire shape to be static (TypeScript, devalue, the
+// grammar package). It performs no rendering and does not mutate builder
+// state or output files.
+//
+// Generation lowers once, permissively: a shape whose wire contract is
+// supplied outside the grammar (a runtime schema provider, an explicit
+// schema reference, a custom JSON codec) still lowers, so that JSON Schema
+// and the Go codecs can be projected from the same model. Each such shape is
+// recorded as a strict refusal, and this method reports the first one
+// instead of returning definitions a strict backend must not consume.
 func (s *SchemaBuilder) TypeDefinitions() (typegrammar.Definitions, error) {
 	if s == nil {
 		return nil, fmt.Errorf("build type definitions: nil SchemaBuilder")
@@ -25,29 +36,19 @@ func (s *SchemaBuilder) TypeDefinitions() (typegrammar.Definitions, error) {
 	if err := typeGrammarPackageError(s.Scan); err != nil {
 		return nil, err
 	}
-	l := typeGrammarLowerer{
-		builder: s,
-		index:   make(map[typegrammar.Name]int),
-	}
-	roots := append(s.SchemaMethods(), s.SchemaFreeFuncs()...)
-	// SchemaMethods drops a root whose type cannot carry a method, which
-	// matters only for a schema entrypoint. A root declared without one
-	// (Declare[T]()) is lowered whatever its type.
-	for _, method := range s.Scan.SchemaMethods {
-		if method.SchemaMethodName == "" && s.hasInvalidMethodReceiverBase(method.Receiver.TypeName) {
-			roots = append(roots, method)
+	lowered := s.lowered
+	if lowered == nil || len(s.selectedRoots) > 0 {
+		// A partial selection (NewForTypes) lowered only its roots; the
+		// grammar backends see every declared root, as they always have.
+		var err error
+		if lowered, err = s.lower(nil); err != nil {
+			return nil, err
 		}
 	}
-	for _, root := range roots {
-		name := typegrammar.Name{PackagePath: root.Receiver.PkgPath, Name: root.Receiver.TypeName}
-		if err := l.named(name); err != nil {
-			return nil, fmt.Errorf("build type definitions for %s: %w", name, err)
-		}
+	if err := lowered.strictError(); err != nil {
+		return nil, err
 	}
-	if err := l.defs.Validate(); err != nil {
-		return nil, fmt.Errorf("validate type definitions: %w", err)
-	}
-	return l.defs, nil
+	return lowered.defs, nil
 }
 
 // Refusal messages shared by the two lowering entry points. The dst-based
@@ -61,16 +62,105 @@ const (
 	msgPresenceWrapper     = "presence wrappers are valid only as complete direct named fields at %s"
 	msgUnsupportedTypeExpr = "unsupported type expression %T at %s"
 	msgUnresolvedExternal  = "unresolved external type %s; no static wire shape was loaded"
+	msgRegisteredInterface = "registered interface %s is valid only as a configured direct field"
 )
+
+// lowering is the result of one pass over a set of roots: the definition
+// graph every backend consumes, plus the facts about it that only Go code
+// generation needs and the grammar deliberately does not carry.
+type lowering struct {
+	defs typegrammar.Definitions
+	// roots holds one entry per lowered root, in root order.
+	roots []loweredRoot
+	// strict lists every shape that lowered permissively but that a strict
+	// backend must refuse, in discovery order. The first is authoritative.
+	strict []error
+	// fields records, per named object owner and Go field name, the source
+	// facts the generated owner codecs need: the field's struct tag and the
+	// embedded path it was promoted through.
+	fields map[typegrammar.Name]map[string]fieldSource
+}
+
+type loweredRoot struct {
+	method syntax.SchemaMethod
+	schema schema.Root
+}
+
+// fieldSource is what the Go codec generator needs to name and tag a field
+// that the grammar has already resolved.
+type fieldSource struct {
+	tag string
+	// path is the chain of embedded field names the field was promoted
+	// through, empty for a direct field.
+	path []string
+	// steps and order reproduce the generator's field order: a struct's own
+	// fields first, then each embedded struct's in declaration order.
+	steps []int
+	order int
+}
+
+func (l *lowering) strictError() error {
+	if len(l.strict) == 0 {
+		return nil
+	}
+	return l.strict[0]
+}
+
+// strict is the lowerer's own view of strictError, for the entry points that
+// lower without building a lowering value.
+func (l *typeGrammarLowerer) strictErr() error {
+	if len(l.strict) == 0 {
+		return nil
+	}
+	return l.strict[0]
+}
+
+// lower lowers every selected root of the builder. It is the single lowering
+// generation performs: JSON Schema, Go codecs and the grammar backends all
+// consume its definitions.
+func (s *SchemaBuilder) lower(typeNames []string) (*lowering, error) {
+	l := typeGrammarLowerer{
+		builder: s,
+		index:   make(map[typegrammar.Name]int),
+		resolve: func(name typegrammar.Name) error {
+			return s.Scan.EnsureRemoteType(name.PackagePath, name.Name)
+		},
+		fields: make(map[typegrammar.Name]map[string]fieldSource),
+	}
+	var roots []loweredRoot
+	for _, root := range s.roots() {
+		if !selectedRoot(typeNames, root.Receiver.TypeName) {
+			continue
+		}
+		name := typegrammar.Name{PackagePath: root.Receiver.PkgPath, Name: root.Receiver.TypeName}
+		lowered, err := l.root(name)
+		if err != nil {
+			return nil, fmt.Errorf("build type definitions for %s: %w", name, err)
+		}
+		roots = append(roots, loweredRoot{method: root, schema: lowered})
+	}
+	if err := l.defs.Validate(); err != nil {
+		return nil, fmt.Errorf("validate type definitions: %w", err)
+	}
+	return &lowering{defs: l.defs, roots: roots, strict: l.strict, fields: l.fields}, nil
+}
 
 type typeGrammarLowerer struct {
 	builder *SchemaBuilder
 	defs    typegrammar.Definitions
 	index   map[typegrammar.Name]int
 	// resolve, when set, loads a package that marker-seeded traversal never
-	// reached. Only the root bridge sets it: the builder's own roots are
-	// marker-seeded, so their dependencies are already in the scan.
+	// reached.
 	resolve func(name typegrammar.Name) error
+	strict  []error
+	fields  map[typegrammar.Name]map[string]fieldSource
+}
+
+// refuse records a shape the strict backends must not consume. Generation
+// keeps lowering it, because JSON Schema and the Go codecs can still be
+// projected around it.
+func (l *typeGrammarLowerer) refuse(format string, args ...any) {
+	l.strict = append(l.strict, fmt.Errorf(format, args...))
 }
 
 // errPackageNotLoaded reports that name's package is absent and no resolver
@@ -96,6 +186,31 @@ func (l *typeGrammarLowerer) ensurePackage(name typegrammar.Name) error {
 	return nil
 }
 
+// root lowers one declared root. A sealed interface root is the one shape
+// the grammar admits only as a field: it lowers as the union of its variants
+// for JSON Schema, and is a strict refusal for every other backend.
+func (l *typeGrammarLowerer) root(name typegrammar.Name) (schema.Root, error) {
+	if err := l.ensurePackage(name); err != nil {
+		if !errors.Is(err, errPackageNotLoaded) {
+			return schema.Root{}, err
+		}
+		return schema.Root{}, fmt.Errorf("unresolved package %q for named type %s", name.PackagePath, name)
+	}
+	scan, _ := l.builder.Scan.GetPackage(name.PackagePath)
+	if iface, ok := scan.Interfaces[name.Name]; ok {
+		l.refuse(msgRegisteredInterface, name)
+		union, err := l.union(registeredInterfaceField{Interface: iface, DiscPropName: iface.Discriminator})
+		if err != nil {
+			return schema.Root{}, err
+		}
+		return schema.Root{Union: &union}, nil
+	}
+	if err := l.named(name); err != nil {
+		return schema.Root{}, err
+	}
+	return schema.Root{Name: name}, nil
+}
+
 func (l *typeGrammarLowerer) named(name typegrammar.Name) error {
 	if _, ok := l.index[name]; ok {
 		return nil
@@ -108,7 +223,10 @@ func (l *typeGrammarLowerer) named(name typegrammar.Name) error {
 	}
 	scan, _ := l.builder.Scan.GetPackage(name.PackagePath)
 	if err := typeGrammarPackageError(scan); err != nil {
-		return err
+		// Generation has always rendered a package that fails to type-check,
+		// from whatever go/types could still resolve. A backend that derives
+		// every wire shape from go/types facts cannot trust such a package.
+		l.strict = append(l.strict, err)
 	}
 
 	var typeSpec syntax.TypeSpec
@@ -120,7 +238,7 @@ func (l *typeGrammarLowerer) named(name typegrammar.Name) error {
 		typeSpec, found = scan.LocalNamedTypes[name.Name]
 		if !found {
 			if _, isInterface := scan.Interfaces[name.Name]; isInterface {
-				return fmt.Errorf("registered interface %s is valid only as a configured direct field", name)
+				return fmt.Errorf(msgRegisteredInterface, name)
 			}
 			return fmt.Errorf("unresolved named type %s", name)
 		}
@@ -135,7 +253,10 @@ func (l *typeGrammarLowerer) named(name typegrammar.Name) error {
 	})
 
 	if err := rejectCustomWireType(scan, name.Name, typeSpec.Position().String()); err != nil {
-		return err
+		// The Go codec honors the custom mapping and JSON Schema documents
+		// the static shape, as they always have. Only a backend that must
+		// derive the wire form statically has to refuse it.
+		l.strict = append(l.strict, err)
 	}
 	var (
 		typ typegrammar.Type
@@ -144,7 +265,7 @@ func (l *typeGrammarLowerer) named(name typegrammar.Name) error {
 	if enumSet != nil {
 		typ, err = l.enum(enumSet, typegrammar.EnumValues)
 	} else {
-		typ, err = l.definitionType(typeSpec)
+		typ, err = l.definitionType(name, typeSpec)
 	}
 	if err != nil {
 		return fmt.Errorf("type %s at %s: %w", name, typeSpec.Position(), err)
@@ -153,9 +274,9 @@ func (l *typeGrammarLowerer) named(name typegrammar.Name) error {
 	return nil
 }
 
-func (l *typeGrammarLowerer) definitionType(typeSpec syntax.TypeSpec) (typegrammar.Type, error) {
+func (l *typeGrammarLowerer) definitionType(name typegrammar.Name, typeSpec syntax.TypeSpec) (typegrammar.Type, error) {
 	if object, ok := typeSpec.Type().Expr().(*dst.StructType); ok {
-		fields, err := l.structFields(syntax.NewStructType(object, typeSpec), true)
+		fields, err := l.structFields(name, syntax.NewStructType(object, typeSpec))
 		if err != nil {
 			return nil, err
 		}
@@ -190,19 +311,10 @@ func (l *typeGrammarLowerer) typ(expr syntax.TypeExpr) (typegrammar.Type, error)
 		return &typegrammar.Ref{Target: name}, nil
 
 	case *dst.SelectorExpr:
-		prefix, ok := node.X.(*dst.Ident)
-		if !ok {
-			return nil, fmt.Errorf("unsupported selector expression %T at %s", node.X, expr.Position())
+		ident, err := l.selectorIdent(expr, node)
+		if err != nil {
+			return nil, err
 		}
-		pkgPath := prefix.Path
-		if pkgPath == "" {
-			pkgPath, _ = expr.Imports().GetPackageForPrefix(prefix.Name)
-		}
-		if pkgPath == "" {
-			return nil, fmt.Errorf("could not resolve package prefix %q at %s", prefix.Name, expr.Position())
-		}
-		ident := dst.NewIdent(node.Sel.Name)
-		ident.Path = pkgPath
 		return l.typ(expr.Derive(ident))
 
 	case *dst.StarExpr:
@@ -216,6 +328,12 @@ func (l *typeGrammarLowerer) typ(expr syntax.TypeExpr) (typegrammar.Type, error)
 		return l.typ(expr.Derive(node.X))
 
 	case *dst.ArrayType:
+		if l.isRegisteredInterface(expr.Derive(node.Elt)) {
+			// The grammar admits a union only as a direct field or a direct
+			// one-dimensional slice of one; every other container is the
+			// same refusal the field lowering reports.
+			return nil, fmt.Errorf("%s at %s", unsupportedRegisteredInterfaceContainer, expr.Position())
+		}
 		element, err := l.typ(expr.Derive(node.Elt))
 		if err != nil {
 			return nil, err
@@ -231,7 +349,7 @@ func (l *typeGrammarLowerer) typ(expr syntax.TypeExpr) (typegrammar.Type, error)
 
 	case *dst.StructType:
 		owner := syntax.NewStructType(node, *expr.TypeSpec)
-		fields, err := l.structFields(owner, false)
+		fields, err := l.anonymousStructFields(owner)
 		if err != nil {
 			return nil, err
 		}
@@ -252,18 +370,132 @@ func (l *typeGrammarLowerer) typ(expr syntax.TypeExpr) (typegrammar.Type, error)
 	}
 }
 
-func (l *typeGrammarLowerer) structFields(owner syntax.StructType, namedOwner bool) ([]typegrammar.Field, error) {
+// selectorIdent resolves pkg.Name to a path-qualified identifier.
+func (l *typeGrammarLowerer) selectorIdent(expr syntax.TypeExpr, node *dst.SelectorExpr) (*dst.Ident, error) {
+	prefix, ok := node.X.(*dst.Ident)
+	if !ok {
+		return nil, fmt.Errorf("unsupported selector expression %T at %s", node.X, expr.Position())
+	}
+	pkgPath := prefix.Path
+	if pkgPath == "" {
+		pkgPath, _ = expr.Imports().GetPackageForPrefix(prefix.Name)
+	}
+	if pkgPath == "" {
+		return nil, fmt.Errorf("could not resolve package prefix %q at %s", prefix.Name, expr.Position())
+	}
+	ident := dst.NewIdent(node.Sel.Name)
+	ident.Path = pkgPath
+	return ident, nil
+}
+
+// isRegisteredInterface reports whether expr names a sealed interface,
+// through any pointers or parentheses.
+func (l *typeGrammarLowerer) isRegisteredInterface(expr syntax.TypeExpr) bool {
+	switch node := expr.Excerpt.(type) {
+	case *dst.StarExpr:
+		return l.isRegisteredInterface(expr.Derive(node.X))
+	case *dst.ParenExpr:
+		return l.isRegisteredInterface(expr.Derive(node.X))
+	case *dst.Ident:
+		_, ok := l.builder.findInterfaceImpl(node, expr.Pkg())
+		return ok
+	case *dst.SelectorExpr:
+		ident, err := l.selectorIdent(expr, node)
+		if err != nil {
+			return false
+		}
+		_, ok := l.builder.findInterfaceImpl(ident, expr.Pkg())
+		return ok
+	default:
+		return false
+	}
+}
+
+// structFields lowers a named object's fields, recording the source facts
+// the generated owner codec needs and checking the owner's field-level enum
+// registrations against the fields that exist.
+func (l *typeGrammarLowerer) structFields(name typegrammar.Name, owner syntax.StructType) ([]typegrammar.Field, error) {
 	var (
 		candidates []typeGrammarFieldCandidate
 		order      int
 	)
-	if err := l.collectStructFields(owner, namedOwner, 0, &order, &candidates); err != nil {
+	if err := l.collectStructFields(owner, true, embeddedAt{}, &order, &candidates); err != nil {
 		return nil, err
 	}
-	winners := dominantFieldCandidates(candidates)
+	winners, ambiguous := dominantFieldCandidates(candidates)
+	if err := l.rejectAmbiguousInterfaceFields(owner, ambiguous); err != nil {
+		return nil, err
+	}
+	if err := rejectShadowedGoNames(owner, winners); err != nil {
+		return nil, err
+	}
+	if err := l.checkEnumRegistrations(owner); err != nil {
+		return nil, err
+	}
+	fields, err := l.lowerFields(winners)
+	if err != nil {
+		return nil, err
+	}
+	sources := make(map[string]fieldSource, len(winners))
+	for _, candidate := range winners {
+		sources[candidate.name.goName] = fieldSource{
+			tag:   candidate.tag(),
+			path:  candidate.at.path,
+			steps: candidate.at.steps,
+			order: candidate.order,
+		}
+	}
+	if l.fields == nil {
+		l.fields = make(map[typegrammar.Name]map[string]fieldSource)
+	}
+	l.fields[name] = sources
+	return fields, nil
+}
+
+// anonymousStructFields lowers an inline struct. It is not a named owner, so
+// it carries no registrations: no enum adaptation, no unions, no providers.
+func (l *typeGrammarLowerer) anonymousStructFields(owner syntax.StructType) ([]typegrammar.Field, error) {
+	var (
+		candidates []typeGrammarFieldCandidate
+		order      int
+	)
+	if err := l.collectStructFields(owner, false, embeddedAt{}, &order, &candidates); err != nil {
+		return nil, err
+	}
+	winners, _ := dominantFieldCandidates(candidates)
+	if err := rejectShadowedGoNames(owner, winners); err != nil {
+		return nil, err
+	}
+	return l.lowerFields(winners)
+}
+
+// rejectShadowedGoNames refuses an owner whose flattened fields share a Go
+// field name: a promoted field shadowed by a shallower field of the same
+// name but a different JSON name. encoding/json serializes both, but the
+// grammar's objects are flat, so the promoted field has no Go name of its
+// own to be addressed by.
+func rejectShadowedGoNames(owner syntax.StructType, winners []typeGrammarFieldCandidate) error {
+	byGoName := make(map[string]typeGrammarFieldCandidate, len(winners))
+	for _, candidate := range winners {
+		first, ok := byGoName[candidate.name.goName]
+		if !ok {
+			byGoName[candidate.name.goName] = candidate
+			continue
+		}
+		shallow, deep := first, candidate
+		if deep.depth() < shallow.depth() {
+			shallow, deep = deep, shallow
+		}
+		return fmt.Errorf("promoted field %s shares Go field name %q with %s at %s; a shadowed promoted field is outside the static type grammar",
+			deep.accessor(owner.Name()), deep.name.goName, shallow.accessor(owner.Name()), deep.field.Position())
+	}
+	return nil
+}
+
+func (l *typeGrammarLowerer) lowerFields(winners []typeGrammarFieldCandidate) ([]typegrammar.Field, error) {
 	fields := make([]typegrammar.Field, 0, len(winners))
 	for _, candidate := range winners {
-		value, err := l.fieldValue(candidate.owner, candidate.field, candidate.namedOwner)
+		value, err := l.fieldValue(candidate)
 		if err != nil {
 			return nil, err
 		}
@@ -278,18 +510,49 @@ func (l *typeGrammarLowerer) structFields(owner syntax.StructType, namedOwner bo
 	return fields, nil
 }
 
+// embeddedAt locates an embedded struct being flattened into its outermost
+// owner: the embedded field names from that owner, and each one's index
+// among its struct's fields.
+type embeddedAt struct {
+	path  []string
+	steps []int
+}
+
+func (at embeddedAt) into(index int, name string) embeddedAt {
+	return embeddedAt{
+		path:  append(slices.Clone(at.path), name),
+		steps: append(slices.Clone(at.steps), index),
+	}
+}
+
 type typeGrammarFieldCandidate struct {
 	owner      syntax.StructType
 	field      syntax.StructField
 	name       resolvedFieldName
-	depth      int
+	at         embeddedAt
 	order      int
 	tagged     bool
 	namedOwner bool
 }
 
-func (l *typeGrammarLowerer) collectStructFields(owner syntax.StructType, namedOwner bool, depth int, order *int, candidates *[]typeGrammarFieldCandidate) error {
-	for _, field := range owner.Fields() {
+func (c typeGrammarFieldCandidate) depth() int { return len(c.at.steps) }
+
+func (c typeGrammarFieldCandidate) tag() string {
+	if c.field.Field.Tag == nil {
+		return ""
+	}
+	return c.field.Field.Tag.Value
+}
+
+// accessor is the Go selector path of the field from a value of the
+// outermost owner: Owner.Embedded.Field for a promoted field.
+func (c typeGrammarFieldCandidate) accessor(receiver string) string {
+	parts := append([]string{receiver}, c.at.path...)
+	return strings.Join(append(parts, c.name.goName), ".")
+}
+
+func (l *typeGrammarLowerer) collectStructFields(owner syntax.StructType, namedOwner bool, at embeddedAt, order *int, candidates *[]typeGrammarFieldCandidate) error {
+	for index, field := range owner.Fields() {
 		if field.Embedded() && !hasExplicitJSONName(field) {
 			wrapper, _, err := field.Wrapper()
 			if err != nil {
@@ -298,14 +561,15 @@ func (l *typeGrammarLowerer) collectStructFields(owner syntax.StructType, namedO
 			if err := validateStaticFieldWireContract(owner, field, wrapper); err != nil {
 				return err
 			}
-			if err := l.recordEmbeddedDependency(field.TypeExpr); err != nil {
-				return fmt.Errorf("embedded field at %s: %w", field.Position(), err)
-			}
 			embedded, err := l.builder.resolveEmbeddedType(field.TypeExpr, nil)
 			if err != nil {
 				return err
 			}
-			if err := l.collectStructFields(embedded, true, depth+1, order, candidates); err != nil {
+			if err := l.recordEmbeddedDependency(field.TypeExpr); err != nil {
+				return fmt.Errorf("embedded field at %s: %w", field.Position(), err)
+			}
+			name, _ := embeddedFieldName(field)
+			if err := l.collectStructFields(embedded, true, at.into(index, name), order, candidates); err != nil {
 				return err
 			}
 			continue
@@ -324,7 +588,7 @@ func (l *typeGrammarLowerer) collectStructFields(owner syntax.StructType, namedO
 		}
 		for _, name := range names {
 			*candidates = append(*candidates, typeGrammarFieldCandidate{
-				owner: owner, field: field, name: name, depth: depth, order: *order,
+				owner: owner, field: field, name: name, at: at, order: *order,
 				tagged: hasExplicitJSONName(field), namedOwner: namedOwner,
 			})
 			*order++
@@ -333,22 +597,26 @@ func (l *typeGrammarLowerer) collectStructFields(owner syntax.StructType, namedO
 	return nil
 }
 
-func dominantFieldCandidates(candidates []typeGrammarFieldCandidate) []typeGrammarFieldCandidate {
+// dominantFieldCandidates applies encoding/json's dominance rule per JSON
+// name: the shallowest candidates win, and among several at the same depth
+// only a single tagged one does. A name with no winner is dropped, as
+// encoding/json drops it; those groups are returned so a caller can refuse
+// the ones it must not drop silently.
+func dominantFieldCandidates(candidates []typeGrammarFieldCandidate) (winners, ambiguous []typeGrammarFieldCandidate) {
 	byName := make(map[string][]typeGrammarFieldCandidate)
 	for _, candidate := range candidates {
 		byName[candidate.name.json] = append(byName[candidate.name.json], candidate)
 	}
-	winners := make([]typeGrammarFieldCandidate, 0, len(byName))
 	for _, group := range byName {
-		minDepth := group[0].depth
+		minDepth := group[0].depth()
 		for _, candidate := range group[1:] {
-			if candidate.depth < minDepth {
-				minDepth = candidate.depth
+			if candidate.depth() < minDepth {
+				minDepth = candidate.depth()
 			}
 		}
 		var shallow []typeGrammarFieldCandidate
 		for _, candidate := range group {
-			if candidate.depth == minDepth {
+			if candidate.depth() == minDepth {
 				shallow = append(shallow, candidate)
 			}
 		}
@@ -364,23 +632,88 @@ func dominantFieldCandidates(candidates []typeGrammarFieldCandidate) []typeGramm
 		}
 		if len(tagged) == 1 {
 			winners = append(winners, tagged[0])
+			continue
 		}
+		ambiguous = append(ambiguous, shallow...)
 	}
-	slices.SortFunc(winners, func(a, b typeGrammarFieldCandidate) int { return a.order - b.order })
-	return winners
+	byOrder := func(a, b typeGrammarFieldCandidate) int { return a.order - b.order }
+	slices.SortFunc(winners, byOrder)
+	slices.SortFunc(ambiguous, byOrder)
+	return winners, ambiguous
 }
 
-func (l *typeGrammarLowerer) fieldValue(owner syntax.StructType, field syntax.StructField, namedOwner bool) (typegrammar.FieldValue, error) {
-	if field.Field.Tag != nil {
-		if common.ParseJSONSchemaTag(field.Field.Tag.Value).HasRef {
-			return nil, fmt.Errorf("field %s.%s at %s uses an explicit schema ref with no resolved static type target", owner.Name(), fieldName(field), field.Position())
+// rejectAmbiguousInterfaceFields refuses an owner whose promoted registered
+// interface fields cancel each other out. encoding/json would drop the
+// property; a generated codec that silently did the same would lose a union
+// the author declared.
+func (l *typeGrammarLowerer) rejectAmbiguousInterfaceFields(owner syntax.StructType, ambiguous []typeGrammarFieldCandidate) error {
+	if owner.Pkg().PkgPath != l.builder.Scan.Pkg.PkgPath {
+		return nil
+	}
+	for i, candidate := range ambiguous {
+		if !l.isRegisteredInterfaceField(candidate) {
+			continue
+		}
+		for _, other := range ambiguous[i+1:] {
+			if other.name.json != candidate.name.json {
+				continue
+			}
+			if other.name.goName == candidate.name.goName {
+				return fmt.Errorf("cannot generate owner codec for %s: promoted registered interface fields %s and %s are ambiguous because they share Go field name %q", owner.Name(), candidate.accessor(owner.Name()), other.accessor(owner.Name()), candidate.name.goName)
+			}
+			return fmt.Errorf("cannot generate owner codec for %s: promoted registered interface fields %s and %s are ambiguous because they share JSON property %q", owner.Name(), candidate.accessor(owner.Name()), other.accessor(owner.Name()), candidate.name.json)
 		}
 	}
-	if tag := field.JSONTag(); tag != nil && slices.Contains(tag.Options[1:], "string") {
-		return nil, fmt.Errorf("field %s.%s at %s uses json:\",string\", whose wire mapping is outside the static type grammar", owner.Name(), fieldName(field), field.Position())
+	return nil
+}
+
+func (l *typeGrammarLowerer) isRegisteredInterfaceField(candidate typeGrammarFieldCandidate) bool {
+	fieldType := candidate.field.Type()
+	if wrapper, inner, err := candidate.field.Wrapper(); err == nil && wrapper != syntax.WrapperNone {
+		fieldType = inner
 	}
-	if providers := l.builder.TypeProvidersMap[owner.Name()]; hasProviderForGoField(providers, goFieldNames(field)) {
-		return nil, fmt.Errorf("field %s.%s at %s uses a runtime schema provider with no statically resolved wire type", owner.Name(), fieldName(field), field.Position())
+	ident, _, ok := directInterfaceFieldType(fieldType)
+	if !ok {
+		return false
+	}
+	_, ok = l.builder.findInterfaceImpl(ident, candidate.field.Pkg())
+	return ok
+}
+
+// checkEnumRegistrations verifies every .StringerEnum registration on owner
+// names one of its own single-name JSON fields.
+func (l *typeGrammarLowerer) checkEnumRegistrations(owner syntax.StructType) error {
+	if owner.Pkg().PkgPath != l.builder.Scan.Pkg.PkgPath {
+		return nil
+	}
+	configs := l.builder.EnumV1[owner.Name()]
+	if len(configs) == 0 {
+		return nil
+	}
+	direct := make(map[string]syntax.StructField)
+	for _, field := range owner.Fields() {
+		for _, name := range field.Field.Names {
+			direct[name.Name] = field
+		}
+	}
+	for _, fieldName := range slices.Sorted(maps.Keys(configs)) {
+		field, ok := direct[fieldName]
+		if !ok {
+			return fmt.Errorf("field %s.%s: registered enum field was not found", owner.Name(), fieldName)
+		}
+		if len(field.Field.Names) != 1 || field.Skip() {
+			return fmt.Errorf("field %s.%s: registered enum must be a single JSON field", owner.Name(), fieldName)
+		}
+	}
+	return nil
+}
+
+func (l *typeGrammarLowerer) fieldValue(c typeGrammarFieldCandidate) (typegrammar.FieldValue, error) {
+	owner, field := c.owner, c.field
+	if c.namedOwner && c.depth() == 0 && owner.Pkg().PkgPath == l.builder.Scan.Pkg.PkgPath {
+		if cfg, ok := l.enumConfig(owner, field); ok {
+			return l.registeredEnumField(owner, field, cfg)
+		}
 	}
 
 	wrapper, inner, err := field.Wrapper()
@@ -394,52 +727,15 @@ func (l *typeGrammarLowerer) fieldValue(owner syntax.StructType, field syntax.St
 		return nil, fmt.Errorf("%s field %s.%s requires json:\",omitzero\" at %s", wrapper, owner.Name(), fieldName(field), field.Position())
 	}
 
-	if cfg, ok := l.enumConfig(owner, field); ok {
-		if !namedOwner {
-			return nil, fmt.Errorf("field-local enum registration on %s.%s requires a direct field of a named object", owner.Name(), fieldName(field))
-		}
-		interfaceField, unionErr := l.builder.resolveRegisteredInterfaceField(owner, field)
-		if unionErr != nil {
-			return nil, unionErr
-		} else if interfaceField != nil {
-			return nil, fmt.Errorf("field %s.%s cannot be both an enum and registered interface", owner.Name(), fieldName(field))
-		}
-		renderType := field.Type()
-		if wrapper != syntax.WrapperNone {
-			renderType = inner
-		}
-		ident, ok := renderType.(*dst.Ident)
-		if !ok {
-			return nil, fmt.Errorf("field %s.%s enum registration requires a direct named enum type at %s", owner.Name(), fieldName(field), field.Position())
-		}
-		enumSet, err := l.resolveFieldEnum(ident, field)
-		if err != nil {
-			return nil, err
-		}
-		if err := l.named(typegrammar.Name{PackagePath: enumSet.TypeSpec.Pkg().PkgPath, Name: enumSet.TypeSpec.Name()}); err != nil {
-			return nil, err
-		}
-		mode := typegrammar.EnumValues
-		kind, err := enumScalarKind(enumSet)
-		if err != nil {
-			return nil, err
-		}
-		if cfg.UseStringer && kind != typegrammar.String {
-			mode = typegrammar.EnumNames
-		}
-		typ, err := l.enum(enumSet, mode)
-		if err != nil {
-			return nil, err
-		}
-		return wrapFieldValue(wrapper, typ)
-	}
-
-	if namedOwner {
+	if c.namedOwner {
 		interfaceField, err := l.builder.resolveRegisteredInterfaceField(owner, field)
 		if err != nil {
 			return nil, err
 		}
 		if interfaceField != nil {
+			if err := validateInterfaceDiscriminators(owner.Name(), fieldName(field), *interfaceField); err != nil {
+				return nil, err
+			}
 			union, err := l.union(*interfaceField)
 			if err != nil {
 				return nil, err
@@ -455,15 +751,154 @@ func (l *typeGrammarLowerer) fieldValue(owner syntax.StructType, field syntax.St
 		}
 	}
 
+	// A schema supplied outside the grammar carries no static shape. JSON
+	// Schema renders what was supplied; the strict backends refuse the field.
+	if field.Field.Tag != nil {
+		if tag := common.ParseJSONSchemaTag(field.Field.Tag.Value); tag.HasRef {
+			if wrapper == syntax.WrapperNullable {
+				return nil, fmt.Errorf("%s does not support explicit refs at %s", wrapper, field.Position())
+			}
+			l.refuse("field %s.%s at %s uses an explicit schema ref with no resolved static type target", owner.Name(), fieldName(field), field.Position())
+			return &typegrammar.Provided{Ref: tag.Ref, Optional: wrapper == syntax.WrapperOptional}, nil
+		}
+	}
+	// Providers are registered on a named owner; an inline struct's fields
+	// reuse the enclosing type's name but carry none of its registrations.
+	if providers := l.builder.TypeProvidersMap[owner.Name()]; c.namedOwner && hasProviderForGoField(providers, goFieldNames(field)) {
+		if wrapper == syntax.WrapperNullable {
+			return nil, fmt.Errorf("%s does not support providers at %s", wrapper, field.Position())
+		}
+		l.refuse("field %s.%s at %s uses a runtime schema provider with no statically resolved wire type", owner.Name(), fieldName(field), field.Position())
+		return &typegrammar.Provided{Optional: wrapper == syntax.WrapperOptional}, nil
+	}
+	if tag := field.JSONTag(); tag != nil && slices.Contains(tag.Options[1:], "string") {
+		l.refuse("field %s.%s at %s uses json:\",string\", whose wire mapping is outside the static type grammar", owner.Name(), fieldName(field), field.Position())
+	}
+
 	renderType := field.Type()
 	if wrapper != syntax.WrapperNone {
 		renderType = inner
+	}
+	if wrapper == syntax.WrapperNullable {
+		if _, isArray := renderType.(*dst.ArrayType); isArray {
+			return nil, fmt.Errorf("%s does not support arrays/slices at %s", wrapper, field.Position())
+		}
 	}
 	typ, err := l.typ(field.Derive(renderType))
 	if err != nil {
 		return nil, fmt.Errorf("field %s.%s: %w", owner.Name(), fieldName(field), err)
 	}
 	return wrapFieldValue(wrapper, typ)
+}
+
+// registeredEnumField lowers a field carrying a .StringerEnum registration.
+// An integer enum is adapted to its constant names on the wire (EnumNames);
+// a string enum keeps its values. Either way the field renders the enum
+// inline, and the enum type is also lowered as a reusable definition.
+func (l *typeGrammarLowerer) registeredEnumField(owner syntax.StructType, field syntax.StructField, cfg enumFieldConfig) (typegrammar.FieldValue, error) {
+	name := fieldName(field)
+	if field.HasJSONOption("string") {
+		return nil, fmt.Errorf("field %s.%s: registered enum fields do not support json:\",string\" at %s", owner.Name(), name, field.Position())
+	}
+	wrapper, inner, err := field.Wrapper()
+	if err != nil {
+		return nil, err
+	}
+	fieldType := field.Type()
+	if wrapper != syntax.WrapperNone {
+		fieldType = inner
+	}
+	ident, direct := fieldType.(*dst.Ident)
+	if !direct {
+		return nil, fmt.Errorf("field %s.%s: .StringerEnum supports only a direct named enum, Optional[E], or Nullable[E] at %s", owner.Name(), name, field.Position())
+	}
+	if err := validateStaticFieldWireContract(owner, field, wrapper); err != nil {
+		return nil, err
+	}
+	if wrapper == syntax.WrapperOptional && !field.HasJSONOption("omitzero") {
+		return nil, fmt.Errorf("%s field %s.%s requires json:\",omitzero\" at %s", wrapper, owner.Name(), name, field.Position())
+	}
+	if interfaceField, err := l.builder.resolveRegisteredInterfaceField(owner, field); err != nil {
+		return nil, err
+	} else if interfaceField != nil {
+		return nil, fmt.Errorf("field %s.%s cannot be both an enum and registered interface", owner.Name(), name)
+	}
+
+	pkgPath := ident.Path
+	if pkgPath == "" {
+		pkgPath = field.Pkg().PkgPath
+	}
+	scan, ok := l.builder.Scan.GetPackage(pkgPath)
+	if !ok {
+		return nil, fmt.Errorf("field %s.%s: could not resolve enum package %s", owner.Name(), name, pkgPath)
+	}
+	enumSet := scan.Constants[ident.Name]
+	if enumSet == nil {
+		typeSpec, found := scan.LocalNamedTypes[ident.Name]
+		if !found {
+			return nil, fmt.Errorf("field %s.%s: could not resolve enum type %s", owner.Name(), name, ident.Name)
+		}
+		if enumSet, err = syntax.ResolveEnum(typeSpec); err != nil {
+			return nil, fmt.Errorf("field %s.%s: resolving enum type %s: %w", owner.Name(), name, ident.Name, err)
+		}
+	}
+	if enumSet == nil || len(enumSet.Values) == 0 {
+		return nil, fmt.Errorf("field %s.%s: no constants declared for enum type %s", owner.Name(), name, ident.Name)
+	}
+	kind, err := enumScalarKind(enumSet)
+	if err != nil {
+		return nil, fmt.Errorf("field %s.%s: enum type %s must have an integer or string underlying type", owner.Name(), name, ident.Name)
+	}
+	enumName := typegrammar.Name{PackagePath: enumSet.TypeSpec.Pkg().PkgPath, Name: enumSet.TypeSpec.Name()}
+	if err := l.named(enumName); err != nil {
+		return nil, err
+	}
+	adapted := cfg.UseStringer && kind != typegrammar.String
+	if adapted {
+		methods, err := syntax.FindProductionJSONMethods(scan.Pkg.Dir, []string{ident.Name})
+		if err != nil {
+			return nil, fmt.Errorf("field %s.%s: discovering enum JSON methods: %w", owner.Name(), name, err)
+		}
+		if len(methods) > 0 {
+			return nil, fmt.Errorf("field %s.%s: cannot adapt string-mode enum %s because production %s is declared at %s", owner.Name(), name, ident.Name, methods[0].Name, methods[0].Position)
+		}
+	}
+	remote := scan.Pkg.PkgPath != l.builder.Scan.Pkg.PkgPath
+	members, err := registeredEnumMembers(enumSet, adapted, remote)
+	if err != nil {
+		return nil, fmt.Errorf("field %s.%s: %w", owner.Name(), name, err)
+	}
+	mode := typegrammar.EnumValues
+	if adapted {
+		mode = typegrammar.EnumNames
+	}
+	return wrapFieldValue(wrapper, &typegrammar.Enum{GoType: enumName, Kind: kind, Mode: mode, Members: members})
+}
+
+// registeredEnumMembers lists a registered enum's members with one entry per
+// wire value. A value-mode string enum keeps the first constant of each
+// value; a name-mode integer enum cannot decode an ambiguous value at all.
+func registeredEnumMembers(enumSet *syntax.EnumSet, adapted, remote bool) ([]typegrammar.EnumMember, error) {
+	seen := make(map[string]string, len(enumSet.Values))
+	members := make([]typegrammar.EnumMember, 0, len(enumSet.Values))
+	for _, member := range enumSet.Values {
+		if remote && adapted && !token.IsExported(member.Name) {
+			return nil, fmt.Errorf("string-mode enum constant %s is not exported", member.Name)
+		}
+		exact := member.Value.ExactString()
+		if previous, exists := seen[exact]; exists && previous != member.Name {
+			if adapted {
+				return nil, fmt.Errorf("enum constants %s and %s have duplicate underlying value %s", previous, member.Name, exact)
+			}
+			continue
+		}
+		seen[exact] = member.Name
+		members = append(members, typegrammar.EnumMember{Name: member.Name, Value: member.Value, Description: member.Description})
+	}
+	if len(members) == 0 {
+		return nil, fmt.Errorf("enum %s has no declared constants", enumSet.TypeSpec.Name())
+	}
+	return members, nil
 }
 
 func validateStaticFieldWireContract(owner syntax.StructType, field syntax.StructField, wrapper syntax.WrapperKind) error {
@@ -496,6 +931,7 @@ func (l *typeGrammarLowerer) union(field registeredInterfaceField) (typegrammar.
 	union := typegrammar.Union{
 		Interface:     typegrammar.Name{PackagePath: field.Interface.TypeSpec.Pkg().PkgPath, Name: field.Interface.TypeSpec.Name()},
 		Discriminator: discriminator,
+		Source:        field.Interface.TypeSpec.Position(),
 	}
 	for _, impl := range field.Interface.Impls {
 		name := typegrammar.Name{PackagePath: impl.PkgPath, Name: impl.TypeName}
@@ -513,42 +949,20 @@ func (l *typeGrammarLowerer) union(field registeredInterfaceField) (typegrammar.
 	return union, nil
 }
 
-func (l *typeGrammarLowerer) enumConfig(owner syntax.StructType, field syntax.StructField) (struct{ UseStringer bool }, bool) {
+func (l *typeGrammarLowerer) enumConfig(owner syntax.StructType, field syntax.StructField) (enumFieldConfig, bool) {
 	configs := l.builder.EnumV1[owner.Name()]
 	for _, name := range field.Field.Names {
 		if config, ok := configs[name.Name]; ok {
 			return config, true
 		}
 	}
-	return struct{ UseStringer bool }{}, false
-}
-
-func (l *typeGrammarLowerer) resolveFieldEnum(ident *dst.Ident, field syntax.StructField) (*syntax.EnumSet, error) {
-	pkgPath := ident.Path
-	if pkgPath == "" {
-		pkgPath = field.Pkg().PkgPath
-	}
-	scan, ok := l.builder.Scan.GetPackage(pkgPath)
-	if !ok {
-		return nil, fmt.Errorf("field %s: enum package %q was not loaded", fieldName(field), pkgPath)
-	}
-	enumSet := scan.Constants[ident.Name]
-	if enumSet == nil {
-		if typeSpec, found := scan.LocalNamedTypes[ident.Name]; found {
-			var err error
-			enumSet, err = syntax.ResolveEnum(typeSpec)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-	if enumSet == nil || len(enumSet.Values) == 0 {
-		return nil, fmt.Errorf("field %s: registered enum type %s.%s has no discoverable constants", fieldName(field), pkgPath, ident.Name)
-	}
-	return enumSet, nil
+	return enumFieldConfig{}, false
 }
 
 func (l *typeGrammarLowerer) enum(set *syntax.EnumSet, mode typegrammar.EnumMode) (typegrammar.Type, error) {
+	if len(set.Values) == 0 {
+		return nil, fmt.Errorf("enum %s at %s has no constants of its exact named type", set.TypeSpec.Name(), set.TypeSpec.Position())
+	}
 	kind, err := enumScalarKind(set)
 	if err != nil {
 		return nil, err
@@ -559,7 +973,7 @@ func (l *typeGrammarLowerer) enum(set *syntax.EnumSet, mode typegrammar.EnumMode
 		Mode:   mode,
 	}
 	for _, member := range set.Values {
-		node.Members = append(node.Members, typegrammar.EnumMember{Name: member.Name, Value: member.Value})
+		node.Members = append(node.Members, typegrammar.EnumMember{Name: member.Name, Value: member.Value, Description: member.Description})
 	}
 	return node, nil
 }

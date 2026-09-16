@@ -2,7 +2,6 @@ package builder
 
 import (
 	"fmt"
-	"go/types"
 	"unicode/utf8"
 
 	"github.com/dave/dst/decorator"
@@ -162,31 +161,21 @@ func discriminatorValues(union ConfiguredUnion, iface syntax.IfaceImplementation
 // rendered.
 func (s *SchemaBuilder) ApplyTransforms() error { return s.applyTransforms() }
 
-// ConfiguredTypeDefinitions lowers the executable declaration roots and
-// returns both the shared grammar and its roots for library backends.
+// ConfiguredTypeDefinitions returns the executable declaration roots' shared
+// grammar and one root node per declaration, for the library backends.
 func (s *SchemaBuilder) ConfiguredTypeDefinitions() (typegrammar.Definitions, []typegrammar.Type, error) {
-	roots := make([]RootType, 0, len(s.Scan.SchemaMethods)+len(s.Scan.SchemaFuncs))
-	appendRoot := func(method syntax.SchemaMethod) error {
-		obj := s.Scan.Pkg.Types.Scope().Lookup(method.Receiver.TypeName)
-		if obj == nil {
-			return fmt.Errorf("configured root type %s is not declared in %s", method.Receiver.TypeName, s.Scan.Pkg.PkgPath)
-		}
-		typ := obj.Type()
+	defs, err := s.TypeDefinitions()
+	if err != nil {
+		return nil, nil, err
+	}
+	methods := s.roots()
+	roots := make([]typegrammar.Type, 0, len(methods))
+	for _, method := range methods {
+		var root typegrammar.Type = &typegrammar.Ref{Target: typegrammar.Name{PackagePath: method.Receiver.PkgPath, Name: method.Receiver.TypeName}}
 		if method.Receiver.Indirection == syntax.Pointer {
-			typ = types.NewPointer(typ)
+			root = &typegrammar.Pointer{Element: root}
 		}
-		roots = append(roots, RootType{Type: typ, Position: s.Scan.Pkg.Fset.Position(obj.Pos())})
-		return nil
+		roots = append(roots, root)
 	}
-	for _, method := range s.Scan.SchemaMethods {
-		if err := appendRoot(method); err != nil {
-			return nil, nil, err
-		}
-	}
-	for _, method := range s.Scan.SchemaFuncs {
-		if err := appendRoot(syntax.SchemaMethod(method)); err != nil {
-			return nil, nil, err
-		}
-	}
-	return s.LowerRoots(roots)
+	return defs, roots, nil
 }

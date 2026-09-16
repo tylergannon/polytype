@@ -210,6 +210,6 @@ var _ = polytype.Declare(Root.Schema)
 		}},
 	}, true, false)
 	require.NoError(t, err)
-	require.Contains(t, b.customTypes, "Item", "codec discovery must reach Item through named container Items")
-	require.NotEmpty(t, b.customTypes["Item"], "Item must have union fields discovered")
+	require.Contains(t, b.ownerCodecs, "Item", "codec discovery must reach Item through named container Items")
+	require.NotEmpty(t, b.ownerCodecs["Item"].UnionFields, "Item must have union fields discovered")
 }

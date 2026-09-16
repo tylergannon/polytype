@@ -1,4 +1,4 @@
-package builder
+package schema
 
 import (
 	"encoding/json"
@@ -7,10 +7,11 @@ import (
 	"strings"
 )
 
-// marshalSchemaHardlines renders compact JSON with line breaks owned by schema
+// MarshalHardlines renders compact JSON with line breaks owned by schema
 // structure rather than output width. Leaf schemas remain compact. Object
-// schemas break after their type marker and put each property on its own line.
-func marshalSchemaHardlines(schema json.Marshaler) ([]byte, error) {
+// schemas break after their type marker and put each property on its own
+// line.
+func MarshalHardlines(schema json.Marshaler) ([]byte, error) {
 	var sb strings.Builder
 	if err := writeSchemaHardlines(&sb, schema); err != nil {
 		return nil, err
@@ -107,16 +108,6 @@ func writeObjectHardlines(sb *strings.Builder, object ObjectNode) error {
 	}
 	sb.WriteString(`"additionalProperties":false}`)
 	return nil
-}
-
-func requiredPropertyNames(properties ObjectPropSet) []string {
-	required := make([]string, 0, len(properties))
-	for _, property := range properties {
-		if !property.Optional {
-			required = append(required, property.Name)
-		}
-	}
-	return required
 }
 
 func writeArrayHardlines(sb *strings.Builder, array ArrayNode) error {

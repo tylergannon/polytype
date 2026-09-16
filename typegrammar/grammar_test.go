@@ -672,3 +672,25 @@ func TestValidateWithRoots(t *testing.T) {
 		t.Fatal("root referencing an absent definition accepted")
 	}
 }
+
+func TestValidateProvidedFields(t *testing.T) {
+	anonymousOwner := func(value g.FieldValue) g.Type {
+		return &g.Object{Fields: []g.Field{{GoName: "Inner", JSONName: "inner", Value: &g.Required{Type: &g.Object{Fields: []g.Field{{GoName: "Value", JSONName: "value", Value: value}}}}}}}
+	}
+	// A provider hole and an explicit reference are both admitted on a named owner.
+	requireValid(t, g.Definitions{definition("Owner", &g.Object{Fields: []g.Field{
+		{GoName: "Hole", JSONName: "hole", Value: &g.Provided{}},
+		{GoName: "Linked", JSONName: "linked", Value: &g.Provided{Ref: "https://example.test/schema.json", Optional: true}},
+	}})})
+	// An explicit reference names its own schema, so an inline struct may carry one.
+	requireValid(t, g.Definitions{definition("Owner", anonymousOwner(&g.Provided{Ref: "https://example.test/schema.json"}))})
+	// A provider hole is keyed by the owning declaration, which an inline struct lacks.
+	err := requireInvalid(t, g.Definitions{definition("Owner", anonymousOwner(&g.Provided{}))})
+	if !strings.Contains(err.Message, "provider-supplied schemas require a direct field of a named object owner") {
+		t.Fatalf("unexpected diagnostic: %v", err)
+	}
+	err = requireInvalid(t, g.Definitions{definition("Owner", &g.Object{Fields: []g.Field{{GoName: "Bad", JSONName: "bad", Value: &g.Provided{Ref: "\xff"}}}})})
+	if !strings.Contains(err.Message, "not valid UTF-8") {
+		t.Fatalf("unexpected diagnostic: %v", err)
+	}
+}

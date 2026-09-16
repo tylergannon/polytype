@@ -193,6 +193,9 @@ func (e *emitter) encodeField(field typegrammar.Field, object, src, at string) e
 		e.writef("%s.Set(%s, %s)", object, key, items)
 		return nil
 
+	case *typegrammar.Provided:
+		return e.errorf("field %s: the field's schema is provided outside the type grammar and has no static wire shape", field.GoName)
+
 	default:
 		return e.errorf("field %s: unsupported field constructor %T", field.GoName, field.Value)
 	}

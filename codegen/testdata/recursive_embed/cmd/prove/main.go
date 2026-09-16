@@ -18,9 +18,9 @@ func main() {
 	)
 	err := codegen.Gen(config, codegen.Target("./model"), codegen.GoJSON())
 	if err == nil {
-		log.Fatal("expected generation to fail for recursive embedding with competing MarshalJSON")
+		log.Fatal("expected generation to fail for recursive pointer embedding")
 	}
-	if !strings.Contains(err.Error(), "competing MarshalJSON") {
+	if !strings.Contains(err.Error(), "bare pointer field Container.Container is not admitted") {
 		log.Fatalf("unexpected error: %v", err)
 	}
 	fmt.Println("generation correctly rejected recursive embedding")

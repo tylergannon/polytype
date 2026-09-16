@@ -228,11 +228,6 @@ func ({{.Initial}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	var err error
 	{{range $i, $prop := .UnionFields}}
 	{{if .Repeated}}
-	{{if .HasPointerPath}}
-	if !({{$prop.Accessible $initial}}) {
-		return nil, fmt.Errorf("field {{$prop.JSONName}}: nil embedded pointer contains a required registered interface slice")
-	}
-	{{end -}}
 	if {{$prop.Accessor $initial}} == nil {
 		return nil, fmt.Errorf("field {{$prop.JSONName}}: nil registered interface slice")
 	}
@@ -246,17 +241,12 @@ func ({{.Initial}} {{.Name}}) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("field {{$prop.JSONName}}: %w", err)
 	}
 	{{else if .Optional}}
-	if {{if .HasPointerPath}}{{$prop.Accessible $initial}} && {{end}}{{$prop.Accessor $initial}}.Present {
+	if {{$prop.Accessor $initial}}.Present {
 		if wrapper.{{$prop.FieldNames}}, err = {{$prop.MarshalerFunc}}({{$prop.Accessor $initial}}.Value); err != nil {
 			return nil, fmt.Errorf("field {{$prop.JSONName}}: %w", err)
 		}
 	}
 	{{else}}
-	{{if .HasPointerPath}}
-	if !({{$prop.Accessible $initial}}) {
-		return nil, fmt.Errorf("field {{$prop.JSONName}}: nil embedded pointer contains a required registered interface")
-	}
-	{{end -}}
 	if wrapper.{{$prop.FieldNames}}, err = {{$prop.MarshalerFunc}}({{$prop.Accessor $initial}}); err != nil {
 		return nil, fmt.Errorf("field {{$prop.JSONName}}: %w", err)
 	}
@@ -320,8 +310,6 @@ func ({{.Initial}} *{{.Name}}) UnmarshalJSON(data []byte) (err error) {
 				return fmt.Errorf("field {{$prop.JSONName}}[%d]: %w", __index, err)
 			}
 		}
-		{{range $line := $prop.PointerInitializers "__next"}}{{$line}}
-		{{end -}}
 		{{$prop.Accessor "__next"}} = __decoded{{$i}}
 	}
 	{{else if .Optional}}
@@ -330,8 +318,6 @@ func ({{.Initial}} *{{.Name}}) UnmarshalJSON(data []byte) (err error) {
 		if __decoded{{$i}}, err = {{$prop.UnmarshalerFunc}}(wrapper.{{$prop.FieldNames}}); err != nil {
 			return err
 		}
-		{{range $line := $prop.PointerInitializers "__next"}}{{$line}}
-		{{end -}}
 		{{$prop.Accessor "__next"}}.Value = __decoded{{$i}}
 		{{$prop.Accessor "__next"}}.Present = true
 	}
@@ -340,8 +326,6 @@ func ({{.Initial}} *{{.Name}}) UnmarshalJSON(data []byte) (err error) {
 	if __decoded{{$i}}, err = {{$prop.UnmarshalerFunc}}(wrapper.{{$prop.FieldNames}}); err != nil {
 		return err
 	}
-	{{range $line := $prop.PointerInitializers "__next"}}{{$line}}
-	{{end -}}
 	{{$prop.Accessor "__next"}} = __decoded{{$i}}
 	{{end}}
 	{{end}}
@@ -390,18 +374,18 @@ func {{.MarshalerFunc}}(value {{.EnumTypeNameWithPrefix}}) (json.RawMessage, err
 		return __polytype_marshal({{printf "%q" .WireName}})
 	{{end -}}
 	default:
-		return nil, errors.New("undeclared value for string-mode enum {{.EnumType.Name}}")
+		return nil, errors.New("undeclared value for string-mode enum {{.EnumTypeName}}")
 	}
 }
 
 func {{.UnmarshalerFunc}}(data []byte) ({{.EnumTypeNameWithPrefix}}, error) {
 	var zero {{.EnumTypeNameWithPrefix}}
 	if __jsonschema__isJSONNull(data) {
-		return zero, errors.New("string-mode enum {{.EnumType.Name}} cannot be JSON null")
+		return zero, errors.New("string-mode enum {{.EnumTypeName}} cannot be JSON null")
 	}
 	var wire string
 	if err := json.Unmarshal(data, &wire); err != nil {
-		return zero, fmt.Errorf("string-mode enum {{.EnumType.Name}} requires a JSON string: %w", err)
+		return zero, fmt.Errorf("string-mode enum {{.EnumTypeName}} requires a JSON string: %w", err)
 	}
 	switch wire {
 	{{range .Entries -}}
@@ -409,7 +393,7 @@ func {{.UnmarshalerFunc}}(data []byte) ({{.EnumTypeNameWithPrefix}}, error) {
 		return {{.GoValueExpr}}, nil
 	{{end -}}
 	default:
-		return zero, fmt.Errorf("unknown string-mode enum {{.EnumType.Name}} name %q", wire)
+		return zero, fmt.Errorf("unknown string-mode enum {{.EnumTypeName}} name %q", wire)
 	}
 }
 {{ end -}}
