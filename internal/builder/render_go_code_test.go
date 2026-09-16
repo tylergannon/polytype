@@ -148,6 +148,7 @@ func requireAll(t *testing.T, code string, present []string, absent []string) {
 // gets codecs and their helpers, and none of the schema assets: no embed.FS,
 // no accessors, no validation.
 func TestRenderGoCodeCodecOnlyFile(t *testing.T) {
+	t.Parallel()
 	data := rootCodecData()
 	code := render(t, data)
 	body := data.OwnerCodecs[0].UnionFields[0]
@@ -171,6 +172,7 @@ func TestRenderGoCodeCodecOnlyFile(t *testing.T) {
 // enum field form is adapted: the wrapper struct, the accessor through the
 // embedded path, and the optional, nullable and repeated branches.
 func TestRenderGoCodeOwnerCodecCoversEveryFieldForm(t *testing.T) {
+	t.Parallel()
 	data := rootCodecData()
 	code := render(t, data)
 	marshal := data.OwnerCodecs[0].UnionFields[0].MarshalerFunc()
@@ -213,6 +215,7 @@ func TestRenderGoCodeOwnerCodecCoversEveryFieldForm(t *testing.T) {
 // helper switches on the concrete type for a value variant and on the
 // pointer for a pointer variant, and decodes each accordingly.
 func TestRenderGoCodeUnionHelpersConstructEachVariantByReceiver(t *testing.T) {
+	t.Parallel()
 	code := render(t, rootCodecData())
 	requireAll(t, code, []string{
 		"case Circle:\n\t\tdiscriminator = \"Circle\"\n\t\tdata, err = __polytype_marshal(&object)",
@@ -228,6 +231,7 @@ func TestRenderGoCodeUnionHelpersConstructEachVariantByReceiver(t *testing.T) {
 // reads the property its interface declared, and otherwise the package
 // default, never the union's own field.
 func TestRenderGoCodeUnionHelpersUseTheDeclaredDiscriminator(t *testing.T) {
+	t.Parallel()
 	declared := unionField("Value", "value", "`json:\"value\"`", nil, shapeUnion("kind"), "kind")
 	data := codecOnlyData()
 	data.DiscriminatorProp = "variant"
@@ -254,6 +258,7 @@ func TestRenderGoCodeUnionHelpersUseTheDeclaredDiscriminator(t *testing.T) {
 // schemas and ValidateJSON for every non-rendered root only, and
 // RenderedSchema calling each provider kind.
 func TestRenderGoCodeSchemaAccessorsValidationAndRenderedSchemas(t *testing.T) {
+	t.Parallel()
 	data := codecOnlyData()
 	data.GenerateSchemas = true
 	data.Validate = true
@@ -306,6 +311,7 @@ func TestRenderGoCodeSchemaAccessorsValidationAndRenderedSchemas(t *testing.T) {
 // package whose only roots are provider templates compiles no schemas: a
 // rendered schema depends on runtime values and cannot be validated ahead.
 func TestRenderGoCodeValidationIsSkippedWhenEveryRootIsRendered(t *testing.T) {
+	t.Parallel()
 	data := codecOnlyData()
 	data.GenerateSchemas = true
 	data.Validate = true
@@ -327,6 +333,7 @@ func TestRenderGoCodeValidationIsSkippedWhenEveryRootIsRendered(t *testing.T) {
 // anything else by name, and a marker without encodable members gets the
 // assertion but no codec.
 func TestRenderGoCodeEnumMarkers(t *testing.T) {
+	t.Parallel()
 	data := codecOnlyData()
 	data.EnumMarkers = []EnumMarker{
 		{TypeName: "Color", Constant: "ColorRed", Underlying: "int", Members: []EnumMember{
@@ -365,6 +372,7 @@ func TestRenderGoCodeEnumMarkers(t *testing.T) {
 // anything behind in the value, so codecs and helpers are never duplicated
 // by rendering twice (the regression behind gen_schema_determinism_test).
 func TestRenderGoCodeIsDeterministic(t *testing.T) {
+	t.Parallel()
 	data := rootCodecData()
 	first := render(t, data)
 	second := render(t, data)
@@ -382,6 +390,7 @@ func TestRenderGoCodeIsDeterministic(t *testing.T) {
 // from another package, a declared discriminator, or a different variant
 // receiver each get their own.
 func TestUnionHelperNamesFollowResolvedInterfaceIdentity(t *testing.T) {
+	t.Parallel()
 	eventUnion := func(pkgPath string) typegrammar.Union {
 		return typegrammar.Union{
 			Interface:     typegrammar.Name{PackagePath: pkgPath, Name: "Event"},

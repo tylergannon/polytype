@@ -46,6 +46,7 @@ type Shelter struct {
 // owner's codec plan carries the declaration its helper reads (rendered in
 // TestRenderGoCodeUnionHelpersUseTheDeclaredDiscriminator).
 func TestSealedUnionDiscriminatorAppliesToEveryUse(t *testing.T) {
+	t.Parallel()
 	builder := loadBuilder(t, writeSealedUnionDiscriminatorFixture(t, sealedTwoOwnerTypes, `var _ = polytype.SealedUnion[Animal]("kind")`))
 	for _, use := range []struct{ owner, field string }{{"Zoo", "resident"}, {"Shelter", "residents"}} {
 		union := loweredUnion(t, builder, use.owner, use.field)
@@ -56,6 +57,7 @@ func TestSealedUnionDiscriminatorAppliesToEveryUse(t *testing.T) {
 }
 
 func TestSealedUnionNamedInflectionAppliesToEveryUse(t *testing.T) {
+	t.Parallel()
 	builder := loadBuilder(t, writeSealedUnionDiscriminatorFixture(t, sealedTwoOwnerTypes, `var _ = polytype.SealedUnion[Animal]("kind", polytype.Snake)`))
 	for _, use := range []struct{ owner, field string }{{"Zoo", "resident"}, {"Shelter", "residents"}} {
 		union := loweredUnion(t, builder, use.owner, use.field)
@@ -68,6 +70,7 @@ func TestSealedUnionNamedInflectionAppliesToEveryUse(t *testing.T) {
 // TestSealedUnionDiscriminatorDiagnosticsNameTheInterface covers every
 // negative rule from issue #88 that lives in one package.
 func TestSealedUnionDiscriminatorDiagnosticsNameTheInterface(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name         string
 		types        string
@@ -145,6 +148,7 @@ type Shelter struct { Residents []Animal ` + "`json:\"residents\"`" + ` }
 // another package is a diagnostic naming the interface and the offending
 // location.
 func TestSealedUnionDeclarationOutsideInterfacePackageIsRejected(t *testing.T) {
+	t.Parallel()
 	baseImport := fixtureModulePath
 
 	moduleDir := newFixtureModule(t)

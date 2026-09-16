@@ -14,6 +14,7 @@ import (
 // the strict grammar backends refuse, and the codec plan read off the IR.
 
 func TestProvidedFieldsLowerForSchemaAndRefuseStrictly(t *testing.T) {
+	t.Parallel()
 	builder := loadTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -58,6 +59,7 @@ var _ = polytype.Declare(Root.Schema).Function(polytype.Field[Root, string]("Pro
 }
 
 func TestInlineStructsCarryRefsButNoProviders(t *testing.T) {
+	t.Parallel()
 	builder := loadTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -97,6 +99,7 @@ var _ = polytype.Declare(Root.Schema).Function(polytype.Field[Root, string]("Val
 }
 
 func TestShadowedPromotedGoNameIsRefused(t *testing.T) {
+	t.Parallel()
 	dir := writeTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -129,6 +132,7 @@ var _ = polytype.Declare(Root.Schema)
 }
 
 func TestProvidedFieldsRefuseNullableWrappers(t *testing.T) {
+	t.Parallel()
 	source := `//go:build jsonschema
 
 package fixture
@@ -160,6 +164,7 @@ var _ = polytype.Declare(Root.Schema)
 }
 
 func TestSealedInterfaceRootLowersAsUnion(t *testing.T) {
+	t.Parallel()
 	builder := loadTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -211,6 +216,7 @@ var (
 }
 
 func TestOwnerCodecsFollowReachabilityAndSourceOrder(t *testing.T) {
+	t.Parallel()
 	builder := loadTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -305,6 +311,7 @@ var _ = polytype.Declare(Root.Schema).StringerEnum(polytype.Field[Root, Level]("
 }
 
 func TestPackageErrorsAreStrictRefusalsOnly(t *testing.T) {
+	t.Parallel()
 	// A package that fails type-checking still lowers: the schema output has
 	// never depended on go/types, and the tagged fixtures rely on that. The
 	// grammar backends, which do, refuse it.

@@ -33,6 +33,7 @@ func writeMultiFileFixture(t *testing.T, files map[string]string) string {
 // this check, generation would succeed and simply produce no ValidateJSON
 // for that type -- a silent partial result.
 func TestValidateRejectsFreeFunctionPointerRoot(t *testing.T) {
+	t.Parallel()
 	dir := writeTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -55,6 +56,7 @@ var _ = polytype.Declare(PointerRootSchema)
 }
 
 func TestSchemaGenerationRejectsImplicitPointerAndOmissionSemantics(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		source string
@@ -106,6 +108,7 @@ var _ = polytype.Declare(Root.Schema)
 // TestInterfaceFuncTypeSchemaCallable in testfixtures/entrypoints is the
 // compile-and-call proof through TestBasic.
 func TestFreeFunctionRootsForInvalidReceiversAreClassifiedAsFreeFunctions(t *testing.T) {
+	t.Parallel()
 	builder := loadBuilder(t, writeMultiFileFixture(t, map[string]string{
 		"types.go": `package fixture
 
@@ -151,6 +154,7 @@ var (
 // rejection fires for a registered-interface free-function root, not just a
 // named-pointer one, since hasInvalidMethodReceiverBase classifies both.
 func TestValidateRejectsFreeFunctionInterfaceRoot(t *testing.T) {
+	t.Parallel()
 	dir := writeMultiFileFixture(t, map[string]string{
 		"types.go": `package fixture
 
@@ -188,6 +192,7 @@ var _ = polytype.Declare(ValueSchema)
 // could ever be generated for it) instead of silently writing a
 // `.json.tmpl` that nothing can execute.
 func TestRenderProvidersRejectsFreeFunctionPointerRoot(t *testing.T) {
+	t.Parallel()
 	dir := writeTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -217,6 +222,7 @@ var _ = polytype.Declare(PointerRootSchema).RenderProviders()
 // original zero-argument stub's callers or, if the same builder function
 // is reused for two such types, collide as a duplicate declaration.
 func TestBuilderRejectsInvalidReceiverPointerRoot(t *testing.T) {
+	t.Parallel()
 	dir := writeTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture

@@ -61,6 +61,7 @@ type Zoo struct {
 // review. How each variant's receiver is constructed by the codec is pinned
 // in TestRenderGoCodeUnionHelpersConstructEachVariantByReceiver.
 func TestSealedUnionInferredFromSealingMethod(t *testing.T) {
+	t.Parallel()
 	targetDir := writeSealedUnionFixture(t, sealedZooTypes)
 	union := loweredUnion(t, loadBuilder(t, targetDir), "Zoo", "resident")
 	require.Equal(t, "type", union.Discriminator)
@@ -87,6 +88,7 @@ func (Bird) isAnimal() {}
 // issue #87. Each diagnostic names the offending type or field and nothing
 // is written.
 func TestSealedUnionDiagnosticsNameTheType(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name  string
 		types string

@@ -9,6 +9,7 @@ import (
 )
 
 func TestGenerationRefusesToSilentlyRemoveValidationMethods(t *testing.T) {
+	t.Parallel()
 	dir := writeMultiFileFixture(t, map[string]string{
 		"types.go": `package fixture
 
@@ -75,6 +76,7 @@ func ValidateTodo(data []byte) error {
 }
 
 func TestForceExplicitlyAllowsValidationMethodRemoval(t *testing.T) {
+	t.Parallel()
 	dir := writeMultiFileFixture(t, map[string]string{
 		"types.go": `package fixture
 

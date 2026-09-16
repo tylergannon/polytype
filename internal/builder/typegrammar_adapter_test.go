@@ -14,6 +14,7 @@ import (
 )
 
 func TestTypeDefinitionsPreservesRegisteredSourceGrammar(t *testing.T) {
+	t.Parallel()
 	source := `//go:build jsonschema
 
 package fixture
@@ -222,6 +223,7 @@ var (
 }
 
 func TestTypeDefinitionsRejectsUnresolvedWireMappings(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		body string
@@ -305,6 +307,7 @@ var _ = polytype.NewJSONSchemaMethod(Root.Schema%s)
 }
 
 func TestTypeDefinitionsSourceAdmissionRejectsInvalidCompositions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		body    string
@@ -367,6 +370,7 @@ var _ = polytype.NewJSONSchemaMethod(Root.Schema%s)
 }
 
 func TestTypeDefinitionsFailsFastOnPackageErrors(t *testing.T) {
+	t.Parallel()
 	dir := writeTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture
@@ -389,6 +393,7 @@ var broken int = "not an int"
 // dropping such roots from generated TypeScript even though they have a
 // working JSON schema and Go accessor.
 func TestTypeDefinitionsIncludesFreeFunctionPointerRoot(t *testing.T) {
+	t.Parallel()
 	builder := loadTypeGrammarFixture(t, `//go:build jsonschema
 
 package fixture

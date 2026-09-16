@@ -12,6 +12,7 @@ import (
 )
 
 func TestOwnerCodecRejectsProductionJSONMethodBeforeWriting(t *testing.T) {
+	t.Parallel()
 	for _, method := range []string{"MarshalJSON", "UnmarshalJSON"} {
 		t.Run(method, func(t *testing.T) {
 			targetDir := writeOwnerCollisionFixture(t, "")
@@ -29,6 +30,7 @@ func TestOwnerCodecRejectsProductionJSONMethodBeforeWriting(t *testing.T) {
 }
 
 func TestOwnerCodecAllowsGenerationOnlyDeclarationStub(t *testing.T) {
+	t.Parallel()
 	targetDir := writeOwnerCollisionFixture(t, `func (Owner) MarshalJSON() ([]byte, error) { panic("not implemented") }`)
 	pkgs, err := syntax.Load(targetDir)
 	require.NoError(t, err)
@@ -38,6 +40,7 @@ func TestOwnerCodecAllowsGenerationOnlyDeclarationStub(t *testing.T) {
 }
 
 func TestOwnerCodecRejectsPromotedProductionJSONMethod(t *testing.T) {
+	t.Parallel()
 	targetDir := writeOwnerCollisionFixture(t, "")
 	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte(`package fixture
 
@@ -59,6 +62,7 @@ type Owner struct {
 }
 
 func TestOwnerCodecRejectsPromotedGeneratedOwner(t *testing.T) {
+	t.Parallel()
 	targetDir := writeOwnerCollisionFixture(t, "")
 	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte(`package fixture
 
@@ -85,6 +89,7 @@ var _ = polytype.NewJSONSchemaMethod(Embedded.Schema)
 }
 
 func TestOwnerCodecRejectsAmbiguousPromotedInterfaceFieldsBeforeWriting(t *testing.T) {
+	t.Parallel()
 	targetDir := writeOwnerCollisionFixture(t, "")
 	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte(`package fixture
 
@@ -112,6 +117,7 @@ type Owner struct {
 }
 
 func TestOwnerCodecRejectsForeignEmbeddedGeneratedOwnerBeforeWriting(t *testing.T) {
+	t.Parallel()
 	moduleDir := newFixtureModule(t)
 	writeFixturePackage(t, moduleDir, "dep", map[string]string{
 		"types.go": `package dep
@@ -175,6 +181,7 @@ var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
 }
 
 func TestLegacyHelpersUseResolvedPackageIdentity(t *testing.T) {
+	t.Parallel()
 	moduleDir := newFixtureModule(t)
 	baseImport := fixtureModulePath
 
@@ -239,6 +246,7 @@ import (
 )
 
 func TestDistinctSameNamedInterfacesRoundTrip(t *testing.T) {
+	t.Parallel()
 	want := Owner{
 		Left: left.Created{Name: "left"},
 		Middle: middle.Created{Name: "middle"},

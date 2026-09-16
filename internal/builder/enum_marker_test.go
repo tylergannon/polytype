@@ -35,6 +35,7 @@ var _ = polytype.Declare(Owner.Schema)
 // from issue #86: a pointer receiver, a wrong signature, and a marked type
 // with no typed constants. Each diagnostic names the offending type.
 func TestEnumMarkerDiagnosticsNameTheType(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name  string
 		types string
@@ -87,6 +88,7 @@ type Owner struct { Color Color ` + "`json:\"color\"`" + ` }
 // declaration order. The assertion and codecs rendered from these markers
 // are pinned in TestRenderGoCodeEnumMarkers without a load.
 func TestEnumMarkerIsAPropertyOfTheType(t *testing.T) {
+	t.Parallel()
 	builder := loadBuilder(t, writeEnumMarkerFixture(t, `import "github.com/tylergannon/polytype"
 
 type Status string

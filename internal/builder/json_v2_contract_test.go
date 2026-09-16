@@ -7,6 +7,7 @@ import (
 )
 
 func TestCanonicalJSONEncoderNormalizesNilSlicesRecursively(t *testing.T) {
+	t.Parallel()
 	type document struct {
 		Tags   []string   `json:"tags"`
 		Groups [][]string `json:"groups"`
