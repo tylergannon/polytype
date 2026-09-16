@@ -12,8 +12,7 @@ import (
 
 const BuildTag = "jsonschema"
 
-const PackageLoadNeeds = packages.NeedDeps |
-	packages.NeedModule |
+const PackageLoadNeeds = packages.NeedModule |
 	packages.NeedName |
 	packages.NeedSyntax |
 	packages.NeedTypes |
