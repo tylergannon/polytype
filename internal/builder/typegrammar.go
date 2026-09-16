@@ -97,6 +97,11 @@ type fieldSource struct {
 	// fields first, then each embedded struct's in declaration order.
 	steps []int
 	order int
+	// provided is the static value behind a field whose JSON Schema is
+	// supplied outside the grammar (an explicit ref or a runtime provider),
+	// when that value lowers. JSON Schema renders what was supplied; the Go
+	// codecs still adapt the field by its Go type.
+	provided typegrammar.FieldValue
 }
 
 func (l *lowering) strictError() error {
@@ -238,7 +243,7 @@ func (l *typeGrammarLowerer) named(name typegrammar.Name) error {
 		typeSpec, found = scan.LocalNamedTypes[name.Name]
 		if !found {
 			if _, isInterface := scan.Interfaces[name.Name]; isInterface {
-				return fmt.Errorf(msgRegisteredInterface, name)
+				return sealedUnionMisuse{fmt.Errorf(msgRegisteredInterface, name)}
 			}
 			return fmt.Errorf("unresolved named type %s", name)
 		}
@@ -332,7 +337,7 @@ func (l *typeGrammarLowerer) typ(expr syntax.TypeExpr) (typegrammar.Type, error)
 			// The grammar admits a union only as a direct field or a direct
 			// one-dimensional slice of one; every other container is the
 			// same refusal the field lowering reports.
-			return nil, fmt.Errorf("%s at %s", unsupportedRegisteredInterfaceContainer, expr.Position())
+			return nil, sealedUnionMisuse{fmt.Errorf("%s at %s", unsupportedRegisteredInterfaceContainer, expr.Position())}
 		}
 		element, err := l.typ(expr.Derive(node.Elt))
 		if err != nil {
@@ -432,17 +437,18 @@ func (l *typeGrammarLowerer) structFields(name typegrammar.Name, owner syntax.St
 	if err := l.checkEnumRegistrations(owner); err != nil {
 		return nil, err
 	}
-	fields, err := l.lowerFields(winners)
+	fields, provided, err := l.lowerFields(winners)
 	if err != nil {
 		return nil, err
 	}
 	sources := make(map[string]fieldSource, len(winners))
 	for _, candidate := range winners {
 		sources[candidate.name.goName] = fieldSource{
-			tag:   candidate.tag(),
-			path:  candidate.at.path,
-			steps: candidate.at.steps,
-			order: candidate.order,
+			tag:      candidate.tag(),
+			path:     candidate.at.path,
+			steps:    candidate.at.steps,
+			order:    candidate.order,
+			provided: provided[candidate.name.goName],
 		}
 	}
 	if l.fields == nil {
@@ -466,7 +472,8 @@ func (l *typeGrammarLowerer) anonymousStructFields(owner syntax.StructType) ([]t
 	if err := rejectShadowedGoNames(owner, winners); err != nil {
 		return nil, err
 	}
-	return l.lowerFields(winners)
+	fields, _, err := l.lowerFields(winners)
+	return fields, err
 }
 
 // rejectShadowedGoNames refuses an owner whose flattened fields share a Go
@@ -492,12 +499,18 @@ func rejectShadowedGoNames(owner syntax.StructType, winners []typeGrammarFieldCa
 	return nil
 }
 
-func (l *typeGrammarLowerer) lowerFields(winners []typeGrammarFieldCandidate) ([]typegrammar.Field, error) {
+// lowerFields lowers each winning candidate. The second result maps a Go
+// field name to the static value behind its Provided form, where one lowered.
+func (l *typeGrammarLowerer) lowerFields(winners []typeGrammarFieldCandidate) ([]typegrammar.Field, map[string]typegrammar.FieldValue, error) {
 	fields := make([]typegrammar.Field, 0, len(winners))
+	provided := make(map[string]typegrammar.FieldValue)
 	for _, candidate := range winners {
-		value, err := l.fieldValue(candidate)
+		value, behind, err := l.fieldValue(candidate)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		if behind != nil {
+			provided[candidate.name.goName] = behind
 		}
 		fields = append(fields, typegrammar.Field{
 			GoName:      candidate.name.goName,
@@ -507,7 +520,7 @@ func (l *typeGrammarLowerer) lowerFields(winners []typeGrammarFieldCandidate) ([
 			Source:      candidate.field.Position(),
 		})
 	}
-	return fields, nil
+	return fields, provided, nil
 }
 
 // embeddedAt locates an embedded struct being flattened into its outermost
@@ -708,68 +721,106 @@ func (l *typeGrammarLowerer) checkEnumRegistrations(owner syntax.StructType) err
 	return nil
 }
 
-func (l *typeGrammarLowerer) fieldValue(c typeGrammarFieldCandidate) (typegrammar.FieldValue, error) {
+// fieldValue lowers one field. A field with an explicit schema ref lowers to
+// the Provided form whatever its Go type: the author's ref wins over the
+// union or enum the type would otherwise render as. The second result is the
+// static value behind a Provided field, when one lowers.
+func (l *typeGrammarLowerer) fieldValue(c typeGrammarFieldCandidate) (typegrammar.FieldValue, typegrammar.FieldValue, error) {
+	owner, field := c.owner, c.field
+	ref, hasRef := explicitSchemaRef(field)
+	if !hasRef {
+		return l.staticFieldValue(c, true)
+	}
+	wrapper, _, err := field.Wrapper()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := l.validateProvidedField(c, wrapper, "explicit refs"); err != nil {
+		return nil, nil, err
+	}
+	l.refuse("field %s.%s at %s uses an explicit schema ref with no resolved static type target", owner.Name(), fieldName(field), field.Position())
+	behind, err := l.speculate(c)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &typegrammar.Provided{Ref: ref, Optional: wrapper == syntax.WrapperOptional}, behind, nil
+}
+
+// validateProvidedField applies the field rules that hold whatever supplies
+// the field's schema.
+func (l *typeGrammarLowerer) validateProvidedField(c typeGrammarFieldCandidate, wrapper syntax.WrapperKind, supplied string) error {
+	owner, field := c.owner, c.field
+	if err := validateStaticFieldWireContract(owner, field, wrapper); err != nil {
+		return err
+	}
+	if wrapper == syntax.WrapperOptional && !field.HasJSONOption("omitzero") {
+		return fmt.Errorf("%s field %s.%s requires json:\",omitzero\" at %s", wrapper, owner.Name(), fieldName(field), field.Position())
+	}
+	if wrapper == syntax.WrapperNullable {
+		return fmt.Errorf("%s does not support %s at %s", wrapper, supplied, field.Position())
+	}
+	return nil
+}
+
+// staticFieldValue lowers a field from its Go type and registrations. With
+// withProviders false, a registered runtime provider is ignored, which is how
+// speculate finds the value behind one.
+func (l *typeGrammarLowerer) staticFieldValue(c typeGrammarFieldCandidate, withProviders bool) (typegrammar.FieldValue, typegrammar.FieldValue, error) {
 	owner, field := c.owner, c.field
 	if c.namedOwner && c.depth() == 0 && owner.Pkg().PkgPath == l.builder.Scan.Pkg.PkgPath {
 		if cfg, ok := l.enumConfig(owner, field); ok {
-			return l.registeredEnumField(owner, field, cfg)
+			value, err := l.registeredEnumField(owner, field, cfg)
+			return value, nil, err
 		}
 	}
 
 	wrapper, inner, err := field.Wrapper()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := validateStaticFieldWireContract(owner, field, wrapper); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if wrapper == syntax.WrapperOptional && !field.HasJSONOption("omitzero") {
-		return nil, fmt.Errorf("%s field %s.%s requires json:\",omitzero\" at %s", wrapper, owner.Name(), fieldName(field), field.Position())
+		return nil, nil, fmt.Errorf("%s field %s.%s requires json:\",omitzero\" at %s", wrapper, owner.Name(), fieldName(field), field.Position())
 	}
 
 	if c.namedOwner {
 		interfaceField, err := l.builder.resolveRegisteredInterfaceField(owner, field)
 		if err != nil {
-			return nil, err
+			return nil, nil, sealedUnionMisuse{err}
 		}
 		if interfaceField != nil {
 			if err := validateInterfaceDiscriminators(owner.Name(), fieldName(field), *interfaceField); err != nil {
-				return nil, err
+				return nil, nil, sealedUnionMisuse{err}
 			}
 			union, err := l.union(*interfaceField)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			switch {
 			case interfaceField.Repeated:
-				return &typegrammar.UnionSlice{Union: union}, nil
+				return &typegrammar.UnionSlice{Union: union}, nil, nil
 			case interfaceField.Optional:
-				return &typegrammar.OptionalUnion{Union: union}, nil
+				return &typegrammar.OptionalUnion{Union: union}, nil, nil
 			default:
-				return &union, nil
+				return &union, nil, nil
 			}
 		}
 	}
 
-	// A schema supplied outside the grammar carries no static shape. JSON
-	// Schema renders what was supplied; the strict backends refuse the field.
-	if field.Field.Tag != nil {
-		if tag := common.ParseJSONSchemaTag(field.Field.Tag.Value); tag.HasRef {
-			if wrapper == syntax.WrapperNullable {
-				return nil, fmt.Errorf("%s does not support explicit refs at %s", wrapper, field.Position())
-			}
-			l.refuse("field %s.%s at %s uses an explicit schema ref with no resolved static type target", owner.Name(), fieldName(field), field.Position())
-			return &typegrammar.Provided{Ref: tag.Ref, Optional: wrapper == syntax.WrapperOptional}, nil
-		}
-	}
 	// Providers are registered on a named owner; an inline struct's fields
 	// reuse the enclosing type's name but carry none of its registrations.
-	if providers := l.builder.TypeProvidersMap[owner.Name()]; c.namedOwner && hasProviderForGoField(providers, goFieldNames(field)) {
+	if providers := l.builder.TypeProvidersMap[owner.Name()]; withProviders && c.namedOwner && hasProviderForGoField(providers, goFieldNames(field)) {
 		if wrapper == syntax.WrapperNullable {
-			return nil, fmt.Errorf("%s does not support providers at %s", wrapper, field.Position())
+			return nil, nil, fmt.Errorf("%s does not support providers at %s", wrapper, field.Position())
 		}
 		l.refuse("field %s.%s at %s uses a runtime schema provider with no statically resolved wire type", owner.Name(), fieldName(field), field.Position())
-		return &typegrammar.Provided{Optional: wrapper == syntax.WrapperOptional}, nil
+		behind, err := l.speculate(c)
+		if err != nil {
+			return nil, nil, err
+		}
+		return &typegrammar.Provided{Optional: wrapper == syntax.WrapperOptional}, behind, nil
 	}
 	if tag := field.JSONTag(); tag != nil && slices.Contains(tag.Options[1:], "string") {
 		l.refuse("field %s.%s at %s uses json:\",string\", whose wire mapping is outside the static type grammar", owner.Name(), fieldName(field), field.Position())
@@ -781,14 +832,58 @@ func (l *typeGrammarLowerer) fieldValue(c typeGrammarFieldCandidate) (typegramma
 	}
 	if wrapper == syntax.WrapperNullable {
 		if _, isArray := renderType.(*dst.ArrayType); isArray {
-			return nil, fmt.Errorf("%s does not support arrays/slices at %s", wrapper, field.Position())
+			return nil, nil, fmt.Errorf("%s does not support arrays/slices at %s", wrapper, field.Position())
 		}
 	}
 	typ, err := l.typ(field.Derive(renderType))
 	if err != nil {
-		return nil, fmt.Errorf("field %s.%s: %w", owner.Name(), fieldName(field), err)
+		return nil, nil, fmt.Errorf("field %s.%s: %w", owner.Name(), fieldName(field), err)
 	}
-	return wrapFieldValue(wrapper, typ)
+	value, err := wrapFieldValue(wrapper, typ)
+	return value, nil, err
+}
+
+// speculate lowers the static value behind a field whose schema is supplied
+// outside the grammar. The supplied schema makes the static shape optional,
+// so a shape the grammar cannot lower is not an error here: everything the
+// attempt added is rolled back and the field simply has no static value. A
+// misused sealed union is still an error, because the generated Go codecs
+// adapt the field by its Go type whatever schema was supplied, and cannot
+// adapt that shape.
+func (l *typeGrammarLowerer) speculate(c typeGrammarFieldCandidate) (typegrammar.FieldValue, error) {
+	defs, strict := len(l.defs), len(l.strict)
+	value, _, err := l.staticFieldValue(c, false)
+	// The field is already refused for the strict backends; what the attempt
+	// found beyond that is not authoritative.
+	l.strict = l.strict[:strict]
+	if err == nil {
+		return value, nil
+	}
+	for name, idx := range l.index {
+		if idx >= defs {
+			delete(l.index, name)
+			delete(l.fields, name)
+		}
+	}
+	l.defs = l.defs[:defs]
+	if errors.As(err, new(sealedUnionMisuse)) {
+		return nil, err
+	}
+	return nil, nil
+}
+
+// sealedUnionMisuse marks a refusal of a sealed-union field shape: one the
+// generated codecs cannot adapt, whatever schema the field is given.
+type sealedUnionMisuse struct{ error }
+
+func (e sealedUnionMisuse) Unwrap() error { return e.error }
+
+func explicitSchemaRef(field syntax.StructField) (string, bool) {
+	if field.Field.Tag == nil {
+		return "", false
+	}
+	tag := common.ParseJSONSchemaTag(field.Field.Tag.Value)
+	return tag.Ref, tag.HasRef
 }
 
 // registeredEnumField lowers a field carrying a .StringerEnum registration.

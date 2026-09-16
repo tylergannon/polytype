@@ -21,182 +21,80 @@ type First struct {
 func (First) variant() {}
 `
 
-	tests := []struct {
-		name string
-		body string
+	// Each shape is a container of the union on Owner.Values. A supplied
+	// schema (an explicit ref or a runtime provider) does not make the shape
+	// supportable: the generated codecs adapt the field by its Go type, so
+	// every decoration must be refused as well (#148).
+	shapes := []struct {
+		name      string
+		decls     string
+		fieldType string
+		jsonTag   string
+		// nullable shapes are also refused for any supplied schema, and may
+		// report that refusal instead.
+		nullable bool
 	}{
-		{
-			name: "fixed array field",
-			body: commonTypes + `
-type Owner struct {
-	Values [2]Variant ` + "`json:\"values\"`" + `
-}
+		{name: "fixed array field", fieldType: "[2]Variant"},
+		{name: "nested slice field", fieldType: "[][]Variant"},
+		{name: "nullable slice field", fieldType: "polytype.Nullable[[]Variant]", nullable: true},
+		{name: "optional slice field", fieldType: "polytype.Optional[[]Variant]", jsonTag: "values,omitzero"},
+		{name: "named slice field", decls: "type Variants []Variant", fieldType: "Variants"},
+		{name: "named fixed array field", decls: "type Variants [2]Variant", fieldType: "Variants"},
+		{name: "named nested slice field", decls: "type Variants [][]Variant", fieldType: "Variants"},
+		{name: "named slice of pointer field", decls: "type Variants []*Variant", fieldType: "Variants"},
+		{name: "optional named slice field", decls: "type Variants []Variant", fieldType: "polytype.Optional[Variants]", jsonTag: "values,omitzero"},
+		{name: "nullable named slice field", decls: "type Variants []Variant", fieldType: "polytype.Nullable[Variants]", nullable: true},
+		{name: "slice of named slice field", decls: "type Variants []Variant", fieldType: "[]Variants"},
+		{name: "named slice through a second named type", decls: "type Variants []Variant\n\ntype Aliased Variants", fieldType: "Aliased"},
+	}
+	decorations := []struct {
+		name         string
+		tag          string
+		registration string
+	}{
+		{name: "", registration: "polytype.NewJSONSchemaMethod(Owner.Schema)"},
+		{name: " with ref", tag: ` jsonschema:"ref=#/definitions/Variants"`, registration: "polytype.NewJSONSchemaMethod(Owner.Schema)"},
+		{name: " with provider", registration: "polytype.NewJSONSchemaMethod(Owner.Schema, polytype.WithStructAccessorMethod(Owner{}.Values, (Owner).ValuesSchema), polytype.WithRenderProviders())"},
+	}
 
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "nested slice field",
-			body: commonTypes + `
-type Owner struct {
-	Values [][]Variant ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "nullable slice field",
-			body: commonTypes + `
-type Owner struct {
-	Values polytype.Nullable[[]Variant] ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "optional slice field",
-			body: commonTypes + `
-type Owner struct {
-	Values polytype.Optional[[]Variant] ` + "`json:\"values,omitzero\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "named slice field",
-			body: commonTypes + `
-type Variants []Variant
-
-type Owner struct {
-	Values Variants ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "named fixed array field",
-			body: commonTypes + `
-type Variants [2]Variant
-
-type Owner struct {
-	Values Variants ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "named nested slice field",
-			body: commonTypes + `
-type Variants [][]Variant
-
-type Owner struct {
-	Values Variants ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "named slice of pointer field",
-			body: commonTypes + `
-type Variants []*Variant
-
-type Owner struct {
-	Values Variants ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "optional named slice field",
-			body: commonTypes + `
-type Variants []Variant
-
-type Owner struct {
-	Values polytype.Optional[Variants] ` + "`json:\"values,omitzero\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "nullable named slice field",
-			body: commonTypes + `
-type Variants []Variant
-
-type Owner struct {
-	Values polytype.Nullable[Variants] ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "slice of named slice field",
-			body: commonTypes + `
-type Variants []Variant
-
-type Owner struct {
-	Values []Variants ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "named slice through a second named type",
-			body: commonTypes + `
-type Variants []Variant
-
-type Aliased Variants
-
-type Owner struct {
-	Values Aliased ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "top-level named slice",
-			body: commonTypes + `
+	type test struct {
+		name         string
+		body         string
+		otherRefusal bool
+	}
+	tests := []test{{
+		name: "top-level named slice",
+		body: commonTypes + `
 type Variants []Variant
 
 func (Variants) Schema() json.RawMessage { panic("not implemented") }
 
 var _ = polytype.NewJSONSchemaMethod(Variants.Schema)
 `,
-		},
+	}}
+	for _, shape := range shapes {
+		jsonTag := shape.jsonTag
+		if jsonTag == "" {
+			jsonTag = "values"
+		}
+		for _, decoration := range decorations {
+			tests = append(tests, test{
+				name:         shape.name + decoration.name,
+				otherRefusal: shape.nullable && decoration.name != "",
+				body: commonTypes + shape.decls + `
+
+type Owner struct {
+	Values ` + shape.fieldType + " `json:\"" + jsonTag + `"` + decoration.tag + "`" + `
+}
+
+func (Owner) Schema() json.RawMessage { panic("not implemented") }
+
+func (Owner) ValuesSchema() json.Marshaler { panic("not implemented") }
+
+var _ = ` + decoration.registration + `
+`,
+			})
+		}
 	}
 
 	fixtures := make([]fixtureCase, 0, len(tests))
@@ -215,6 +113,11 @@ var _ = polytype.NewJSONSchemaMethod(Variants.Schema)
 			require.NotEmpty(t, scan.SchemaMethods)
 
 			_, err = New(loaded.pkg)
+			require.Error(t, err)
+			if test.otherRefusal {
+				require.Regexp(t, `does not support|arrays/slices of registered interfaces are not yet supported`, err.Error())
+				return
+			}
 			require.ErrorContains(t, err, "arrays/slices of registered interfaces are not yet supported")
 			require.Contains(t, err.Error(), loaded.dir)
 		})

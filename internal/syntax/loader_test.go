@@ -32,3 +32,27 @@ func TestLoadUsesTargetAsPackageWorkingDirectory(t *testing.T) {
 	require.Equal(t, "example.com/independent", packages[0].PkgPath)
 	require.Equal(t, originalConfigDir, DefaultPackageCfg.Dir, "Load must not mutate the shared default config")
 }
+
+// TestIsProductionGoFileIgnoresTheGenerationTag proves a declaration file is
+// never mistaken for production code when GOFLAGS carries the generation tag,
+// as some editor setups do; otherwise every declaration would be skipped.
+// Other custom tags from GOFLAGS still apply.
+func TestIsProductionGoFileIgnoresTheGenerationTag(t *testing.T) {
+	dir := t.TempDir()
+	declarations := filepath.Join(dir, "schema.go")
+	require.NoError(t, os.WriteFile(declarations, []byte("//go:build "+BuildTag+"\n\npackage fixture\n"), 0o644))
+	custom := filepath.Join(dir, "custom.go")
+	require.NoError(t, os.WriteFile(custom, []byte("//go:build custom\n\npackage fixture\n"), 0o644))
+
+	for _, goflags := range []string{"-tags=" + BuildTag + ",custom", "-tags " + BuildTag + ",custom"} {
+		t.Run(goflags, func(t *testing.T) {
+			t.Setenv("GOFLAGS", goflags)
+			production, err := IsProductionGoFile(declarations)
+			require.NoError(t, err)
+			require.False(t, production)
+			production, err = IsProductionGoFile(custom)
+			require.NoError(t, err)
+			require.True(t, production)
+		})
+	}
+}

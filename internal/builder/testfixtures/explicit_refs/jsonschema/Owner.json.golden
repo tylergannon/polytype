@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "description": "Owner's union and enum fields carry explicit refs.",
+  "properties": {
+    "s": {
+      "$ref": "#/definitions/Shape"
+    },
+    "l": {
+      "$ref": "#/definitions/Level"
+    }
+  },
+  "required": [
+    "s",
+    "l"
+  ],
+  "additionalProperties": false
+}

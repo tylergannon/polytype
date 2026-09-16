@@ -410,6 +410,15 @@ func (r *ScanResult) resolveType(pkgPath string, ident IdentExpr) (Expr, error) 
 	}
 }
 
+func isDeclarationMarker(name string) bool {
+	switch name {
+	case MarkerFuncDeclare, MarkerFuncSealedUnion, MarkerFuncNewJSONSchemaMethod, MarkerFuncNewJSONSchemaFunc, MarkerFuncNewJSONSchemaBuilder:
+		return true
+	default:
+		return false
+	}
+}
+
 func (r *ScanResult) loadPackageInternal(seen seenPackages, typesToMap map[string]bool) error {
 	if typesToMap == nil {
 		// Safety check in case it's ever passed nil from some other call site
@@ -442,6 +451,12 @@ func (r *ScanResult) loadPackageInternal(seen seenPackages, typesToMap map[strin
 			return err
 		}
 		if production {
+			// A blank declaration here is one the author meant for the
+			// CLI and put in the wrong file. Ignoring it would silently
+			// change the generated output (#151).
+			if decl.blank && isDeclarationMarker(name) {
+				return fmt.Errorf("polytype.%s at %s is in a file compiled into the package, so it is not read as a declaration; move it to a file with the //go:build jsonschema constraint", name, position)
+			}
 			continue
 		}
 		switch name {

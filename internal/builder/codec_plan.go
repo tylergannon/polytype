@@ -129,45 +129,58 @@ func planOwnerCodecs(s *SchemaBuilder, lowered *lowering) (map[string]OwnerCodec
 		index[def.Name] = def
 	}
 	reachable := make(map[typegrammar.Name]bool)
-	var visitType func(t typegrammar.Type)
+	var visitType func(owner typegrammar.Name, t typegrammar.Type)
+	var visitValue func(owner typegrammar.Name, field typegrammar.Field, v typegrammar.FieldValue)
 	var visitUnion func(u typegrammar.Union)
 	visitDef := func(name typegrammar.Name) {
 		if reachable[name] {
 			return
 		}
 		reachable[name] = true
-		visitType(index[name].Type)
+		visitType(name, index[name].Type)
 	}
 	visitUnion = func(u typegrammar.Union) {
 		for _, variant := range u.Variants {
 			visitDef(variant.Implementation)
 		}
 	}
-	visitType = func(t typegrammar.Type) {
+	visitValue = func(owner typegrammar.Name, field typegrammar.Field, v typegrammar.FieldValue) {
+		switch v := v.(type) {
+		case *typegrammar.Required:
+			visitType(typegrammar.Name{}, v.Type)
+		case *typegrammar.Optional:
+			visitType(typegrammar.Name{}, v.Type)
+		case *typegrammar.Nullable:
+			visitType(typegrammar.Name{}, v.Type)
+		case *typegrammar.Union:
+			visitUnion(*v)
+		case *typegrammar.OptionalUnion:
+			visitUnion(v.Union)
+		case *typegrammar.UnionSlice:
+			visitUnion(v.Union)
+		case *typegrammar.Provided:
+			// A supplied schema does not change what the Go value holds:
+			// the codecs follow the field's static value.
+			if behind := lowered.fields[owner][field.GoName].provided; behind != nil {
+				visitValue(owner, field, behind)
+			}
+		}
+	}
+	// visitType walks t. owner names the definition whose own object t is,
+	// and is zero for every nested type: only a definition's own fields have
+	// recorded sources, and an inline object's must not borrow them.
+	visitType = func(owner typegrammar.Name, t typegrammar.Type) {
 		switch n := t.(type) {
 		case *typegrammar.Object:
 			for _, field := range n.Fields {
-				switch v := field.Value.(type) {
-				case *typegrammar.Required:
-					visitType(v.Type)
-				case *typegrammar.Optional:
-					visitType(v.Type)
-				case *typegrammar.Nullable:
-					visitType(v.Type)
-				case *typegrammar.Union:
-					visitUnion(*v)
-				case *typegrammar.OptionalUnion:
-					visitUnion(v.Union)
-				case *typegrammar.UnionSlice:
-					visitUnion(v.Union)
-				}
+				visitValue(owner, field, field.Value)
 			}
 		case *typegrammar.Pointer:
-			visitType(n.Element)
+			visitType(typegrammar.Name{}, n.Element)
 		case *typegrammar.Slice:
-			visitType(n.Element)
+			visitType(typegrammar.Name{}, n.Element)
 		case *typegrammar.Array:
-			visitType(n.Element)
+			visitType(typegrammar.Name{}, n.Element)
 		case *typegrammar.Ref:
 			visitDef(n.Target)
 		}
@@ -196,7 +209,11 @@ func planOwnerCodecs(s *SchemaBuilder, lowered *lowering) (map[string]OwnerCodec
 		)
 		for _, field := range object.Fields {
 			source := sources[field.GoName]
-			switch v := field.Value.(type) {
+			value := field.Value
+			if _, ok := value.(*typegrammar.Provided); ok && source.provided != nil {
+				value = source.provided
+			}
+			switch v := value.(type) {
 			case *typegrammar.Union:
 				unions = append(unions, s.interfaceProp(field, source, *v, false, false))
 			case *typegrammar.OptionalUnion:

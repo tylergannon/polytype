@@ -115,7 +115,9 @@ func findJSONMethodsInFile(fset *token.FileSet, filename string, wanted map[stri
 
 // IsProductionGoFile reports whether filename is active for the current
 // production build. GOFLAGS tags are included so collision discovery follows
-// the same custom-tag environment as the Go command that invoked generation.
+// the same custom-tag environment as the Go command that invoked generation,
+// except the generation tag itself: a production build never sets it, even
+// when GOFLAGS does for an editor or for generation.
 func IsProductionGoFile(filename string) (bool, error) {
 	context := build.Default
 	fields := strings.Fields(os.Getenv("GOFLAGS"))
@@ -130,7 +132,11 @@ func IsProductionGoFile(filename string) (bool, error) {
 		}
 		value = strings.Trim(value, `"'`)
 		if value != "" {
-			context.BuildTags = append(context.BuildTags, strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' })...)
+			for _, tag := range strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' }) {
+				if tag != BuildTag {
+					context.BuildTags = append(context.BuildTags, tag)
+				}
+			}
 		}
 	}
 	return context.MatchFile(filepath.Dir(filename), filepath.Base(filename))

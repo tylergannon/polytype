@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "description": "Many reaches shapes.Holder through a slice.",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "Holder holds a shape.",
+        "properties": {
+          "s": {
+            "anyOf": [
+              {
+                "type": "object",
+                "description": "Circle is a round shape.",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "Circle"
+                  },
+                  "radius": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "type",
+                  "radius"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "s"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "additionalProperties": false
+}

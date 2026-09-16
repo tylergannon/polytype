@@ -57,6 +57,31 @@ type JSONTagNames struct {
 	BackoffStrategy int `json:"backoff_strategy"`
 	Untagged        int
 	Ignored         int `json:"-"`
+	// Dash is a property literally named "-".
+	Dash int `json:"-,"`
+}
+
+// IgnoredBase is embedded under json:"-" and must not reach the wire.
+type IgnoredBase struct {
+	Hidden string `json:"hidden"`
+}
+
+// IgnoredPointerBase is embedded by pointer under json:"-".
+type IgnoredPointerBase struct {
+	PointerHidden string `json:"pointerHidden"`
+}
+
+// RenamedBase is embedded under an explicit JSON name, so it nests.
+type RenamedBase struct {
+	Inner string `json:"inner"`
+}
+
+// EmbeddedTags covers the embedded-field tag forms encoding/json honors.
+type EmbeddedTags struct {
+	IgnoredBase         `json:"-"`
+	*IgnoredPointerBase `json:"-"`
+	RenamedBase         `json:"base"`
+	Visible             string `json:"visible"`
 }
 
 // EnumType123 declares itself as an enum; the generator emits its typed constants.

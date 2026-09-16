@@ -24,9 +24,14 @@ func (JSONTagNames) Schema() json.RawMessage {
 	panic("not implemented")
 }
 
+func (EmbeddedTags) Schema() json.RawMessage {
+	panic("not implemented")
+}
+
 var (
 	_ = polytype.NewJSONSchemaMethod(StructType1.Schema)
 	_ = polytype.NewJSONSchemaMethod(StructType2.Schema)
 	_ = polytype.NewJSONSchemaMethod(StructWithRefs.Schema)
 	_ = polytype.NewJSONSchemaMethod(JSONTagNames.Schema)
+	_ = polytype.Declare(EmbeddedTags.Schema)
 )

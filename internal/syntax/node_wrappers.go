@@ -776,8 +776,11 @@ func (f StructField) Skip() bool {
 		}
 		return fieldJSONIgnored(f.Field)
 	}
-	// If embedded, do not skip unless it's unexported (i.e. an embedded private type).
-	// For embedded types, check if the type is an ident with uppercase name, etc.
+	// An embedded field is skipped when encoding/json ignores it (json:"-")
+	// or when it is an embedded private type.
+	if fieldJSONIgnored(f.Field) {
+		return true
+	}
 	if ident, ok := f.Field.Type.(*dst.Ident); ok {
 		if !isExportedFieldName(ident) {
 			return true
@@ -794,9 +797,11 @@ func hasExportedFieldName(field *dst.Field) bool {
 	return slices.ContainsFunc(field.Names, isExportedFieldName)
 }
 
+// fieldJSONIgnored reports whether encoding/json ignores the field. Only the
+// exact tag json:"-" does; json:"-," names a property "-".
 func fieldJSONIgnored(field *dst.Field) bool {
 	tag := fieldStructTag(field, "json")
-	return tag != nil && len(tag.Options) > 0 && tag.Options[0] == "-"
+	return tag != nil && tag.Value == "-"
 }
 
 /**

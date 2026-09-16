@@ -1,0 +1,55 @@
+{
+  "type": "object",
+  "description": "Embedded promotes shapes.Plain's union field next to a local one. (Embedding shapes.Holder is refused: its own generated MarshalJSON would be promoted alongside Embedded's.)",
+  "properties": {
+    "s": {
+      "anyOf": [
+        {
+          "type": "object",
+          "description": "Circle is a round shape.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Circle"
+            },
+            "radius": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "type",
+            "radius"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "local": {
+      "anyOf": [
+        {
+          "type": "object",
+          "description": "Square is the only local shape.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Square"
+            },
+            "side": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "type",
+            "side"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": [
+    "s",
+    "local"
+  ],
+  "additionalProperties": false
+}
