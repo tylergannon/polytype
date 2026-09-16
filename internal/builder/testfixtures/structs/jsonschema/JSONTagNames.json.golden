@@ -12,13 +12,18 @@
     },
     "Untagged": {
       "type": "integer"
+    },
+    "-": {
+      "type": "integer",
+      "description": "Dash is a property literally named \"-\"."
     }
   },
   "required": [
     "MaxRetries",
     "TimeoutSeconds",
     "backoff_strategy",
-    "Untagged"
+    "Untagged",
+    "-"
   ],
   "additionalProperties": false
 }

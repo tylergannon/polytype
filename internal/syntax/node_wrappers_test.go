@@ -125,6 +125,13 @@ func TestStructFieldPropNames(t *testing.T) {
 			wantNames: []string{"-"},
 			wantSkip:  true,
 		},
+		{
+			// encoding/json ignores only the exact tag "-"; "-," names a
+			// property "-".
+			name:      "property named dash",
+			tag:       `json:"-,"`,
+			wantNames: []string{"-"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -141,6 +148,32 @@ func TestStructFieldPropNames(t *testing.T) {
 			}
 
 			require.Equal(t, tt.wantNames, field.PropNames())
+			require.Equal(t, tt.wantSkip, field.Skip())
+		})
+	}
+}
+
+func TestEmbeddedStructFieldSkip(t *testing.T) {
+	tests := []struct {
+		name     string
+		typ      dst.Expr
+		tag      string
+		wantSkip bool
+	}{
+		{name: "untagged", typ: dst.NewIdent("Base")},
+		{name: "renamed", typ: dst.NewIdent("Base"), tag: `json:"base"`},
+		{name: "ignored", typ: dst.NewIdent("Base"), tag: `json:"-"`, wantSkip: true},
+		{name: "ignored pointer", typ: &dst.StarExpr{X: dst.NewIdent("Base")}, tag: `json:"-"`, wantSkip: true},
+		{name: "property named dash", typ: dst.NewIdent("Base"), tag: `json:"-,"`},
+		{name: "unexported", typ: dst.NewIdent("base"), wantSkip: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			field := StructField{Field: &dst.Field{Type: tt.typ}}
+			if tt.tag != "" {
+				field.Field.Tag = &dst.BasicLit{Kind: token.STRING, Value: "`" + tt.tag + "`"}
+			}
 			require.Equal(t, tt.wantSkip, field.Skip())
 		})
 	}
