@@ -335,3 +335,73 @@ polytype 1.97s, typescript 1.29s, syntax 0.80s, grammar 0.67s.
 subprocess spawning -- roughly sixty non-table tests still do one
 `packages.Load` each. Collapsing those into a package-wide shared fixture
 module is the next structural step and is worth its own issue.
+
+---
+
+## 2026-09-16 — issue #137, the optionality proof
+
+### The issue's premise was stale
+
+#137 was filed when `examples/optionality/cmd/proof` took **11.2s** and was
+the second-slowest package in the suite. It is now **1.74s** isolated, and
+nobody touched it: #138 (export-data dependency loading, `ecddb2b`) made each
+`syntax.Load` inside the CLI far cheaper, and the eleven `go run` invocations
+warm each other's build cache so only the first pays a real link.
+
+### What was still wasted
+
+Per negative case, measured on an idle machine:
+
+| invocation | real | user | sys |
+|---|---|---|---|
+| `go run ./polytype gen --target ...` | 0.12s | 0.12s | 0.33s |
+| prebuilt binary, same args | 0.05s | 0.05s | 0.09s |
+
+`go run` still spawns a full toolchain invocation per case to decide nothing
+needs relinking. Eleven of those is ~0.8s of process churn.
+
+### Change
+
+`run()` builds the CLI once into a temp dir (`buildCLI`) and execs it for each
+of the eleven negative cases. Same binary, same arguments, same `cmd.Dir`;
+the transcript is byte-identical to `examples/optionality/proof/expected.json`
+both under `go test` and as `go run ./examples/optionality/cmd/proof`.
+
+Isolated package: **1.74s -> 1.51s wall**, and CPU **6.23s -> 3.01s** (user
+1.70->1.17, sys 4.53->1.84). The package's cost is roughly halved.
+
+### It does not move the suite, and that is the finding
+
+Interleaved A/B, four pairs of `go test -count=1 ./...` alternating baseline
+and patch on an otherwise idle machine:
+
+| | wall (mean) | user+sys (mean) |
+|---|---|---|
+| baseline | 10.65s | 61.52s |
+| patched | 10.82s | 58.86s |
+
+CPU drops **2.7s** consistently (every patched run below every baseline run).
+Wall does not move: the difference is inside the run-to-run spread.
+
+The suite is no longer bounded by aggregate CPU either -- it is bounded by
+`internal/builder` (4.68s isolated, ~8s under contention) and `codegen`
+(4.20s isolated). At 60s of CPU over 10.7s of wall the machine is saturated,
+but shortening a 1.7s package that is not on the critical path buys nothing
+locally. It should still pay on a 2-4 core CI runner, where aggregate CPU
+*is* wall time and the suite runs twice.
+
+### Rejected: running the eleven cases concurrently
+
+Tried first, alongside the build-once change: bounded at `NumCPU`, results
+collected by index so failures still report in table order. Isolated the
+package went to 1.20s. But under the full suite it made things *worse* --
+four runs at 10.53/10.66/11.13/10.96 (mean 10.82) against a 10.65 baseline --
+because eleven concurrent `polytype gen` processes, each spawning its own
+`go list`, burst against an already-saturated machine. Reverted; the serial
+build-once version is what landed.
+
+### Verification
+
+`just lint` clean, `just build-tagged` clean, `go test -count=1 ./...` all
+green, `go test -count=2 -shuffle=on ./examples/optionality/...` green,
+transcript diffed byte-for-byte against the golden.

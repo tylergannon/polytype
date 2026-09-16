@@ -123,9 +123,18 @@ func run() (transcript, error) {
 		{"nullable ref", "nullable_ref", "does not support explicit refs"},
 		{"nullable provider", "nullable_provider", "does not support providers"},
 	}
+	// The negative cases used to reach the command through `go run ./polytype`,
+	// which relinks the CLI on every invocation: eleven refusals paid eleven
+	// links to run the same binary. It is built once here instead.
+	cli, cleanup, err := buildCLI(root)
+	if err != nil {
+		return transcript{}, err
+	}
+	defer cleanup()
+
 	for _, item := range negative {
 		target := filepath.Join(root, "examples", "optionality", "negative", item.dir)
-		cmd := exec.Command("go", "run", "./polytype", "gen", "--target", target)
+		cmd := exec.Command(cli, "gen", "--target", target)
 		cmd.Dir = root
 		output, commandErr := cmd.CombinedOutput()
 		if commandErr == nil || !strings.Contains(string(output), item.reason) {
@@ -134,6 +143,24 @@ func run() (transcript, error) {
 		result.Rejected = append(result.Rejected, rejectedResult{Name: item.name, Reason: item.reason})
 	}
 	return result, nil
+}
+
+// buildCLI builds the polytype command into a temp directory and returns its
+// path along with a function that removes the directory.
+func buildCLI(root string) (string, func(), error) {
+	dir, err := os.MkdirTemp("", "polytype-proof")
+	if err != nil {
+		return "", nil, err
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+	cli := filepath.Join(dir, "polytype")
+	build := exec.Command("go", "build", "-o", cli, "./polytype")
+	build.Dir = root
+	if output, buildErr := build.CombinedOutput(); buildErr != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("building the polytype CLI: %w\n%s", buildErr, output)
+	}
+	return cli, cleanup, nil
 }
 
 func presentInt(value int) polytype.Optional[int] {
