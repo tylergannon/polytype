@@ -1377,9 +1377,13 @@ func (s SchemaBuilder) resolveRegisteredInterfaceField(owner syntax.StructType, 
 		fieldType = inner
 	}
 
+	// An unqualified identifier names a type in the package that declares the
+	// field, which for a promoted or referenced struct is not the generated
+	// package.
+	fieldPkg := prop.Pkg()
 	ident, repeated, direct := directInterfaceFieldType(fieldType)
 	if direct {
-		if iface, ok := s.findInterfaceImpl(ident, s.Scan.Pkg); ok {
+		if iface, ok := s.findInterfaceImpl(ident, fieldPkg); ok {
 			if repeated && wrapper != syntax.WrapperNone {
 				return nil, fmt.Errorf("%s at %s", unsupportedRegisteredInterfaceContainer, prop.Position())
 			}
@@ -1395,12 +1399,12 @@ func (s SchemaBuilder) resolveRegisteredInterfaceField(owner syntax.StructType, 
 		}
 		// A reachable interface field whose type is not a usable sealed
 		// union is an error at the field. There is no explicit fallback.
-		if diagnostic, found := s.interfaceDiagnostic(ident, s.Scan.Pkg); found {
+		if diagnostic, found := s.interfaceDiagnostic(ident, fieldPkg); found {
 			return nil, fmt.Errorf("field %s.%s at %s: %w", owner.Name(), fieldName(prop), prop.Position(), diagnostic)
 		}
 	}
 
-	if interfaceName, found := s.registeredInterfaceInExpr(fieldType, s.Scan.Pkg); found {
+	if interfaceName, found := s.registeredInterfaceInExpr(fieldType, fieldPkg); found {
 		if containsArrayType(fieldType) {
 			return nil, fmt.Errorf("%s for interface %s at %s", unsupportedRegisteredInterfaceContainer, interfaceName, prop.Position())
 		}

@@ -32,6 +32,8 @@ type fixture struct {
 
 var basicFixtures = []fixture{
 	{name: "basictypes"},
+	{name: "crosspkg_shapes"},
+	{name: "crosspkg_union"},
 	{name: "entrypoints"},
 	{name: "enums", validate: true},
 	{name: "indirecttypes"},
