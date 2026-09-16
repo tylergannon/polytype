@@ -1351,19 +1351,6 @@ func containsArrayType(expr dst.Expr) bool {
 	return found
 }
 
-func (s SchemaBuilder) resolveNamedType(ident *dst.Ident, localPkg *decorator.Package) (syntax.TypeSpec, bool) {
-	pkgPath := ident.Path
-	if pkgPath == "" {
-		pkgPath = localPkg.PkgPath
-	}
-	scan, ok := s.Scan.GetPackage(pkgPath)
-	if !ok {
-		return syntax.TypeSpec{}, false
-	}
-	typeSpec, ok := scan.LocalNamedTypes[ident.Name]
-	return typeSpec, ok
-}
-
 func (s SchemaBuilder) registeredInterfaceInExpr(expr dst.Expr, localPkg *decorator.Package) (string, bool) {
 	var interfaceName string
 	dst.Inspect(expr, func(node dst.Node) bool {
@@ -1419,15 +1406,10 @@ func (s SchemaBuilder) resolveRegisteredInterfaceField(owner syntax.StructType, 
 		}
 		return nil, fmt.Errorf("found sealed interface type %s in an unsupported location at %s", interfaceName, prop.Position())
 	}
-	if ident, ok := fieldType.(*dst.Ident); ok {
-		if typeSpec, found := s.resolveNamedType(ident, s.Scan.Pkg); found {
-			if underlying, isArray := typeSpec.Type().Expr().(*dst.ArrayType); isArray {
-				if interfaceName, containsInterface := s.registeredInterfaceInExpr(underlying, typeSpec.Pkg()); containsInterface {
-					return nil, fmt.Errorf("%s for interface %s through named type %s at %s", unsupportedRegisteredInterfaceContainer, interfaceName, ident.Name, prop.Position())
-				}
-			}
-		}
-	}
+	// A field whose type is a named container of a union (type Variants
+	// []Variant) is not resolved here. Lowering the named type reaches the
+	// grammar's array admission boundary, which reports the same refusal and
+	// names both the field and the offending declaration.
 	return nil, nil
 }
 
