@@ -218,6 +218,7 @@ func assertIdempotentRegeneration(t *testing.T, moduleDir string) {
 	t.Helper()
 
 	before := make(map[string][]byte)
+	var patterns []string
 	for _, f := range basicFixtures {
 		if !f.idempotent {
 			continue
@@ -225,11 +226,14 @@ func assertIdempotentRegeneration(t *testing.T, moduleDir string) {
 		data, err := os.ReadFile(filepath.Join(moduleDir, f.name, "jsonschema_gen.go"))
 		require.NoError(t, err)
 		before[f.name] = data
+		patterns = append(patterns, "./"+f.name)
 	}
 
+	// Only the fixtures that regenerate are reloaded. The other eleven would
+	// be type-checked for nothing.
 	cfg := *syntax.DefaultPackageCfg
 	cfg.Dir = moduleDir
-	pkgs, err := decorator.Load(&cfg, "./...")
+	pkgs, err := decorator.Load(&cfg, patterns...)
 	require.NoError(t, err)
 
 	loaded := make(map[string]*decorator.Package, len(pkgs))
