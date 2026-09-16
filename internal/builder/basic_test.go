@@ -175,8 +175,14 @@ replace github.com/tylergannon/polytype => %s
 //
 // It walks for "*.golden" rather than consulting a hardcoded file list: a list
 // cannot notice a golden whose generated counterpart stopped being produced.
+// The reverse direction is checked too, so deleting a golden cannot quietly
+// drop its artifact from comparison.
 func assertGoldens(t *testing.T, dir string) {
 	t.Helper()
+
+	missing, err := artifactsWithoutGoldens(dir)
+	require.NoError(t, err)
+	require.Empty(t, missing, "generated artifacts have no golden")
 
 	var checked int
 	require.NoError(t, filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
@@ -195,6 +201,73 @@ func assertGoldens(t *testing.T, dir string) {
 		return nil
 	}))
 	require.NotZero(t, checked, "no golden files found under %s", dir)
+}
+
+// artifactsWithoutGoldens returns every generated artifact under dir that has
+// no "<artifact>.golden" beside it. Generated artifacts are the Go files
+// generation writes and everything in a jsonschema/ directory except goldens
+// and the .sum content-hash sidecars, which intentionally have none.
+func artifactsWithoutGoldens(dir string) ([]string, error) {
+	var missing []string
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !isGeneratedArtifact(path) {
+			return nil
+		}
+		if _, statErr := os.Stat(path + ".golden"); statErr != nil {
+			if !os.IsNotExist(statErr) {
+				return statErr
+			}
+			missing = append(missing, path)
+		}
+		return nil
+	})
+	return missing, err
+}
+
+func isGeneratedArtifact(path string) bool {
+	name := filepath.Base(path)
+	switch {
+	case name == "jsonschema_gen.go", name == "polytype_gen.go":
+		return true
+	case filepath.Base(filepath.Dir(path)) != "jsonschema":
+		return false
+	default:
+		return !strings.HasSuffix(name, ".golden") && !strings.HasSuffix(name, ".sum")
+	}
+}
+
+func TestArtifactsWithoutGoldens(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	write := func(rel string) {
+		t.Helper()
+		path := filepath.Join(dir, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, nil, 0o644))
+	}
+	for _, rel := range []string{
+		"jsonschema_gen.go", "jsonschema_gen.go.golden",
+		"jsonschema/Covered.json", "jsonschema/Covered.json.golden", "jsonschema/Covered.json.sum",
+		"jsonschema/Uncovered.json",
+		"jsonschema/Uncovered.json.tmpl",
+		"sub/polytype_gen.go",
+		"types.go",
+		"schema.go",
+	} {
+		write(rel)
+	}
+
+	missing, err := artifactsWithoutGoldens(dir)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{
+		filepath.Join(dir, "jsonschema/Uncovered.json"),
+		filepath.Join(dir, "jsonschema/Uncovered.json.tmpl"),
+		filepath.Join(dir, "sub/polytype_gen.go"),
+	}, missing)
 }
 
 // assertGeneratedGoHeader checks the header of a real generated artifact, and
