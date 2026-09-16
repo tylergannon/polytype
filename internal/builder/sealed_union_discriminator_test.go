@@ -13,7 +13,14 @@ import (
 // test supplies next to Declare(Zoo.Schema) and Declare(Shelter.Schema).
 func writeSealedUnionDiscriminatorFixture(t *testing.T, types, declarations string) string {
 	t.Helper()
-	return newFixture(t, map[string]string{
+	return newFixture(t, sealedUnionDiscriminatorFixtureFiles(types, declarations))
+}
+
+// sealedUnionDiscriminatorFixtureFiles is writeSealedUnionDiscriminatorFixture's
+// file set, split out so a table of cases can be materialized into one module
+// and loaded together.
+func sealedUnionDiscriminatorFixtureFiles(types, declarations string) map[string]string {
+	return map[string]string{
 		"types.go": "package fixture\n\n" + types,
 		"schema.go": `//go:build jsonschema
 
@@ -30,7 +37,7 @@ var _ = polytype.Declare(Zoo.Schema)
 var _ = polytype.Declare(Shelter.Schema)
 ` + declarations + `
 `,
-	})
+	}
 }
 
 const sealedTwoOwnerTypes = sealedZooTypes + `
@@ -71,7 +78,7 @@ func TestSealedUnionNamedInflectionAppliesToEveryUse(t *testing.T) {
 // negative rule from issue #88 that lives in one package.
 func TestSealedUnionDiscriminatorDiagnosticsNameTheInterface(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		name         string
 		types        string
 		declarations string
@@ -129,15 +136,24 @@ type Shelter struct { Residents []Animal ` + "`json:\"residents\"`" + ` }
 			declarations: `var _ = polytype.SealedUnion[Animal]("kind")`,
 			want:         []string{"variant Dog of sealed interface Animal", `payload property "kind" that collides with the discriminator property`},
 		},
-	} {
+	}
+
+	fixtures := make([]fixtureCase, 0, len(tests))
+	for _, test := range tests {
+		fixtures = append(fixtures, fixtureCase{name: test.name, files: sealedUnionDiscriminatorFixtureFiles(test.types, test.declarations)})
+	}
+	cases := loadFixtureCases(t, fixtures)
+
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			targetDir := writeSealedUnionDiscriminatorFixture(t, test.types, test.declarations)
-			err := Run(BuilderArgs{TargetDir: targetDir})
+			t.Parallel()
+			loaded := cases[test.name]
+			err := RunLoaded(loaded.pkg, BuilderArgs{TargetDir: loaded.dir})
 			require.Error(t, err)
 			for _, want := range test.want {
 				require.ErrorContains(t, err, want)
 			}
-			_, statErr := os.Stat(filepath.Join(targetDir, "jsonschema_gen.go"))
+			_, statErr := os.Stat(filepath.Join(loaded.dir, "jsonschema_gen.go"))
 			require.True(t, os.IsNotExist(statErr), "generation must not write output on a SealedUnion diagnostic")
 		})
 	}
