@@ -23,11 +23,21 @@ both, then restored.
 - template only (same edit in schemas.go.tmpl) -> FAIL
 - both restored -> `go test ./...`, `just lint`, `just build-tagged` all clean
 
-friction: `assertGeneratedGoHeader` in `basic_test.go` asserts the emitted
-header as a string literal, and that literal is a third independent copy of the
-same text. It still does not reference `generatedGoHeader`, so it never closed
-the gap on its own -> if a future change consolidates these, point that
-assertion at the constant rather than adding a fourth copy.
+friction: `assertGeneratedGoHeader` in `basic_test.go` held a third independent
+copy of the header text. Consolidating it onto the constant was blocked by a
+package boundary, not by oversight: `basic_test.go` is `package builder_test`
+and both `generatedGoHeader` and `ownedGeneratedFile` are unexported, so the
+literal was the only thing that file could assert. Resolved with the usual
+`export_test.go` shim, which also let the load-based test run the real
+generated artifact through `ownedGeneratedFile` -> if another external test
+needs a builder internal, extend `export_test.go` rather than copying a value.
 
-Branch: claude/sharp-curran-325875. One file changed:
-`internal/builder/render_go_code_test.go` (+75).
+correction: user asked to take this "all the way done", i.e. land the flagged
+cleanup and ship the PR, not stop at the minimal fix and hand back a to-do.
+
+decision: rebased onto origin/main (d35e8a1, a test-suite timing change that
+also touches internal/builder) and re-ran the full gate afterward rather than
+trusting the pre-rebase run, since main had moved into the same package.
+
+Branch: claude/sharp-curran-325875 -> PR #141. Tests only, no production
+change: `render_go_code_test.go` (+75), `basic_test.go`, `export_test.go`.
