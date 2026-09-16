@@ -13,14 +13,15 @@ import (
 func TestRenderGoCodeTwiceUsesFreshCodecProjection(t *testing.T) {
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "render_twice_")
+	types, err := os.ReadFile(filepath.Join(cwd, "testfixtures", "union_codec", "types.go"))
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(targetDir)) })
-	for _, name := range []string{"types.go", "schema.go"} {
-		data, readErr := os.ReadFile(filepath.Join(cwd, "testfixtures", "union_codec", name))
-		require.NoError(t, readErr)
-		require.NoError(t, os.WriteFile(filepath.Join(targetDir, name), data, 0o644))
-	}
+	schema, err := os.ReadFile(filepath.Join(cwd, "testfixtures", "union_codec", "schema.go"))
+	require.NoError(t, err)
+
+	targetDir := newFixture(t, map[string]string{
+		"types.go":  string(types),
+		"schema.go": string(schema),
+	})
 
 	packages, err := syntax.Load(targetDir)
 	require.NoError(t, err)

@@ -1,4 +1,0 @@
-{
-  "type": "integer",
-  "description": "PointerToRemoteType is a pointer to a remote type."
-}
