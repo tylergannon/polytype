@@ -108,6 +108,7 @@ var _ = polytype.NewJSONSchemaMethod(Variants.Schema)
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			loaded := cases[test.name]
+			require.Empty(t, loaded.pkg.Errors)
 			scan, err := syntax.LoadPackage(loaded.pkg)
 			require.NoError(t, err)
 			require.NotEmpty(t, scan.SchemaMethods)
