@@ -112,22 +112,16 @@ type Owner struct {
 }
 
 func TestOwnerCodecRejectsForeignEmbeddedGeneratedOwnerBeforeWriting(t *testing.T) {
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "foreign_embedded_owner_")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(targetDir)) })
-	baseImport := "github.com/tylergannon/polytype/internal/builder/testfixtures/" + filepath.Base(targetDir)
-	depDir := filepath.Join(targetDir, "dep")
-	require.NoError(t, os.MkdirAll(depDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(depDir, "types.go"), []byte(`package dep
+	moduleDir := newFixtureModule(t)
+	writeFixturePackage(t, moduleDir, "dep", map[string]string{
+		"types.go": `package dep
 
 type Value interface{ value() }
 type First struct{}
 func (First) value() {}
-type Embedded struct { Value Value `+"`json:\"value\"`"+` }
-`), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(depDir, "schema.go"), []byte(`//go:build jsonschema
+type Embedded struct { Value Value ` + "`json:\"value\"`" + ` }
+`,
+		"schema.go": `//go:build jsonschema
 
 package dep
 
@@ -138,27 +132,29 @@ import (
 
 func (Embedded) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.NewJSONSchemaMethod(Embedded.Schema)
-`), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(depDir, "jsonschema_gen.go"), []byte(`//go:build !jsonschema
+`,
+		"jsonschema_gen.go": `//go:build !jsonschema
 
 package dep
 
 func (Embedded) MarshalJSON() ([]byte, error) { return []byte("{}"), nil }
 func (*Embedded) UnmarshalJSON([]byte) error { return nil }
-`), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte(`package fixture
+`,
+	})
+	targetDir := writeFixturePackage(t, moduleDir, "", map[string]string{
+		"types.go": `package fixture
 
-import dep "`+baseImport+`/dep"
+import dep "` + fixtureModulePath + `/dep"
 
 type Value interface{ value() }
 type First struct{}
 func (First) value() {}
 type Owner struct {
 	dep.Embedded
-	Local Value `+"`json:\"local\"`"+`
+	Local Value ` + "`json:\"local\"`" + `
 }
-`), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(`//go:build jsonschema
+`,
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
@@ -169,21 +165,18 @@ import (
 
 func (Owner) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`), 0o644))
+`,
+	})
 	writeOwnerCollisionSentinels(t, targetDir)
 
-	err = Run(BuilderArgs{TargetDir: targetDir})
+	err := Run(BuilderArgs{TargetDir: targetDir})
 	require.ErrorContains(t, err, "foreign embedded type dep.Embedded has generated production JSON codecs")
 	assertOwnerCollisionSentinels(t, targetDir)
 }
 
 func TestLegacyHelpersUseResolvedPackageIdentity(t *testing.T) {
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "legacy_helper_identity_")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(targetDir)) })
-	baseImport := "github.com/tylergannon/polytype/internal/builder/testfixtures/" + filepath.Base(targetDir)
+	moduleDir := newFixtureModule(t)
+	baseImport := fixtureModulePath
 
 	packages := []struct {
 		dir  string
@@ -195,33 +188,34 @@ func TestLegacyHelpersUseResolvedPackageIdentity(t *testing.T) {
 		{dir: "reserved", name: "json"},
 	}
 	for _, pkg := range packages {
-		dir := filepath.Join(targetDir, pkg.dir)
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "types.go"), []byte(`package `+pkg.name+`
+		writeFixturePackage(t, moduleDir, pkg.dir, map[string]string{
+			"types.go": `package ` + pkg.name + `
 
 type Event interface{ isEvent() }
-type Created struct { Name string `+"`json:\"name\"`"+` }
+type Created struct { Name string ` + "`json:\"name\"`" + ` }
 func (Created) isEvent() {}
-`), 0o644))
+`,
+		})
 	}
 
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte(`package fixture
+	targetDir := writeFixturePackage(t, moduleDir, "", map[string]string{
+		"types.go": `package fixture
 
 import (
-	left "`+baseImport+`/left"
-	middle "`+baseImport+`/middle"
-	right "`+baseImport+`/right"
-	reserved "`+baseImport+`/reserved"
+	left "` + baseImport + `/left"
+	middle "` + baseImport + `/middle"
+	right "` + baseImport + `/right"
+	reserved "` + baseImport + `/reserved"
 )
 
 type Owner struct {
-	Left left.Event `+"`json:\"left\"`"+`
-	Middle middle.Event `+"`json:\"middle\"`"+`
-	Right right.Event `+"`json:\"right\"`"+`
-	Reserved reserved.Event `+"`json:\"reserved\"`"+`
+	Left left.Event ` + "`json:\"left\"`" + `
+	Middle middle.Event ` + "`json:\"middle\"`" + `
+	Right right.Event ` + "`json:\"right\"`" + `
+	Reserved reserved.Event ` + "`json:\"reserved\"`" + `
 }
-`), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(`//go:build jsonschema
+`,
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
@@ -232,16 +226,16 @@ import (
 
 func (Owner) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "codec_test.go"), []byte(`package fixture
+`,
+		"codec_test.go": `package fixture
 
 import (
 	"encoding/json"
 	"testing"
-	left "`+baseImport+`/left"
-	middle "`+baseImport+`/middle"
-	right "`+baseImport+`/right"
-	reserved "`+baseImport+`/reserved"
+	left "` + baseImport + `/left"
+	middle "` + baseImport + `/middle"
+	right "` + baseImport + `/right"
+	reserved "` + baseImport + `/reserved"
 )
 
 func TestDistinctSameNamedInterfacesRoundTrip(t *testing.T) {
@@ -260,7 +254,8 @@ func TestDistinctSameNamedInterfacesRoundTrip(t *testing.T) {
 	if value, ok := got.Right.(right.Created); !ok || value.Name != "right" { t.Fatalf("right = %#v", got.Right) }
 	if value, ok := got.Reserved.(reserved.Created); !ok || value.Name != "reserved" { t.Fatalf("reserved = %#v", got.Reserved) }
 }
-`), 0o644))
+`,
+	})
 
 	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
 	generated, err := os.ReadFile(filepath.Join(targetDir, "jsonschema_gen.go"))
@@ -285,13 +280,9 @@ type Owner struct { Value Value ` + "`json:\"value\"`" + ` }
 
 func writeOwnerCollisionFixture(t *testing.T, stub string) string {
 	t.Helper()
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "owner_codec_collision_")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(targetDir)) })
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte(ownerCollisionTypes), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(`//go:build jsonschema
+	targetDir := newFixture(t, map[string]string{
+		"types.go": ownerCollisionTypes,
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
@@ -301,9 +292,10 @@ import (
 )
 
 func (Owner) Schema() json.RawMessage { panic("not implemented") }
-`+stub+`
+` + stub + `
 var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`), 0o644))
+`,
+	})
 	writeOwnerCollisionSentinels(t, targetDir)
 	return targetDir
 }

@@ -8,8 +8,6 @@ import (
 	"github.com/tylergannon/polytype"
 )
 
-//go:generate go run ./gen
-
 // Event is sealed by isEvent. Every same-package struct declaring it directly
 // is a variant: Created (value), Deleted (pointer), Hooked (value, custom
 // JSON hooks), and PointerHookValue (value variant whose hooks live on the

@@ -22,21 +22,37 @@ type BuilderArgs struct {
 	TypeScriptBarrel bool
 }
 
+// Run loads args.TargetDir and generates from it. args.TargetDir is used only
+// for the load; every later step reads the loaded package, so a caller that
+// already holds one can skip straight to RunLoaded.
 func Run(args BuilderArgs) (err error) {
 	if args.TypeScriptBarrel && args.TypeScriptDir == "" {
 		return fmt.Errorf("--typescript-barrel requires --typescript")
 	}
-	var (
-		pkgs    []*decorator.Package
-		builder SchemaBuilder
-	)
+	var pkgs []*decorator.Package
 	if pkgs, err = syntax.Load(args.TargetDir); err != nil {
 		return err
 	}
 	if len(pkgs) == 0 {
 		return fmt.Errorf("no packages found in %s", args.TargetDir)
 	}
-	if builder, err = New(pkgs[0]); err != nil {
+	return RunLoaded(pkgs[0], args)
+}
+
+// RunLoaded generates from an already-loaded package, so many targets can share
+// one packages.Load instead of paying a full dependency type-check each. It
+// reads args.TargetDir for nothing: output locations come from the package's
+// own directory.
+//
+// The caller keeps ownership of pkg. Generation writes files to disk but does
+// not mutate the loaded graph, so one loaded package graph may back several
+// concurrent RunLoaded calls for different packages in it.
+func RunLoaded(pkg *decorator.Package, args BuilderArgs) (err error) {
+	if args.TypeScriptBarrel && args.TypeScriptDir == "" {
+		return fmt.Errorf("--typescript-barrel requires --typescript")
+	}
+	var builder SchemaBuilder
+	if builder, err = New(pkg); err != nil {
 		return err
 	}
 	if err = guardValidationMethodRemoval(builder.Scan.Pkg.Dir, args); err != nil {

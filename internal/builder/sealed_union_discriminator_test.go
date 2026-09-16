@@ -13,13 +13,9 @@ import (
 // test supplies next to Declare(Zoo.Schema) and Declare(Shelter.Schema).
 func writeSealedUnionDiscriminatorFixture(t *testing.T, types, declarations string) string {
 	t.Helper()
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "sealed_union_disc_")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(targetDir)) })
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte("package fixture\n\n"+types), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(`//go:build jsonschema
+	return newFixture(t, map[string]string{
+		"types.go": "package fixture\n\n" + types,
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
@@ -32,9 +28,9 @@ func (Zoo) Schema() json.RawMessage     { panic("not implemented") }
 func (Shelter) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.Declare(Zoo.Schema)
 var _ = polytype.Declare(Shelter.Schema)
-`+declarations+`
-`), 0o644))
-	return targetDir
+` + declarations + `
+`,
+	})
 }
 
 const sealedTwoOwnerTypes = sealedZooTypes + `
@@ -157,39 +153,38 @@ type Shelter struct { Residents []Animal ` + "`json:\"residents\"`" + ` }
 // another package is a diagnostic naming the interface and the offending
 // location.
 func TestSealedUnionDeclarationOutsideInterfacePackageIsRejected(t *testing.T) {
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "sealed_union_foreign_")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(targetDir)) })
-	baseImport := "github.com/tylergannon/polytype/internal/builder/testfixtures/" + filepath.Base(targetDir)
+	baseImport := fixtureModulePath
 
-	require.NoError(t, os.MkdirAll(filepath.Join(targetDir, "animals"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "animals", "types.go"), []byte("package animals\n\n"+sealedZooTypes), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte(`package fixture
+	moduleDir := newFixtureModule(t)
+	writeFixturePackage(t, moduleDir, "animals", map[string]string{
+		"types.go": "package animals\n\n" + sealedZooTypes,
+	})
+	targetDir := writeFixturePackage(t, moduleDir, "", map[string]string{
+		"types.go": `package fixture
 
-import animals "`+baseImport+`/animals"
+import animals "` + baseImport + `/animals"
 
 type Owner struct {
-	Resident animals.Animal `+"`json:\"resident\"`"+`
+	Resident animals.Animal ` + "`json:\"resident\"`" + `
 }
-`), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(`//go:build jsonschema
+`,
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
 import (
 	"encoding/json"
 	"github.com/tylergannon/polytype"
-	animals "`+baseImport+`/animals"
+	animals "` + baseImport + `/animals"
 )
 
 func (Owner) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.Declare(Owner.Schema)
 var _ = polytype.SealedUnion[animals.Animal]("kind")
-`), 0o644))
+`,
+	})
 
-	err = Run(BuilderArgs{TargetDir: targetDir})
+	err := Run(BuilderArgs{TargetDir: targetDir})
 	require.ErrorContains(t, err, "polytype.SealedUnion[Animal] at ")
 	require.ErrorContains(t, err, "must be declared in package "+baseImport+"/animals")
 	require.ErrorContains(t, err, filepath.Join(targetDir, "schema.go"))

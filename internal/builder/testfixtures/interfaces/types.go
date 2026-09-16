@@ -1,7 +1,5 @@
 package interfaces
 
-//go:generate go run ./gen
-
 // Overall description for MyEnumType.
 type MyEnumType string
 

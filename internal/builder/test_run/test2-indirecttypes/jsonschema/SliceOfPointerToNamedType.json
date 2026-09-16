@@ -1,8 +1,0 @@
-{
-  "type": "array",
-  "description": "SliceOfPointerToNamedType is a slice of pointers to named types",
-  "items": {
-    "type": "integer",
-    "description": "IntType is Foobarbax"
-  }
-}

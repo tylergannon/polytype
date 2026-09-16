@@ -1,7 +1,5 @@
 package providers
 
-//go:generate go run ./gen
-
 import "encoding/json"
 
 type Example struct {

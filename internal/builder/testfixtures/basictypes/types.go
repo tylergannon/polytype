@@ -1,8 +1,6 @@
 // Package basictypes is the authored fixture documentation.
 package basictypes
 
-//go:generate go run ./gen
-
 // TypeInItsOwnDecl is an integer type that is the only item in its GenDecl
 //
 // ```go

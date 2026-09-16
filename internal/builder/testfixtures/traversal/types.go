@@ -1,7 +1,5 @@
 package traversal
 
-//go:generate go run ./gen
-
 import (
 	"time"
 

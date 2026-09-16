@@ -1,4 +1,0 @@
-{
-  "type": "integer",
-  "description": "TypeInSharedDecl is an integer type that shares its GenDecl"
-}

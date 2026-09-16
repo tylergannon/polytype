@@ -2,8 +2,6 @@ package optionality
 
 import schema "github.com/tylergannon/polytype"
 
-//go:generate go run ./gen
-
 type Detail struct {
 	Value string `json:"value"`
 }

@@ -1,8 +1,6 @@
 package builder
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,10 +15,7 @@ import (
 func TestAsRefDefinitionNameCollisionFailsDuringGeneration(t *testing.T) {
 	t.Parallel()
 
-	depDir := writeAsRefCollisionDepFixture(t)
-	depImportPath := "github.com/tylergannon/polytype/internal/builder/testfixtures/" + filepath.Base(depDir)
-
-	targetDir := writeAsRefCollisionRootFixture(t, depImportPath)
+	targetDir := writeAsRefCollisionFixture(t)
 	pkgs, err := syntax.Load(targetDir)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
@@ -34,23 +29,18 @@ func TestAsRefDefinitionNameCollisionFailsDuringGeneration(t *testing.T) {
 	require.ErrorContains(t, err, `"Shared"`)
 }
 
-// writeAsRefCollisionDepFixture writes a small dependency package, with no
-// jsonschema build-tag constraints, exposing a "Shared" type with a Schema()
-// method. It exists purely so the root fixture can register it as a second,
-// distinct AsRef()'d type that happens to share its bare name with a locally
-// declared "Shared" type.
-func writeAsRefCollisionDepFixture(t *testing.T) string {
+// writeAsRefCollisionFixture writes a two-package fixture module and returns
+// the root package's directory. The "dep" subpackage carries no jsonschema
+// build-tag constraints and exposes a "Shared" type with a Schema() method; it
+// exists purely so the root package can register it as a second, distinct
+// AsRef()'d type that happens to share its bare name with a locally declared
+// "Shared" type.
+func writeAsRefCollisionFixture(t *testing.T) string {
 	t.Helper()
 
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	depDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "asref_collision_dep_")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(depDir))
-	})
-
-	source := `package ` + filepath.Base(depDir) + `
+	moduleDir := newFixtureModule(t)
+	writeFixturePackage(t, moduleDir, "dep", map[string]string{
+		"shared.go": `package dep
 
 import "encoding/json"
 
@@ -59,23 +49,11 @@ type Shared struct {
 }
 
 func (Shared) Schema() json.RawMessage { panic("not implemented") }
-`
-	require.NoError(t, os.WriteFile(filepath.Join(depDir, "shared.go"), []byte(source), 0o644))
-	return depDir
-}
-
-func writeAsRefCollisionRootFixture(t *testing.T, depImportPath string) string {
-	t.Helper()
-
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "asref_collision_root_")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(targetDir))
+`,
 	})
 
-	source := `//go:build jsonschema
+	return writeFixturePackage(t, moduleDir, "", map[string]string{
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
@@ -83,7 +61,7 @@ import (
 	"encoding/json"
 
 	"github.com/tylergannon/polytype"
-	dep "` + depImportPath + `"
+	dep "` + fixtureModulePath + `/dep"
 )
 
 type Shared struct {
@@ -104,7 +82,6 @@ var (
 	_ = polytype.NewJSONSchemaMethod(dep.Shared.Schema, polytype.AsRef())
 	_ = polytype.NewJSONSchemaMethod(Container.Schema)
 )
-`
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(source), 0o644))
-	return targetDir
+`,
+	})
 }

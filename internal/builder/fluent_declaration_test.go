@@ -2,8 +2,6 @@ package builder
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,15 +14,9 @@ import (
 func writeFluentFixture(t *testing.T, source string) SchemaBuilder {
 	t.Helper()
 
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "fluent_")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(targetDir))
+	targetDir := newFixture(t, map[string]string{
+		"schema.go": source,
 	})
-
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(source), 0o644))
 
 	pkgs, err := syntax.Load(targetDir)
 	require.NoError(t, err)
@@ -268,14 +260,6 @@ func TestFluentRefParityWithLegacy(t *testing.T) {
 func TestFluentAccessorRejectsFreeFunctionProvider(t *testing.T) {
 	t.Parallel()
 
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "fluent_accessor_shape_")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(targetDir))
-	})
-
 	source := `//go:build jsonschema
 
 package fixture
@@ -298,7 +282,9 @@ var _ = polytype.Declare(Example.Schema).
 	Accessor(polytype.Field[Example, string]("A"), freeAccessorSchema).
 	RenderProviders()
 `
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(source), 0o644))
+	targetDir := newFixture(t, map[string]string{
+		"schema.go": source,
+	})
 
 	pkgs, err := syntax.Load(targetDir)
 	require.NoError(t, err)
@@ -322,14 +308,6 @@ var _ = polytype.Declare(Example.Schema).
 // option-drop the "matched=false" case previously fell through to.
 func TestFluentFunctionRejectsUnrelatedMethodExpressionProvider(t *testing.T) {
 	t.Parallel()
-
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "fluent_function_shape_")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(targetDir))
-	})
 
 	source := `//go:build jsonschema
 
@@ -355,7 +333,9 @@ var _ = polytype.Declare(Example.Schema).
 	Function(polytype.Field[Example, Passthrough]("H"), Passthrough.PassthroughSchema).
 	RenderProviders()
 `
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(source), 0o644))
+	targetDir := newFixture(t, map[string]string{
+		"schema.go": source,
+	})
 
 	pkgs, err := syntax.Load(targetDir)
 	require.NoError(t, err)

@@ -1,7 +1,0 @@
-{
-  "type": "array",
-  "description": "SliceOfPointerToInt is a slice of pointers to int",
-  "items": {
-    "type": "integer"
-  }
-}

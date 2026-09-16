@@ -15,13 +15,9 @@ import (
 // interface's sealing method alone.
 func writeSealedUnionFixture(t *testing.T, types string) string {
 	t.Helper()
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "sealed_union_")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(targetDir)) })
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte("package fixture\n\n"+types), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(`//go:build jsonschema
+	return newFixture(t, map[string]string{
+		"types.go": "package fixture\n\n" + types,
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
@@ -32,8 +28,8 @@ import (
 
 func (Zoo) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.Declare(Zoo.Schema)
-`), 0o644))
-	return targetDir
+`,
+	})
 }
 
 const sealedZooTypes = `type Animal interface {
