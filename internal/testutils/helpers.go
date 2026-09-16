@@ -54,8 +54,18 @@ func objClose(obj interface{ Close() error }) {
 }
 
 func RunCommand(command string, workDir string, args ...string) (exitCode int, stdout, stderr string, err error) {
+	return RunCommandEnv(command, workDir, nil, args...)
+}
+
+// RunCommandEnv is RunCommand with extra "KEY=VALUE" entries appended to the
+// process environment. Passing a subprocess its environment directly keeps the
+// caller free of t.Setenv, which Go forbids alongside t.Parallel.
+func RunCommandEnv(command string, workDir string, env []string, args ...string) (exitCode int, stdout, stderr string, err error) {
 	cmd := exec.Command(command, args...)
 	cmd.Dir = workDir
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
