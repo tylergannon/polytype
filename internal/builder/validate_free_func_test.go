@@ -55,24 +55,14 @@ var _ = polytype.Declare(PointerRootSchema)
 	require.ErrorContains(t, err, "--validate cannot generate ValidateJSON for PointerRoot")
 }
 
-func TestSchemaGenerationRejectsImplicitPointerAndOmissionSemantics(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name   string
-		source string
-		wants  []string
-	}{
-		{name: "bare pointer", source: "type Root struct { Child *string `json:\"child\"` }", wants: []string{"bare pointer field Root.Child", "use polytype.Nullable[T]"}},
-		{name: "embedded bare pointer", source: "type Child struct{}\ntype Root struct { *Child }", wants: []string{"bare pointer field Root.Child", "use polytype.Nullable[T]"}},
-		{name: "omitempty", source: "type Root struct { Value string `json:\"value,omitempty\"` }", wants: []string{`ordinary field Root.Value uses json:",omitempty"`, "use polytype.Optional[T]"}},
-		{name: "embedded omitempty", source: "type Child struct{}\ntype Root struct { Child `json:\",omitempty\"` }", wants: []string{`ordinary field Root.Child uses json:",omitempty"`, "use polytype.Optional[T]"}},
-		{name: "omitzero", source: "type Root struct { Value string `json:\"value,omitzero\"` }", wants: []string{`ordinary field Root.Value uses json:",omitzero"`, "use polytype.Optional[T]"}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			dir := writeMultiFileFixture(t, map[string]string{
-				"types.go": "package fixture\n\n" + test.source + "\n",
-				"schema.go": `//go:build jsonschema
+// implicitPointerFixtureFiles is the file set
+// TestSchemaGenerationRejectsImplicitPointerAndOmissionSemantics writes per
+// case, split out so its table can be materialized into one module and
+// loaded together.
+func implicitPointerFixtureFiles(source string) map[string]string {
+	return map[string]string{
+		"types.go": "package fixture\n\n" + source + "\n",
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
@@ -86,9 +76,34 @@ func (Root) Schema() json.RawMessage { panic("not implemented") }
 
 var _ = polytype.Declare(Root.Schema)
 `,
-			})
+	}
+}
 
-			err := Run(BuilderArgs{TargetDir: dir})
+func TestSchemaGenerationRejectsImplicitPointerAndOmissionSemantics(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		source string
+		wants  []string
+	}{
+		{name: "bare pointer", source: "type Root struct { Child *string `json:\"child\"` }", wants: []string{"bare pointer field Root.Child", "use polytype.Nullable[T]"}},
+		{name: "embedded bare pointer", source: "type Child struct{}\ntype Root struct { *Child }", wants: []string{"bare pointer field Root.Child", "use polytype.Nullable[T]"}},
+		{name: "omitempty", source: "type Root struct { Value string `json:\"value,omitempty\"` }", wants: []string{`ordinary field Root.Value uses json:",omitempty"`, "use polytype.Optional[T]"}},
+		{name: "embedded omitempty", source: "type Child struct{}\ntype Root struct { Child `json:\",omitempty\"` }", wants: []string{`ordinary field Root.Child uses json:",omitempty"`, "use polytype.Optional[T]"}},
+		{name: "omitzero", source: "type Root struct { Value string `json:\"value,omitzero\"` }", wants: []string{`ordinary field Root.Value uses json:",omitzero"`, "use polytype.Optional[T]"}},
+	}
+
+	fixtures := make([]fixtureCase, 0, len(tests))
+	for _, test := range tests {
+		fixtures = append(fixtures, fixtureCase{name: test.name, files: implicitPointerFixtureFiles(test.source)})
+	}
+	cases := loadFixtureCases(t, fixtures)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			loaded := cases[test.name]
+			err := RunLoaded(loaded.pkg, BuilderArgs{TargetDir: loaded.dir})
 			for _, want := range test.wants {
 				require.ErrorContains(t, err, want)
 			}
