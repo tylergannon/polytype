@@ -290,3 +290,48 @@ Reverted. The real fix there is to build each `cmd/*` generator once instead of
 Note for future delegation: agent worktrees were provisioned from `ecddb2b`,
 NOT from this branch's tip, so each agent had to fast-forward to
 `claude/test-suite-speed` before it could see the exemplar.
+
+All four merged into `claude/test-suite-speed`:
+
+- `sealed_union_discriminator_test.go` (7 cases), `enum_marker_test.go` (3),
+  `unsupported_interface_containers_test.go` (6),
+  `typegrammar_adapter_test.go` (5 + 4),
+  `validate_free_func_test.go` (5).
+- Reviewed by diff. One correction applied on top (`7872ebe`): the
+  interface-container conversion dropped `require.Empty(pkgs[0].Errors)`
+  along with the per-case load it guarded; restored as
+  `require.Empty(loaded.pkg.Errors)`.
+- `TestFluentDeclarationParityWithLegacy` was **not** converted, correctly:
+  it already loads once outside all four subtests, which are assertion
+  groups over one shared builder, not four fixtures. My count of nine
+  convertible tables was wrong; it was seven.
+- `TestTypeScriptOutputPreflightRejectsInvalidGeneratorResults` was dropped
+  from the list before delegation: it calls `prepareTypeScriptOutput`
+  directly and never loads a package.
+
+### `TestBasic` idempotent reload
+
+The phase reloaded all thirteen fixtures to regenerate two. By then the tree
+holds generated output, so the eleven discarded packages are the expensive
+ones. Narrowing the load patterns took `TestBasic` 4.39s -> 2.03s and the
+phase itself 2.3s -> 0.10s.
+
+### Final state
+
+Whole suite `go test -count=1 ./...`: **11.4s** (was 36.8s before #136, 21.7s
+after it, 16.2s at the start of this branch). A no-change re-run is **0.64s**
+-- every package caches.
+
+Isolated per-package, idle machine: builder 4.66s, codegen 4.45s,
+polytype 1.97s, typescript 1.29s, syntax 0.80s, grammar 0.67s.
+
+`just lint` clean, `just build-tagged` clean, `go test -race -count=2
+-shuffle=on ./internal/builder/` passes.
+
+### Where the remaining time is
+
+`internal/builder` is now CPU-bound, not latency-bound: user 11.0s / sys
+14.7s at 485% CPU for 4.66s wall. Sys still exceeds user, which means
+subprocess spawning -- roughly sixty non-table tests still do one
+`packages.Load` each. Collapsing those into a package-wide shared fixture
+module is the next structural step and is worth its own issue.
