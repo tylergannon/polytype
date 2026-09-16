@@ -184,7 +184,7 @@ var (
 	require.True(t, ok)
 	require.Equal(t, []string{"LabelFirst", "LabelLast"}, enumMemberNames(aliasEnum.Members))
 
-	schema, ok := builder.GetSchema(syntax.TypeID{PkgPath: builder.Scan.Pkg.PkgPath, TypeName: "Envelope"})
+	schema, ok := builder.schemas["Envelope"]
 	require.True(t, ok)
 	schemaJSON, err := json.Marshal(schema)
 	require.NoError(t, err)
@@ -270,6 +270,10 @@ func provide(string) json.Marshaler { return json.RawMessage(` + "`\"provided\"`
 			if test.name == "provider" {
 				option = ", polytype.WithFunction(Root{}.Value, provide)"
 			}
+			// A byte slice has no grammar node at all, so the single lowering
+			// refuses it for every output; the other shapes lower permissively
+			// for JSON Schema and are refused only by the strict backends.
+			mayFailToBuild := test.name == "byte slice"
 			source := fmt.Sprintf(`//go:build jsonschema
 
 package fixture
@@ -284,8 +288,17 @@ import (
 func (Root) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.NewJSONSchemaMethod(Root.Schema%s)
 `, test.body, option)
-			builder := loadTypeGrammarFixture(t, source)
-			_, err := builder.TypeDefinitions()
+			dir := writeTypeGrammarFixture(t, source)
+			packages, err := syntax.Load(dir)
+			require.NoError(t, err)
+			require.Len(t, packages, 1)
+			require.Empty(t, packages[0].Errors)
+			builder, err := New(packages[0])
+			if err == nil {
+				_, err = builder.TypeDefinitions()
+			} else {
+				require.True(t, mayFailToBuild, "New must lower %s permissively: %v", test.name, err)
+			}
 			require.ErrorContains(t, err, test.want)
 		})
 	}
@@ -306,7 +319,7 @@ func TestTypeDefinitionsSourceAdmissionRejectsInvalidCompositions(t *testing.T) 
 		{
 			name: "map",
 			body: `type Root struct { Values map[string]int ` + "`json:\"values\"`" + ` }`,
-			want: "mapType/chanType not allowed",
+			want: "maps are outside the static type grammar",
 		},
 		{
 			name: "wrapper in container",

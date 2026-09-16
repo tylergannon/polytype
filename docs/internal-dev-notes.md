@@ -41,9 +41,12 @@ This is an internal, living document for deep understanding, navigation, and ref
   - scan_result.go: central scan pipeline → collects markers, local types, interfaces, enums, resolves types, tracks remote deps.
   - scan_expr.go: parse marker calls and schema method descriptors from AST.
   - node_wrappers.go: rich wrappers over dst AST (TypeSpec, StructType, StructField, etc.). Tag parsing, Required/Skip logic, PropNames.
-- internal/builder (schema nodes + file/code generation)
-  - gen_schema.go: SchemaBuilder: map types → internal schema nodes → write json files → render jsonschema_gen.go.
-  - model.go: internal schema JSON model: ObjectNode, PropertyNode[T], ArrayNode, UnionTypeNode, RefNode. Custom MarshalJSON.
+- internal/builder (lowering + file/code generation)
+  - typegrammar.go: lowers the declared roots once into typegrammar.Definitions; records strict refusals for shapes only JSON Schema renders.
+  - gen_schema.go: SchemaBuilder: lower → project schemas (internal/schema) → plan codecs (codec_plan.go) → write json files → render jsonschema_gen.go.
+- internal/schema (JSON Schema projection over typegrammar)
+  - generate.go: Generate(defs, roots, Options) renders one node per root; RecursionError for cycles.
+  - node.go: output AST: ObjectNode, PropertyNode[T], ArrayNode, UnionTypeNode, RefNode, TemplateHoleNode. Custom MarshalJSON.
   - schemas.go.tmpl: generated code template; embeds jsonschema dir; emits method impls and interface unmarshaler helpers.
   - import_map.go, printer.go: template/goimports helpers.
 - Public helpers (api) in root
@@ -95,7 +98,7 @@ This is an internal, living document for deep understanding, navigation, and ref
 - Good unit/integration coverage using test fixtures and golden files.
 
 ## 7) Weaknesses / Over-complications
-- Two schema models: public (json_schema.go) vs internal (internal/builder/model.go). Divergent behavior and duplication increase cognitive load.
+- Two schema models: public (json_schema.go) vs the internal projection AST (internal/schema/node.go). Divergent behavior and duplication increase cognitive load.
 - Lots of custom string-based MarshalJSON code; manual JSON assembly increases maintenance risk vs using structs + encoding/json consistently.
 - AST wrappers add indirection and learning curve; some logic (e.g., skipping, tags) is split across syntax and builder.
 - Interface field handling restrictions (must be at field type position) are implicit; errors occur deep in traversal when violated.

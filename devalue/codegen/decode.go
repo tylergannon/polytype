@@ -337,6 +337,9 @@ func (e *emitter) decodeField(field typegrammar.Field, object, out, at string) e
 		e.writef("}")
 		return nil
 
+	case *typegrammar.Provided:
+		return e.errorf("field %s: the field's schema is provided outside the type grammar and has no static wire shape", field.GoName)
+
 	default:
 		return e.errorf("field %s: unsupported field constructor %T", field.GoName, field.Value)
 	}

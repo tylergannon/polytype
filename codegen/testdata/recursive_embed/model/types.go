@@ -1,7 +1,7 @@
 package model
 
 // Container embeds itself through a pointer and has a sealed-union field.
-// This exercises the recursive embedding walk in resolveLocalInterfaceProps.
+// Lowering must refuse the pointer embedding instead of following it forever.
 type Container struct {
 	*Container
 	Name   string  `json:"name"`

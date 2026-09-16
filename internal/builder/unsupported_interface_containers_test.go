@@ -208,7 +208,7 @@ var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
 
 	builder, err := New(pkgs[0])
 	require.NoError(t, err)
-	require.Empty(t, builder.customTypes["Owner"])
+	require.NotContains(t, builder.ownerCodecs, "Owner")
 }
 
 func writeUnsupportedInterfaceFixture(t *testing.T, body string) string {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tylergannon/polytype/internal/schema"
 	"github.com/tylergannon/polytype/internal/syntax"
 )
 
@@ -29,14 +30,14 @@ func writeFluentFixture(t *testing.T, source string) SchemaBuilder {
 }
 
 // jsonFor renders a built type's JSON schema through the same
-// marshalSchemaHardlines path used for generated .json/.json.tmpl files, so
+// schema.MarshalHardlines path used for generated .json/.json.tmpl files, so
 // legacy and fluent registrations of the "same" type can be compared for
 // byte-for-byte parity.
 func jsonFor(t *testing.T, b SchemaBuilder, typeName string) string {
 	t.Helper()
-	schema, ok := b.schemas.Get(b.Scan.Pkg.PkgPath, typeName)
+	rendered, ok := b.schemas[typeName]
 	require.True(t, ok, "no schema recorded for %s", typeName)
-	out, err := marshalSchemaHardlines(schema)
+	out, err := schema.MarshalHardlines(rendered)
 	require.NoError(t, err)
 	return string(out)
 }

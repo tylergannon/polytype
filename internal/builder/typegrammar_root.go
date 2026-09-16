@@ -47,6 +47,10 @@ func (s *SchemaBuilder) LowerRoots(roots []RootType) (typegrammar.Definitions, [
 		}
 		nodes = append(nodes, node)
 	}
+	// A caller of this entry point needs every wire shape to be static.
+	if err := l.strictErr(); err != nil {
+		return nil, nil, err
+	}
 	// The roots go through the same admission boundary as the definitions.
 	// A root node is not reachable from any definition, so validating only
 	// l.defs would return shapes the grammar excludes -- a []byte root, for

@@ -1,4 +1,16 @@
-package builder
+// Package schema projects the validated Go type grammar into JSON Schema.
+//
+// The input is a [github.com/tylergannon/polytype/typegrammar] definition
+// graph plus the roots to render. The output is one schema node per root,
+// which marshals to the compact or hardline JSON the CLI writes. The node
+// types in this file are the projection's output AST, not a second type
+// model: they carry JSON Schema vocabulary only.
+//
+// JSON Schema inlines every type it references, so a recursive definition
+// cannot be expressed; Generate reports it as a [RecursionError]. A
+// definition listed in [Options.Refs] is rendered as a "$ref" into "$defs"
+// wherever another definition references it.
+package schema
 
 import (
 	"encoding/json"
@@ -6,29 +18,26 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/tylergannon/polytype/internal/syntax"
 )
 
-const (
-	DefaultDiscriminatorPropName = "type"
-)
+const defaultDiscriminatorProperty = "type"
 
 type (
+	// JSONSchema is one rendered node.
 	JSONSchema interface {
 		json.Marshaler
 		implementsJSONSchema()
-		TypeID() syntax.TypeID
 	}
 
+	// schemaNode is a node that carries a description a field comment can
+	// replace: a referenced named type takes the referencing field's comment.
 	schemaNode interface {
-		Type() string
 		Description() string
 		setDescription(desc string) schemaNode
 		JSONSchema
 	}
 
-	// ObjectProp represents a single property in an ObjectNode.
+	// ObjectProp is a single property in an ObjectNode.
 	ObjectProp struct {
 		Name     string
 		Schema   JSONSchema
@@ -37,97 +46,74 @@ type (
 
 	ObjectPropSet []ObjectProp
 
-	// ObjectNode represents an object schema.
-	// Discriminator: always non-empty, but only used when included in a union (anyOf).
+	// ObjectNode is an object schema. Discriminator is the const written for
+	// the discriminator property when the object is a union option.
 	ObjectNode struct {
-		Desc          string        `json:"description,omitempty"`
-		Properties    ObjectPropSet `json:"properties,omitempty"`
-		Discriminator string        `json:"-"`
-		TypeID_       syntax.TypeID `json:"-"`
+		Desc          string
+		Properties    ObjectPropSet
+		Discriminator string
 	}
 
-	// PropertyNode is a scalar property (string, int, bool).
-	//   - `Const` is an exact value that the field must match.
-	//   - `Enum` is an array of allowable values.
-	//   - If both `Const` and `Enum` are set, the field effectively has a single valid value (the `Const`) plus whatever is in `Enum`—though that’s unusual in practice.
+	// PropertyNode is a scalar schema (string, integer, number, boolean),
+	// optionally constrained to an enum or a const.
 	PropertyNode[T ~int | ~string | ~bool | float32 | float64] struct {
-		Desc     string        `json:"description,omitempty"`
-		Enum     []T           `json:"enum,omitempty"`
-		Const    *T            `json:"const,omitempty"`
-		Typ      string        `json:"type,omitempty"`
-		Nullable bool          `json:"-"`
-		TypeID_  syntax.TypeID `json:"-"`
+		Desc     string
+		Enum     []T
+		Const    *T
+		Typ      string
+		Nullable bool
 	}
 
-	// NullableObjectNode represents a nullable inlined object schema.
+	// NullableObjectNode is an inlined object schema that also admits null.
 	NullableObjectNode struct {
 		Object ObjectNode
 	}
 
-	// NullableUnionNode represents schema shapes whose constraints cannot be
-	// combined with a nullable type array, such as enums and $ref nodes.
+	// NullableUnionNode wraps a schema whose constraints cannot be combined
+	// with a nullable type array, such as an enum or a "$ref".
 	NullableUnionNode struct {
 		Schema JSONSchema
 	}
 
-	ConstNode[T ~int | ~string | ~bool | float32 | float64] struct {
-		PropertyNode[T]
-		Const T `json:"const"`
-	}
-
 	ArrayNode struct {
-		Desc    string        `json:"description,omitempty"`
-		Items   JSONSchema    `json:"items,omitempty"`
-		TypeID_ syntax.TypeID `json:"-"`
+		Desc  string
+		Items JSONSchema
 	}
 
-	// UnionTypeNode means `{"anyOf": [ <object1-with-discriminator>, ... ]}`.
+	// UnionTypeNode is {"anyOf": [<object with discriminator const>, ...]}.
 	UnionTypeNode struct {
 		DiscriminatorPropName string
 		Options               []ObjectNode
-		TypeID_               syntax.TypeID `json:"-"`
 	}
 
 	RefNode struct {
 		Ref string
 	}
 
-	// TemplateHoleNode writes a raw template placeholder like {{.FieldName}}
+	// TemplateHoleNode writes a raw template placeholder like {{.field}} for
+	// a property whose schema a runtime provider supplies.
 	TemplateHoleNode struct {
 		Name string
 	}
 
 	// RootSchema wraps a root schema with a "$defs" map, splicing "$defs" in
-	// as the leading key so the rest of the root's deterministic key
-	// ordering is left untouched.
+	// as the leading key so the rest of the root's key order is untouched.
 	RootSchema struct {
 		Root JSONSchema
 		Defs map[string]JSONSchema
 	}
 )
 
-// MarshalJSON implements JSONSchema.
 func (r RefNode) MarshalJSON() ([]byte, error) {
 	return fmt.Appendf(nil, `{"$ref":"%s"}`, r.Ref), nil
 }
 
-// TypeID implements JSONSchema.
-func (r RefNode) TypeID() syntax.TypeID {
-	return syntax.TypeID{
-		TypeName: r.Ref,
-		PkgPath:  "",
-	}
-}
-
-// implementsJSONSchema implements JSONSchema.
 func (r RefNode) implementsJSONSchema() {}
 
-// MarshalJSON for TemplateHoleNode emits an unquoted template placeholder.
 func (t TemplateHoleNode) MarshalJSON() ([]byte, error) {
 	return []byte("{{." + t.Name + "}}"), nil
 }
 
-func (t TemplateHoleNode) TypeID() syntax.TypeID { return syntax.TypeID{} }
 func (t TemplateHoleNode) implementsJSONSchema() {}
 
 // MarshalJSON splices a "$defs" object in as the first key of the root
@@ -166,14 +152,7 @@ func (r RootSchema) MarshalJSON() ([]byte, error) {
 	return []byte(sb.String()), nil
 }
 
-func (r RootSchema) TypeID() syntax.TypeID { return r.Root.TypeID() }
 func (r RootSchema) implementsJSONSchema() {}
-
-var _ JSONSchema = RootSchema{}
-
-//---------------------------------------------------------------------
-// Ensure each node satisfies the schemaNode or JSONSchema interface
-//---------------------------------------------------------------------
 
 var (
 	_ JSONSchema = UnionTypeNode{}
@@ -184,6 +163,7 @@ var (
 	_ JSONSchema = TemplateHoleNode{}
 	_ JSONSchema = NullableObjectNode{}
 	_ JSONSchema = NullableUnionNode{}
+	_ JSONSchema = RootSchema{}
 )
 
 func (n NullableObjectNode) MarshalJSON() ([]byte, error) {
@@ -194,7 +174,6 @@ func (n NullableObjectNode) MarshalJSON() ([]byte, error) {
 	return fmt.Appendf(nil, `{"anyOf":[%s,{"type":"null"}]}`, object), nil
 }
 
-func (n NullableObjectNode) TypeID() syntax.TypeID { return n.Object.TypeID() }
 func (n NullableObjectNode) implementsJSONSchema() {}
 
 func (n NullableUnionNode) MarshalJSON() ([]byte, error) {
@@ -205,22 +184,9 @@ func (n NullableUnionNode) MarshalJSON() ([]byte, error) {
 	return fmt.Appendf(nil, `{"anyOf":[%s,{"type":"null"}]}`, value), nil
 }
 
-func (n NullableUnionNode) TypeID() syntax.TypeID { return n.Schema.TypeID() }
 func (n NullableUnionNode) implementsJSONSchema() {}
 
-//---------------------------------------------------------------------
-// ObjectNode
-//---------------------------------------------------------------------
-
-func (o ObjectNode) TypeID() syntax.TypeID { return o.TypeID_ }
-
-func (o ObjectNode) Type() string {
-	return "object"
-}
-
-func (o ObjectNode) Description() string {
-	return o.Desc
-}
+func (o ObjectNode) Description() string { return o.Desc }
 
 func (o ObjectNode) implementsJSONSchema() {}
 
@@ -229,22 +195,16 @@ func (o ObjectNode) setDescription(s string) schemaNode {
 	return o
 }
 
-// MarshalJSON for an ObjectNode does NOT embed the Discriminator property
-// unless it's included in a UnionTypeNode.
+// MarshalJSON for an ObjectNode does not write the discriminator property;
+// UnionTypeNode prepends it to each option.
 func (o ObjectNode) MarshalJSON() ([]byte, error) {
 	var sb strings.Builder
 	sb.WriteByte('{')
-
-	// 1. "type":"object"
 	sb.WriteString(`"type":"object"`)
-
-	// 2. "description"
 	if o.Desc != "" {
 		sb.WriteString(`,"description":`)
 		encodeString(&sb, o.Desc)
 	}
-
-	// 3. "properties"
 	if len(o.Properties) > 0 {
 		sb.WriteString(`,"properties":{`)
 		for i, prop := range o.Properties {
@@ -253,7 +213,6 @@ func (o ObjectNode) MarshalJSON() ([]byte, error) {
 			}
 			encodeString(&sb, prop.Name)
 			sb.WriteByte(':')
-
 			data, err := prop.Schema.MarshalJSON()
 			if err != nil {
 				return nil, fmt.Errorf("object property %q: %w", prop.Name, err)
@@ -262,14 +221,7 @@ func (o ObjectNode) MarshalJSON() ([]byte, error) {
 		}
 		sb.WriteByte('}')
 	}
-
-	// 4. "required"
-	requiredFields := make([]string, 0, len(o.Properties))
-	for _, prop := range o.Properties {
-		if !prop.Optional {
-			requiredFields = append(requiredFields, prop.Name)
-		}
-	}
+	requiredFields := requiredPropertyNames(o.Properties)
 	if len(requiredFields) > 0 {
 		sb.WriteString(`,"required":[`)
 		for i, rf := range requiredFields {
@@ -281,23 +233,10 @@ func (o ObjectNode) MarshalJSON() ([]byte, error) {
 		sb.WriteByte(']')
 	}
 	sb.WriteString(`,"additionalProperties":false}`)
-
 	return []byte(sb.String()), nil
 }
 
-//---------------------------------------------------------------------
-// PropertyNode[T]
-//---------------------------------------------------------------------
-
-func (p PropertyNode[T]) TypeID() syntax.TypeID { return p.TypeID_ }
-
-func (p PropertyNode[T]) Type() string {
-	return p.Typ
-}
-
-func (p PropertyNode[T]) Description() string {
-	return p.Desc
-}
+func (p PropertyNode[T]) Description() string { return p.Desc }
 
 func (p PropertyNode[T]) implementsJSONSchema() {}
 
@@ -306,12 +245,10 @@ func (p PropertyNode[T]) setDescription(s string) schemaNode {
 	return p
 }
 
-// Sample order: type -> description -> const -> enum
+// MarshalJSON writes type, description, const, enum in that order.
 func (p PropertyNode[T]) MarshalJSON() ([]byte, error) {
 	var sb strings.Builder
 	sb.WriteByte('{')
-
-	// 1. "type"
 	sb.WriteString(`"type":`)
 	if p.Nullable {
 		sb.WriteByte('[')
@@ -320,26 +257,14 @@ func (p PropertyNode[T]) MarshalJSON() ([]byte, error) {
 	} else {
 		encodeString(&sb, p.Typ)
 	}
-
-	// 2. "description"
 	if p.Desc != "" {
 		sb.WriteString(`,"description":`)
 		encodeString(&sb, p.Desc)
 	}
-
-	// 3. "const"
-	// We always output "const" even if it's zero-like.
-	// If you want to skip zero-values, you'd need a separate sentinel or pointer.
-	// We'll do a quick test if T is zero or not, but that might be insufficient if T=0 is a legit const.
-	// So let's always write "const" if p.Const differs from the default generic or if the user intended it:
-	constVal, isConst := toJSONValue(p.Const)
-	// We'll treat "zero" as valid. If you truly want to skip it, you'd do a custom approach.
-	if isConst {
+	if constVal, isConst := toJSONValue(p.Const); isConst {
 		sb.WriteString(`,"const":`)
 		sb.WriteString(constVal)
 	}
-
-	// 4. "enum"
 	if len(p.Enum) > 0 {
 		sb.WriteString(`,"enum":[`)
 		for i, val := range p.Enum {
@@ -351,27 +276,23 @@ func (p PropertyNode[T]) MarshalJSON() ([]byte, error) {
 		}
 		sb.WriteByte(']')
 	}
-
 	sb.WriteByte('}')
 	return []byte(sb.String()), nil
 }
 
-// toJSONValue returns a JSON literal for a T (~int|~string|~bool).
-// Also returns a bool indicating if we consider this a “valid” value (always true here).
+// toJSONValue returns the JSON literal for a scalar value, and false for nil.
 func toJSONValue[T ~int | ~string | ~bool | float64 | float32](v *T) (string, bool) {
 	if v == nil {
 		return "", false
 	}
-	var val = *v
-	switch u := any(val).(type) {
+	switch u := any(*v).(type) {
 	case string:
-		// JSON-escape the string
-		b, _ := json.Marshal(any(u).(string))
+		b, _ := json.Marshal(u)
 		return string(b), true
 	case json.Number:
 		return u.String(), true
 	case bool:
-		return strconv.FormatBool(any(u).(bool)), true
+		return strconv.FormatBool(u), true
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		return fmt.Sprintf("%d", u), true
 	default:
@@ -379,46 +300,23 @@ func toJSONValue[T ~int | ~string | ~bool | float64 | float32](v *T) (string, bo
 	}
 }
 
-// ---------------------------------------------------------------------
-// ArrayNode
-// ---------------------------------------------------------------------
 func (a ArrayNode) setDescription(s string) schemaNode {
 	a.Desc = s
 	return a
 }
-func (a ArrayNode) TypeID() syntax.TypeID { return a.TypeID_ }
 
-func (a ArrayNode) Type() string {
-	return "array"
-}
-
-func (a ArrayNode) Description() string {
-	return a.Desc
-}
+func (a ArrayNode) Description() string { return a.Desc }
 
 func (a ArrayNode) implementsJSONSchema() {}
 
-// Marshal as:
-//
-//	{
-//	  "type":"array",
-//	  "description":"...",
-//	  "items": ...
-//	}
 func (a ArrayNode) MarshalJSON() ([]byte, error) {
 	var sb strings.Builder
 	sb.WriteByte('{')
-
-	// "type":"array"
 	sb.WriteString(`"type":"array"`)
-
-	// "description"
 	if a.Desc != "" {
 		sb.WriteString(`,"description":`)
 		encodeString(&sb, a.Desc)
 	}
-
-	// "items"
 	if a.Items != nil {
 		sb.WriteString(`,"items":`)
 		data, err := a.Items.MarshalJSON()
@@ -427,72 +325,45 @@ func (a ArrayNode) MarshalJSON() ([]byte, error) {
 		}
 		sb.Write(data)
 	}
-
 	sb.WriteByte('}')
 	return []byte(sb.String()), nil
 }
 
-//---------------------------------------------------------------------
-// UnionTypeNode (anyOf)
-//---------------------------------------------------------------------
-
-func (u UnionTypeNode) TypeID() syntax.TypeID { return u.TypeID_ }
-
 func (u UnionTypeNode) implementsJSONSchema() {}
 
-// Marshal as:
-//
-//	{
-//	  "anyOf": [
-//	    <ObjectNode-with-type-const>,
-//	    <ObjectNode-with-type-const>,
-//	    ...
-//	  ]
-//	}
+// MarshalJSON writes {"anyOf": [<option with discriminator const>, ...]}.
 func (u UnionTypeNode) MarshalJSON() ([]byte, error) {
 	var sb strings.Builder
 	sb.WriteString(`{"anyOf":[`)
-
 	for i, obj := range u.Options {
 		if i > 0 {
 			sb.WriteByte(',')
 		}
-
-		// We'll produce a new node with a prepended discriminator property:
-		//   type: { "type":"string", "const": obj.Discriminator }
-		tmpNode := prependDiscriminator(obj, u.DiscriminatorPropName)
-		data, err := tmpNode.MarshalJSON()
+		data, err := prependDiscriminator(obj, u.DiscriminatorPropName).MarshalJSON()
 		if err != nil {
 			return nil, fmt.Errorf("union option %d: %w", i, err)
 		}
 		sb.Write(data)
 	}
-
-	sb.WriteByte(']')
-	sb.WriteByte('}')
-
+	sb.WriteString(`]}`)
 	return []byte(sb.String()), nil
 }
 
-// prependDiscriminator returns an ObjectNode that has an extra property
-// at the front: e.g. type => { type:"string", const:"(the Discriminator)" },
-// making that property required.
+// prependDiscriminator returns o with a required const string property for
+// the discriminator in front of its own properties.
 func prependDiscriminator(o ObjectNode, discPropName string) ObjectNode {
 	if discPropName == "" {
-		discPropName = DefaultDiscriminatorPropName
+		discPropName = defaultDiscriminatorProperty
 	}
 	newProps := make(ObjectPropSet, len(o.Properties)+1)
 	newProps[0] = ObjectProp{
 		Name: discPropName,
 		Schema: PropertyNode[string]{
 			Typ:   "string",
-			Const: &o.Discriminator, // the type name
+			Const: &o.Discriminator,
 		},
-		Optional: false, // must be required
 	}
-	for i, prop := range o.Properties {
-		newProps[i+1] = prop
-	}
+	copy(newProps[1:], o.Properties)
 	return ObjectNode{
 		Desc:          o.Desc,
 		Properties:    newProps,
@@ -500,11 +371,17 @@ func prependDiscriminator(o ObjectNode, discPropName string) ObjectNode {
 	}
 }
 
-//---------------------------------------------------------------------
-// Helper for string encoding
-//---------------------------------------------------------------------
+func requiredPropertyNames(properties ObjectPropSet) []string {
+	required := make([]string, 0, len(properties))
+	for _, property := range properties {
+		if !property.Optional {
+			required = append(required, property.Name)
+		}
+	}
+	return required
+}
 
 func encodeString(sb *strings.Builder, s string) {
-	b, _ := json.Marshal(s) // let standard library do the escaping
+	b, _ := json.Marshal(s)
 	sb.Write(b)
 }

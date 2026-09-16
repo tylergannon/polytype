@@ -193,6 +193,10 @@ func (p projector) projectField(value typegrammar.FieldValue, at string) (typeEx
 			return nil, false, err
 		}
 		return genericType{name: "Array", arguments: []typeExpr{typ}}, false, nil
+	case *typegrammar.Provided:
+		// The field's schema is supplied at runtime or by reference, so no
+		// static type can be declared for it.
+		return nil, false, fmt.Errorf("generate TypeScript: %s: the field's schema is provided outside the type grammar and has no static type", at)
 	default:
 		return nil, false, fmt.Errorf("generate TypeScript: %s: unsupported field constructor %T", at, value)
 	}
