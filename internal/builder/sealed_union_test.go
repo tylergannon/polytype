@@ -14,7 +14,13 @@ import (
 // interface's sealing method alone.
 func writeSealedUnionFixture(t *testing.T, types string) string {
 	t.Helper()
-	return newFixture(t, map[string]string{
+	return newFixture(t, sealedUnionFixtureFiles(types))
+}
+
+// sealedUnionFixtureFiles is writeSealedUnionFixture's file set, split out so
+// a table of cases can be materialized into one module and loaded together.
+func sealedUnionFixtureFiles(types string) map[string]string {
+	return map[string]string{
 		"types.go": "package fixture\n\n" + types,
 		"schema.go": `//go:build jsonschema
 
@@ -28,7 +34,7 @@ import (
 func (Zoo) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.Declare(Zoo.Schema)
 `,
-	})
+	}
 }
 
 const sealedZooTypes = `type Animal interface {
@@ -89,7 +95,7 @@ func (Bird) isAnimal() {}
 // is written.
 func TestSealedUnionDiagnosticsNameTheType(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		name  string
 		types string
 		want  []string
@@ -167,15 +173,24 @@ type Zoo struct { Resident Animal ` + "`json:\"resident\"`" + ` }
 `,
 			want: []string{"variant Dog of sealed interface Animal", `payload property "type" that collides with the discriminator property`},
 		},
-	} {
+	}
+
+	fixtures := make([]fixtureCase, 0, len(tests))
+	for _, test := range tests {
+		fixtures = append(fixtures, fixtureCase{name: test.name, files: sealedUnionFixtureFiles(test.types)})
+	}
+	cases := loadFixtureCases(t, fixtures)
+
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			targetDir := writeSealedUnionFixture(t, test.types)
-			err := Run(BuilderArgs{TargetDir: targetDir})
+			t.Parallel()
+			loaded := cases[test.name]
+			err := RunLoaded(loaded.pkg, BuilderArgs{TargetDir: loaded.dir})
 			require.Error(t, err)
 			for _, want := range test.want {
 				require.ErrorContains(t, err, want)
 			}
-			_, statErr := os.Stat(filepath.Join(targetDir, "jsonschema_gen.go"))
+			_, statErr := os.Stat(filepath.Join(loaded.dir, "jsonschema_gen.go"))
 			require.True(t, os.IsNotExist(statErr), "generation must not write output on a sealed-union diagnostic")
 		})
 	}
