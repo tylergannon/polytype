@@ -1,8 +1,6 @@
 package builder
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -140,19 +138,15 @@ func (Owner) MarshalJSON() ([]byte, error) { return []byte("{}"), nil }
 
 func writeEnumCodecFixture(t *testing.T, types, option string) string {
 	t.Helper()
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "enum_codec_")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(targetDir)) })
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte("package fixture\n\n"+types), 0o644))
 	switch option {
 	case "":
 		option = `polytype.WithStringerEnum(Owner{}.Color),`
 	case "none":
 		option = ""
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(`//go:build jsonschema
+	targetDir := newFixture(t, map[string]string{
+		"types.go": "package fixture\n\n" + types,
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
@@ -162,26 +156,15 @@ import (
 )
 
 func (Owner) Schema() json.RawMessage { panic("not implemented") }
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema, `+option+`)
-`), 0o644))
+var _ = polytype.NewJSONSchemaMethod(Owner.Schema, ` + option + `)
+`,
+	})
 	writeOwnerCollisionSentinels(t, targetDir)
 	return targetDir
 }
 
 func writeJSONStringEnumFixture(t *testing.T, option, registration string) string {
 	t.Helper()
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "enum_json_string_")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(targetDir)) })
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte(`package fixture
-
-type Color int
-const ColorRed Color = 1
-type Owner struct { Color Color `+"`json:\"color,string\"`"+` }
-`), 0o644))
-
 	var stub, marker string
 	switch registration {
 	case "method":
@@ -193,7 +176,14 @@ type Owner struct { Color Color `+"`json:\"color,string\"`"+` }
 	default:
 		t.Fatalf("unknown registration form %q", registration)
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(`//go:build jsonschema
+	targetDir := newFixture(t, map[string]string{
+		"types.go": `package fixture
+
+type Color int
+const ColorRed Color = 1
+type Owner struct { Color Color ` + "`json:\"color,string\"`" + ` }
+`,
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
@@ -202,9 +192,10 @@ import (
 	"github.com/tylergannon/polytype"
 )
 
-`+stub+`
-var _ = `+marker+`
-`), 0o644))
+` + stub + `
+var _ = ` + marker + `
+`,
+	})
 	writeOwnerCollisionSentinels(t, targetDir)
 	return targetDir
 }

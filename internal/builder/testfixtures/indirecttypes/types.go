@@ -1,7 +1,5 @@
 package basictypes
 
-//go:generate go run ./gen
-
 import (
 	"github.com/tylergannon/polytype/internal/builder/testfixtures/indirecttypes/indirectsubpkg"
 )

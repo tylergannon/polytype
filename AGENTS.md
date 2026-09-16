@@ -115,7 +115,7 @@ Pass `--validate` to generation, and add a panic stub such as `func (Person) Val
 ## Test Structure
 
 - Unit tests alongside source files (`*_test.go`)
-- Integration test fixtures in `internal/builder/testfixtures/` and `internal/builder/test_run/`
-- Golden file comparisons via `internal/testutils/golden_file.go`
+- Integration test fixtures in `internal/builder/testfixtures/`, one nested module covering every fixture. `TestBasic` copies that module to a temp directory, loads it ONCE, generates in process via `builder.RunLoaded`, compares every `*.golden`, then builds and tests the whole module once as the acceptance layer. Nothing is generated inside the repository — writing there defeats the test cache (issue #131)
+- Golden file comparisons via `internal/testutils/golden_file.go`. Every generated artifact should have a `.golden` beside it; `TestBasic` walks for goldens rather than consulting a file list, so a golden whose output stops being produced fails loudly. `.json.sum` sidecars are content hashes and intentionally have no golden
 - All tests are plain `go test`. Two consult Node tooling only when present and skip otherwise: `typescript` compiles its edge-case output with `tsc`, and `devalue` compares against goldens recorded from devalue 5.9. `npm ci` at the repo root installs both pins; CI does this. Do not add TypeScript test code, ledgers, or provenance machinery
 - Example directories each contain types, registration, and generated output

@@ -5,8 +5,6 @@ import (
 	"github.com/tylergannon/polytype/internal/builder/testfixtures/v1_enums_stringmode/palette"
 )
 
-//go:generate go run ./gen
-
 type Color int
 
 const (

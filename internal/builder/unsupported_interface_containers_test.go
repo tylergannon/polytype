@@ -1,8 +1,6 @@
 package builder
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -216,14 +214,6 @@ var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
 func writeUnsupportedInterfaceFixture(t *testing.T, body string) string {
 	t.Helper()
 
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "unsupported_interface_container_")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(targetDir))
-	})
-
 	source := `//go:build jsonschema
 
 package fixture
@@ -234,6 +224,7 @@ import (
 	"github.com/tylergannon/polytype"
 )
 ` + body
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(source), 0o644))
-	return targetDir
+	return newFixture(t, map[string]string{
+		"schema.go": source,
+	})
 }

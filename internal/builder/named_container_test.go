@@ -11,13 +11,9 @@ import (
 
 func writeNamedContainerFixture(t *testing.T, types string) string {
 	t.Helper()
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "named_container_")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(targetDir)) })
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte("package fixture\n\n"+types), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(`//go:build jsonschema
+	return newFixture(t, map[string]string{
+		"types.go": "package fixture\n\n" + types,
+		"schema.go": `//go:build jsonschema
 
 package fixture
 
@@ -28,8 +24,8 @@ import (
 
 func (Root) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.Declare(Root.Schema)
-`), 0o644))
-	return targetDir
+`,
+	})
 }
 
 // TestNamedContainerTraversesReachableCodecs is the issue #127 regression:
@@ -184,28 +180,11 @@ type Leaf struct {
 
 func (Leaf) block() {}
 `
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	targetDir, err := os.MkdirTemp(filepath.Join(cwd, "testfixtures"), "named_container_")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(targetDir)) })
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte("package fixture\n\n"+types), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "schema.go"), []byte(`//go:build jsonschema
-
-package fixture
-
-import (
-	"encoding/json"
-	"github.com/tylergannon/polytype"
-)
-
-func (Root) Schema() json.RawMessage { panic("not implemented") }
-var _ = polytype.Declare(Root.Schema)
-`), 0o644))
+	targetDir := writeNamedContainerFixture(t, types)
 
 	b, err := LoadProgrammatic(targetDir, ProgrammaticConfig{
 		Declarations: []ConfiguredDeclaration{{
-			PackagePath: "github.com/tylergannon/polytype/internal/builder/testfixtures/" + filepath.Base(targetDir),
+			PackagePath: fixtureModulePath,
 			TypeName:    "Root",
 		}},
 	}, true, false)

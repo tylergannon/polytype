@@ -1,7 +1,5 @@
 package entrypoints
 
-//go:generate go run ./gen
-
 type MethodType struct {
 	Name string `json:"name"`
 }

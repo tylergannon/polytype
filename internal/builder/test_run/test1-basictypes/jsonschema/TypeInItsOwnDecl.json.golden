@@ -1,4 +1,0 @@
-{
-  "type": "integer",
-  "description": "TypeInItsOwnDecl is an integer type that is the only item in its GenDecl\n```go\nvar foo = 1\n```\nthis should be squashed into a single line. Along with this."
-}

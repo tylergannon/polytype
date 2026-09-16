@@ -2,8 +2,6 @@ package structs
 
 import "github.com/tylergannon/polytype"
 
-//go:generate go run ./gen
-
 // It's really that way
 type EnumType123 string
 

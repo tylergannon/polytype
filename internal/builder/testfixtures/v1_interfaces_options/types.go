@@ -6,8 +6,6 @@ import (
 	"github.com/tylergannon/polytype"
 )
 
-//go:generate go run ./gen
-
 type IFace interface{ isIface() }
 
 type jsonString string
