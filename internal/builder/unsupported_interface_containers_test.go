@@ -98,21 +98,23 @@ var _ = polytype.NewJSONSchemaMethod(Variants.Schema)
 		},
 	}
 
+	fixtures := make([]fixtureCase, 0, len(tests))
+	for _, test := range tests {
+		fixtures = append(fixtures, fixtureCase{name: test.name, files: unsupportedInterfaceFixtureFiles(test.body)})
+	}
+	cases := loadFixtureCases(t, fixtures)
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			targetDir := writeUnsupportedInterfaceFixture(t, test.body)
-			pkgs, err := syntax.Load(targetDir)
-			require.NoError(t, err)
-			require.Len(t, pkgs, 1)
-			require.Empty(t, pkgs[0].Errors)
-			scan, err := syntax.LoadPackage(pkgs[0])
+			loaded := cases[test.name]
+			scan, err := syntax.LoadPackage(loaded.pkg)
 			require.NoError(t, err)
 			require.NotEmpty(t, scan.SchemaMethods)
 
-			_, err = New(pkgs[0])
+			_, err = New(loaded.pkg)
 			require.ErrorContains(t, err, "arrays/slices of registered interfaces are not yet supported")
-			require.Contains(t, err.Error(), targetDir)
+			require.Contains(t, err.Error(), loaded.dir)
 		})
 	}
 }
@@ -151,7 +153,13 @@ var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
 
 func writeUnsupportedInterfaceFixture(t *testing.T, body string) string {
 	t.Helper()
+	return newFixture(t, unsupportedInterfaceFixtureFiles(body))
+}
 
+// unsupportedInterfaceFixtureFiles is writeUnsupportedInterfaceFixture's file
+// set, split out so a table of cases can be materialized into one module and
+// loaded together.
+func unsupportedInterfaceFixtureFiles(body string) map[string]string {
 	source := `//go:build jsonschema
 
 package fixture
@@ -162,7 +170,7 @@ import (
 	"github.com/tylergannon/polytype"
 )
 ` + body
-	return newFixture(t, map[string]string{
+	return map[string]string{
 		"schema.go": source,
-	})
+	}
 }

@@ -14,7 +14,13 @@ import (
 // func (T) enum() marker alone.
 func writeEnumMarkerFixture(t *testing.T, types string) string {
 	t.Helper()
-	return newFixture(t, map[string]string{
+	return newFixture(t, enumMarkerFixtureFiles(types))
+}
+
+// enumMarkerFixtureFiles is writeEnumMarkerFixture's file set, split out so a
+// table of cases can be materialized into one module and loaded together.
+func enumMarkerFixtureFiles(types string) map[string]string {
+	return map[string]string{
 		"types.go": "package fixture\n\n" + types,
 		"schema.go": `//go:build jsonschema
 
@@ -28,7 +34,7 @@ import (
 func (Owner) Schema() json.RawMessage { panic("not implemented") }
 var _ = polytype.Declare(Owner.Schema)
 `,
-	})
+	}
 }
 
 // TestEnumMarkerDiagnosticsNameTheType covers every rejected marker shape
@@ -36,7 +42,7 @@ var _ = polytype.Declare(Owner.Schema)
 // with no typed constants. Each diagnostic names the offending type.
 func TestEnumMarkerDiagnosticsNameTheType(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		name  string
 		types string
 		want  string
@@ -68,13 +74,22 @@ type Owner struct { Color Color ` + "`json:\"color\"`" + ` }
 `,
 			want: "enum type Color at ",
 		},
-	} {
+	}
+
+	fixtures := make([]fixtureCase, 0, len(tests))
+	for _, test := range tests {
+		fixtures = append(fixtures, fixtureCase{name: test.name, files: enumMarkerFixtureFiles(test.types)})
+	}
+	cases := loadFixtureCases(t, fixtures)
+
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			targetDir := writeEnumMarkerFixture(t, test.types)
-			err := Run(BuilderArgs{TargetDir: targetDir})
+			t.Parallel()
+			loaded := cases[test.name]
+			err := RunLoaded(loaded.pkg, BuilderArgs{TargetDir: loaded.dir})
 			require.ErrorContains(t, err, test.want)
 			require.ErrorContains(t, err, "types.go")
-			_, statErr := os.Stat(filepath.Join(targetDir, "jsonschema_gen.go"))
+			_, statErr := os.Stat(filepath.Join(loaded.dir, "jsonschema_gen.go"))
 			require.True(t, os.IsNotExist(statErr), "generation must not write output on a marker diagnostic")
 		})
 	}
