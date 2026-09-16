@@ -3,8 +3,10 @@ package codegen_test
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,6 +15,91 @@ import (
 	"github.com/tylergannon/polytype/internal/testutils"
 )
 
+// fixtureCommandDir holds every prebuilt fixture generator.
+//
+// The tests used to reach these programs through `go run`, which relinks on
+// every invocation: fourteen links for eight distinct programs, six of them
+// the same ./cmd/generate. Each is now built once from the checked-in fixture
+// tree, whose `replace` already resolves to the repository, and a test runs
+// the binary with its own copy of the fixture as the working directory --
+// which is all any of them reads.
+var fixtureCommandDir string
+
+// fixtureCommands names the commands to build, one `go build` per fixture
+// module.
+//
+// Only programs that do NOT import generated output may be listed. A fixture
+// generator imports its model package and codegen, so it compiles the same
+// before and after generation. A program that consumes what the test just
+// generated -- collision/cmd/prove, recursive/cmd/interop -- would be linked
+// against the pre-generation tree and prove nothing, so those keep `go run`.
+var fixtureCommands = map[string][]string{
+	"collision":              {"./cmd/generate"},
+	"discovery_error":        {"./cmd/prove"},
+	"programmatic":           {"./cmd/..."},
+	"recursive":              {"./cmd/generate", "./cmd/schema"},
+	"recursive_embed":        {"./cmd/prove"},
+	"recursive_declarations": {"./gen"},
+}
+
+// buildFixtureCommands builds one fixture module's commands, once.
+//
+// Lazily rather than in TestMain: the top-level tests run in parallel, so a
+// build started on demand overlaps with the other tests' work instead of
+// standing as a serial barrier in front of all of them.
+var buildFixtureCommands = func() map[string]func() (string, error) {
+	builders := make(map[string]func() (string, error), len(fixtureCommands))
+	for fixture, patterns := range fixtureCommands {
+		builders[fixture] = sync.OnceValues(func() (string, error) {
+			out := filepath.Join(fixtureCommandDir, fixture)
+			if err := os.MkdirAll(out, 0o755); err != nil {
+				return "", err
+			}
+			// The trailing separator makes -o a destination directory, so one
+			// build emits every named command of the module.
+			args := append([]string{"build", "-o", out + string(os.PathSeparator)}, patterns...)
+			build := exec.Command("go", args...)
+			build.Dir = filepath.Join("testdata", fixture)
+			if output, err := build.CombinedOutput(); err != nil {
+				return "", fmt.Errorf("building %s %v: %w\n%s", fixture, patterns, err, output)
+			}
+			return out, nil
+		})
+	}
+	return builders
+}()
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "codegen-fixture-cmds")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fixtureCommandDir = dir
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// fixtureCmd is the path to one prebuilt fixture command, building that
+// fixture's commands on first use.
+func fixtureCmd(t *testing.T, fixture, name string) string {
+	t.Helper()
+	build, ok := buildFixtureCommands[fixture]
+	require.True(t, ok, "no prebuilt commands declared for fixture %s", fixture)
+	dir, err := build()
+	require.NoError(t, err)
+	return filepath.Join(dir, name)
+}
+
+// runFixtureCmd runs a prebuilt fixture command in dir and requires success.
+func runFixtureCmd(t *testing.T, dir, fixture, name string) {
+	t.Helper()
+	exit, stdout, stderr, err := testutils.RunCommand(fixtureCmd(t, fixture, name), dir)
+	require.NoError(t, err)
+	require.Equal(t, 0, exit, fmt.Sprintf("%s/%s:\n%s\n%s", fixture, name, stdout, stderr))
+}
+
 func TestProgrammaticGenerationSelectsOutputsWithoutRegistration(t *testing.T) {
 	t.Parallel()
 	repoRoot, err := filepath.Abs("..")
@@ -20,7 +107,7 @@ func TestProgrammaticGenerationSelectsOutputsWithoutRegistration(t *testing.T) {
 
 	t.Run("transport outputs do not generate schema", func(t *testing.T) {
 		fixture := copyProgrammaticFixture(t, repoRoot)
-		runGo(t, fixture, "run", "./cmd/transport")
+		runFixtureCmd(t, fixture, "programmatic", "transport")
 
 		require.FileExists(t, filepath.Join(fixture, "generated", "typescript", "types.ts"))
 		require.FileExists(t, filepath.Join(fixture, "generated", "typescript", "index.ts"))
@@ -40,7 +127,7 @@ func TestProgrammaticGenerationSelectsOutputsWithoutRegistration(t *testing.T) {
 
 	t.Run("schema files do not require a schema method", func(t *testing.T) {
 		fixture := copyProgrammaticFixture(t, repoRoot)
-		runGo(t, fixture, "run", "./cmd/schema")
+		runFixtureCmd(t, fixture, "programmatic", "schema")
 
 		require.FileExists(t, filepath.Join(fixture, "model", "jsonschema", "Envelope.json"))
 		schema, err := os.ReadFile(filepath.Join(fixture, "model", "jsonschema", "Envelope.json"))
@@ -52,7 +139,7 @@ func TestProgrammaticGenerationSelectsOutputsWithoutRegistration(t *testing.T) {
 
 	t.Run("Go JSON codecs do not generate schema", func(t *testing.T) {
 		fixture := copyProgrammaticFixture(t, repoRoot)
-		runGo(t, fixture, "run", "./cmd/gojson")
+		runFixtureCmd(t, fixture, "programmatic", "gojson")
 
 		require.FileExists(t, filepath.Join(fixture, "model", "polytype_gen.go"))
 		require.NoFileExists(t, filepath.Join(fixture, "model", "jsonschema_gen.go"))
@@ -69,7 +156,7 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 
 	t.Run("GoJSON+TypeScript+Devalue succeeds", func(t *testing.T) {
 		fixture := copyRecursiveFixture(t, repoRoot)
-		runGo(t, fixture, "run", "./cmd/generate")
+		runFixtureCmd(t, fixture, "recursive", "generate")
 
 		require.FileExists(t, filepath.Join(fixture, "model", "polytype_gen.go"))
 		require.NoFileExists(t, filepath.Join(fixture, "model", "jsonschema_gen.go"))
@@ -82,7 +169,7 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 
 	t.Run("repeated generation is byte-identical", func(t *testing.T) {
 		fixture := copyRecursiveFixture(t, repoRoot)
-		runGo(t, fixture, "run", "./cmd/generate")
+		runFixtureCmd(t, fixture, "recursive", "generate")
 
 		read := func(rel string) []byte {
 			t.Helper()
@@ -97,7 +184,7 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, string(committed), string(dv1), "committed devalue snapshot differs from generator output")
 
-		runGo(t, fixture, "run", "./cmd/generate")
+		runFixtureCmd(t, fixture, "recursive", "generate")
 
 		require.Equal(t, goJSON1, read("model/polytype_gen.go"), "Go JSON output changed")
 		require.Equal(t, ts1, read("generated/typescript/types.ts"), "TypeScript output changed")
@@ -110,7 +197,7 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 			t.Skip("tsc not installed (run npm ci at repo root)")
 		}
 		fixture := copyRecursiveFixture(t, repoRoot)
-		runGo(t, fixture, "run", "./cmd/generate")
+		runFixtureCmd(t, fixture, "recursive", "generate")
 		exit, stdout, stderr, err := testutils.RunCommand(
 			tsc, fixture, "--strict", "--noEmit",
 			filepath.Join(fixture, "generated", "typescript", "types.ts"),
@@ -121,7 +208,7 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 
 	t.Run("JSONSchema rejects recursive types before writing", func(t *testing.T) {
 		fixture := copyRecursiveFixture(t, repoRoot)
-		exit, _, stderr, err := testutils.RunCommand("go", fixture, "run", "./cmd/schema")
+		exit, _, stderr, err := testutils.RunCommand(fixtureCmd(t, "recursive", "schema"), fixture)
 		require.NoError(t, err)
 		require.NotEqual(t, 0, exit, "expected schema generation to fail for recursive types")
 		require.Contains(t, stderr, "JSON Schema cannot express the recursive type model.")
@@ -144,8 +231,7 @@ func TestGenWithDeclarationFilesPresent(t *testing.T) {
 
 	fixture := copyNamedFixture(t, repoRoot, "testdata/recursive_declarations")
 	tsc := filepath.Join(repoRoot, "node_modules", ".bin", "tsc")
-	gen := filepath.Join(t.TempDir(), "gen")
-	runGo(t, fixture, "build", "-o", gen, "./gen")
+	gen := fixtureCmd(t, "recursive_declarations", "gen")
 	run := func(t *testing.T, target, out string) (int, string) {
 		t.Helper()
 		// Passed to the generator directly rather than through t.Setenv, which
@@ -212,7 +298,7 @@ func TestCodecDiscoveryPackageQualifiedCollision(t *testing.T) {
 	require.NoError(t, err)
 
 	fixture := copyNamedFixture(t, repoRoot, "testdata/collision")
-	runGo(t, fixture, "run", "./cmd/generate")
+	runFixtureCmd(t, fixture, "collision", "generate")
 	require.FileExists(t, filepath.Join(fixture, "model", "polytype_gen.go"))
 
 	exit, stdout, stderr, err := testutils.RunCommand("go", fixture, "run", "./cmd/prove")
@@ -227,7 +313,7 @@ func TestCodecDiscoveryNestedErrorPropagation(t *testing.T) {
 	require.NoError(t, err)
 
 	fixture := copyNamedFixture(t, repoRoot, "testdata/discovery_error")
-	exit, stdout, stderr, err := testutils.RunCommand("go", fixture, "run", "./cmd/prove")
+	exit, stdout, stderr, err := testutils.RunCommand(fixtureCmd(t, "discovery_error", "prove"), fixture)
 	require.NoError(t, err)
 	require.Equal(t, 0, exit, fmt.Sprintf("prove failed:\n%s\n%s", stdout, stderr))
 	require.Contains(t, stdout, "generation correctly rejected")
@@ -239,7 +325,7 @@ func TestRecursiveEmbeddingTerminates(t *testing.T) {
 	require.NoError(t, err)
 
 	fixture := copyNamedFixture(t, repoRoot, "testdata/recursive_embed")
-	exit, stdout, stderr, err := testutils.RunCommand("go", fixture, "run", "./cmd/prove")
+	exit, stdout, stderr, err := testutils.RunCommand(fixtureCmd(t, "recursive_embed", "prove"), fixture)
 	require.NoError(t, err)
 	require.Equal(t, 0, exit, fmt.Sprintf("prove failed (recursive embedding):\n%s\n%s", stdout, stderr))
 	require.Contains(t, stdout, "generation correctly rejected recursive embedding")
@@ -260,7 +346,7 @@ func TestRecursiveDevalueJSInterop(t *testing.T) {
 	}
 
 	fixture := copyRecursiveFixture(t, repoRoot)
-	runGo(t, fixture, "run", "./cmd/generate")
+	runFixtureCmd(t, fixture, "recursive", "generate")
 
 	tmpDir := t.TempDir()
 	goWireFile := filepath.Join(tmpDir, "go-wire.json")
@@ -341,7 +427,6 @@ func copyNamedFixture(t *testing.T, repoRoot, src string) string {
 	rewritten := strings.Replace(string(contents), "=> ../../../", "=> "+repoRoot, 1)
 	require.NotEqual(t, string(contents), rewritten)
 	require.NoError(t, os.WriteFile(goMod, []byte(rewritten), 0o644))
-	runGo(t, dir, "mod", "tidy")
 	return dir
 }
 
@@ -355,7 +440,6 @@ func copyRecursiveFixture(t *testing.T, repoRoot string) string {
 	rewritten := strings.Replace(string(contents), "=> ../../../", "=> "+repoRoot, 1)
 	require.NotEqual(t, string(contents), rewritten)
 	require.NoError(t, os.WriteFile(goMod, []byte(rewritten), 0o644))
-	runGo(t, dir, "mod", "tidy")
 	return dir
 }
 
@@ -369,7 +453,6 @@ func copyProgrammaticFixture(t *testing.T, repoRoot string) string {
 	rewritten := strings.Replace(string(contents), "=> ../../../", "=> "+repoRoot, 1)
 	require.NotEqual(t, string(contents), rewritten)
 	require.NoError(t, os.WriteFile(goMod, []byte(rewritten), 0o644))
-	runGo(t, dir, "mod", "tidy")
 	return dir
 }
 
