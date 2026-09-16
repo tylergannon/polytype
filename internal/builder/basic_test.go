@@ -36,6 +36,7 @@ var basicFixtures = []fixture{
 	{name: "crosspkg_union"},
 	{name: "entrypoints"},
 	{name: "enums", validate: true},
+	{name: "explicit_refs"},
 	{name: "indirecttypes"},
 	{name: "interfaces"},
 	{name: "optionality", validate: true},
