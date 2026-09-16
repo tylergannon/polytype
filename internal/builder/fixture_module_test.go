@@ -16,8 +16,9 @@ import (
 // imports) put each package in its own subdirectory and import it as
 // fixtureModulePath + "/" + <subdir>.
 //
-// The spelling is load-bearing: diagnostics quote it, so tests assert on it
-// (see TestRegisteredInterfaceRejectedOutsideDirectField).
+// The spelling is load-bearing: generated import aliases and diagnostics
+// quote it, so tests assert on it (owner_codec_test.go:186 and
+// sealed_union_discriminator_test.go:168 both build expectations from it).
 const fixtureModulePath = "example.com/typegrammarfixture"
 
 // newFixtureModule creates an isolated single-module fixture tree under
