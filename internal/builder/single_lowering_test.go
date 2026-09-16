@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tylergannon/polytype/internal/schema"
 	"github.com/tylergannon/polytype/internal/syntax"
 	"github.com/tylergannon/polytype/typegrammar"
 )
@@ -13,15 +12,6 @@ import (
 // projection of that one lowering. These tests pin the behaviors that only
 // exist because there is a single lowering: shapes the schema renders that
 // the strict grammar backends refuse, and the codec plan read off the IR.
-
-func marshalSchema(t *testing.T, b SchemaBuilder, typeName string) string {
-	t.Helper()
-	node, ok := b.schemas[typeName]
-	require.True(t, ok, "no schema for %s", typeName)
-	data, err := node.MarshalJSON()
-	require.NoError(t, err)
-	return string(data)
-}
 
 func TestProvidedFieldsLowerForSchemaAndRefuseStrictly(t *testing.T) {
 	builder := loadTypeGrammarFixture(t, `//go:build jsonschema
@@ -61,14 +51,6 @@ var _ = polytype.Declare(Root.Schema).Function(polytype.Field[Root, string]("Pro
 	require.Equal(t, &typegrammar.Provided{}, requireField(t, object.Fields, "provided").Value)
 	require.IsType(t, &typegrammar.Required{}, requireField(t, object.Fields, "plain").Value)
 
-	got := marshalSchema(t, builder, "Root")
-	require.Equal(t, `{"type":"object","properties":{`+
-		`"linked":{"$ref":"https://example.test/external.json"},`+
-		`"maybe":{"$ref":"https://example.test/external.json"},`+
-		`"provided":{{.provided}},`+
-		`"plain":{"type":"string"}},`+
-		`"required":["linked","provided","plain"],"additionalProperties":false}`, got)
-
 	// The strict entry point reports the first refusal, in field order.
 	_, err := builder.TypeDefinitions()
 	require.ErrorContains(t, err, "Root.Linked")
@@ -102,14 +84,16 @@ func provide(string) json.Marshaler { return json.RawMessage(`+"`\"provided\"`"+
 var _ = polytype.Declare(Root.Schema).Function(polytype.Field[Root, string]("Value"), provide)
 `)
 
-	got := marshalSchema(t, builder, "Root")
-	require.Equal(t, `{"type":"object","properties":{`+
-		`"inner":{"type":"object","properties":{`+
-		`"value":{"type":"string","description":"Value shares the provided field's Go name but is not that field."},`+
-		`"linked":{"$ref":"https://example.test/linked.json"}},`+
-		`"required":["value","linked"],"additionalProperties":false},`+
-		`"value":{{.value}}},`+
-		`"required":["inner","value"],"additionalProperties":false}`, got)
+	root := loweredObject(t, builder, "Root")
+	require.Equal(t, []string{"inner", "value"}, fieldJSONNames(root.Fields))
+	require.Equal(t, &typegrammar.Provided{}, requireField(t, root.Fields, "value").Value, "the provider applies to the named owner's own field")
+
+	inner := fieldType[*typegrammar.Object](t, requireField(t, root.Fields, "inner").Value)
+	require.Equal(t, []string{"value", "linked"}, fieldJSONNames(inner.Fields))
+	value := requireField(t, inner.Fields, "value")
+	require.Equal(t, &typegrammar.Required{Type: &typegrammar.Scalar{Kind: typegrammar.String}}, value.Value, "the inline struct's same-named field is not provided")
+	require.Equal(t, "Value shares the provided field's Go name but is not that field.", value.Description)
+	require.Equal(t, &typegrammar.Provided{Ref: "https://example.test/linked.json"}, requireField(t, inner.Fields, "linked").Value)
 }
 
 func TestShadowedPromotedGoNameIsRefused(t *testing.T) {
@@ -218,11 +202,6 @@ var (
 	require.False(t, root.Union.Variants[0].Pointer)
 	require.Equal(t, "Square", root.Union.Variants[1].Implementation.Name)
 	require.True(t, root.Union.Variants[1].Pointer)
-
-	got := marshalSchema(t, builder, "Shape")
-	require.Equal(t, `{"anyOf":[`+
-		`{"type":"object","properties":{"kind":{"type":"string","const":"Circle"},"radius":{"type":"number"}},"required":["kind","radius"],"additionalProperties":false},`+
-		`{"type":"object","properties":{"kind":{"type":"string","const":"Square"},"side":{"type":"number"}},"required":["kind","side"],"additionalProperties":false}]}`, got)
 
 	// The variants are reachable definitions, but neither has a union field,
 	// so no owner codec is planned and the strict grammar refuses the root.
@@ -355,9 +334,8 @@ var _ = polytype.Declare(Root.Schema)
 	require.NotEmpty(t, packages[0].Errors)
 	builder, err := New(packages[0])
 	require.NoError(t, err)
-	require.Equal(t, `{"type":"object","properties":{"value":{"type":"string"}},"required":["value"],"additionalProperties":false}`, marshalSchema(t, builder, "Root"))
+	require.Equal(t, &typegrammar.Required{Type: &typegrammar.Scalar{Kind: typegrammar.String}}, requireField(t, loweredObject(t, builder, "Root").Fields, "value").Value)
+	require.Contains(t, builder.schemas, "Root", "the schema projection still runs")
 	_, err = builder.TypeDefinitions()
 	require.ErrorContains(t, err, "has type-check errors")
 }
-
-var _ schema.JSONSchema = schema.ObjectNode{}

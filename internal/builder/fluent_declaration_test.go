@@ -1,48 +1,28 @@
 package builder
 
 import (
-	"fmt"
+	"go/constant"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tylergannon/polytype/internal/schema"
 	"github.com/tylergannon/polytype/internal/syntax"
+	"github.com/tylergannon/polytype/typegrammar"
 )
 
-// writeFluentFixture writes a single-file package to a fresh temp directory
-// under testfixtures/ and builds it in-process (no go.mod/go generate),
-// mirroring writeInlineInterfaceFixture's pattern.
+// writeFluentFixture writes a single-file package to a fresh temp module and
+// builds it in process (no go.mod/go generate of its own).
 func writeFluentFixture(t *testing.T, source string) SchemaBuilder {
 	t.Helper()
-
-	targetDir := newFixture(t, map[string]string{
-		"schema.go": source,
-	})
-
-	pkgs, err := syntax.Load(targetDir)
-	require.NoError(t, err)
-	require.Len(t, pkgs, 1)
-	require.Empty(t, pkgs[0].Errors)
-
-	builder, err := New(pkgs[0])
-	require.NoError(t, err)
-	return builder
+	return loadBuilder(t, newFixture(t, map[string]string{"schema.go": source}))
 }
 
-// jsonFor renders a built type's JSON schema through the same
-// schema.MarshalHardlines path used for generated .json/.json.tmpl files, so
-// legacy and fluent registrations of the "same" type can be compared for
-// byte-for-byte parity.
-func jsonFor(t *testing.T, b SchemaBuilder, typeName string) string {
-	t.Helper()
-	rendered, ok := b.schemas[typeName]
-	require.True(t, ok, "no schema recorded for %s", typeName)
-	out, err := schema.MarshalHardlines(rendered)
-	require.NoError(t, err)
-	return string(out)
-}
-
-const fluentProviderFixture = `//go:build jsonschema
+// fluentParityFixture registers every shape twice, once through the
+// deprecated NewJSONSchemaMethod/With* form and once through Declare, so one
+// load proves each fluent option lowers exactly like its legacy equivalent:
+// Accessor/Method/Function providers with RenderProviders on a value root,
+// the same providers on a pointer root, and Ref. It also carries the
+// enum-marker shapes, which need no registration at all.
+const fluentParityFixture = `//go:build jsonschema
 
 package fixture
 
@@ -52,116 +32,87 @@ import (
 	"github.com/tylergannon/polytype"
 )
 
-type Example struct {
+type Legacy struct {
 	A string ` + "`json:\"a\"`" + `
 	B int    ` + "`json:\"b\"`" + `
 	C bool   ` + "`json:\"c\"`" + `
 }
 
-func (Example) Schema() json.RawMessage { panic("not implemented") }
-func (Example) ASchema() json.Marshaler {
+func (Legacy) Schema() json.RawMessage { panic("not implemented") }
+func (Legacy) ASchema() json.Marshaler {
 	return json.RawMessage(` + "`{\"type\":\"string\",\"description\":\"A\"}`" + `)
 }
-func (Example) BSchema(_ int) json.Marshaler {
+func (Legacy) BSchema(_ int) json.Marshaler {
 	return json.RawMessage(` + "`{\"type\":\"integer\",\"description\":\"B\"}`" + `)
 }
+
+type Fluent struct {
+	A string ` + "`json:\"a\"`" + `
+	B int    ` + "`json:\"b\"`" + `
+	C bool   ` + "`json:\"c\"`" + `
+}
+
+func (Fluent) Schema() json.RawMessage { panic("not implemented") }
+func (Fluent) ASchema() json.Marshaler {
+	return json.RawMessage(` + "`{\"type\":\"string\",\"description\":\"A\"}`" + `)
+}
+func (Fluent) BSchema(_ int) json.Marshaler {
+	return json.RawMessage(` + "`{\"type\":\"integer\",\"description\":\"B\"}`" + `)
+}
+
 func BoolSchemaFunc(_ bool) json.Marshaler {
 	return json.RawMessage(` + "`{\"type\":\"boolean\",\"description\":\"C\"}`" + `)
 }
 
-var _ = %s
-`
-
-const legacyProviderRegistration = `polytype.NewJSONSchemaMethod(
-	Example.Schema,
-	polytype.WithStructAccessorMethod(Example{}.A, (Example).ASchema),
-	polytype.WithStructFunctionMethod(Example{}.B, (Example).BSchema),
-	polytype.WithFunction(Example{}.C, BoolSchemaFunc),
-	polytype.WithRenderProviders(),
-)`
-
-const fluentProviderRegistration = `polytype.Declare(Example.Schema).
-	Accessor(polytype.Field[Example, string]("A"), Example.ASchema).
-	Method(polytype.Field[Example, int]("B"), Example.BSchema).
-	Function(polytype.Field[Example, bool]("C"), BoolSchemaFunc).
-	RenderProviders()`
-
-// TestFluentProviderParityWithLegacy proves that Accessor/Method/Function/
-// RenderProviders fluent chaining produces the exact same rendered schema as
-// the equivalent NewJSONSchemaMethod + WithXxx registration, through the
-// same builder path used for real generation.
-func TestFluentProviderParityWithLegacy(t *testing.T) {
-	t.Parallel()
-
-	legacy := writeFluentFixture(t, fmt.Sprintf(fluentProviderFixture, legacyProviderRegistration))
-	fluent := writeFluentFixture(t, fmt.Sprintf(fluentProviderFixture, fluentProviderRegistration))
-
-	require.Equal(t, jsonFor(t, legacy, "Example"), jsonFor(t, fluent, "Example"))
-}
-
-const fluentPointerProviderFixture = `//go:build jsonschema
-
-package fixture
-
-import (
-	"encoding/json"
-
-	"github.com/tylergannon/polytype"
-)
-
-type Example struct {
+type LegacyPointer struct {
 	A string ` + "`json:\"a\"`" + `
 	B int    ` + "`json:\"b\"`" + `
 }
 
-func (*Example) Schema() json.RawMessage { panic("not implemented") }
-func (*Example) ASchema() json.Marshaler {
+func (*LegacyPointer) Schema() json.RawMessage { panic("not implemented") }
+func (*LegacyPointer) ASchema() json.Marshaler {
 	return json.RawMessage(` + "`{\"type\":\"string\",\"description\":\"A\"}`" + `)
 }
-func (*Example) BSchema(_ int) json.Marshaler {
+func (*LegacyPointer) BSchema(_ int) json.Marshaler {
 	return json.RawMessage(` + "`{\"type\":\"integer\",\"description\":\"B\"}`" + `)
 }
 
-var _ = %s
-`
-
-const legacyPointerProviderRegistration = `polytype.NewJSONSchemaMethod(
-	(*Example).Schema,
-	polytype.WithStructAccessorMethod(Example{}.A, (*Example).ASchema),
-	polytype.WithStructFunctionMethod(Example{}.B, (*Example).BSchema),
-)`
-
-const fluentPointerProviderRegistration = `polytype.Declare((*Example).Schema).
-	Accessor(polytype.Field[Example, string]("A"), (*Example).ASchema).
-	Method(polytype.Field[Example, int]("B"), (*Example).BSchema)`
-
-// TestFluentPointerRootProviderParityWithLegacy proves that a pointer-root
-// fluent chain (Declare((*T).Schema).Accessor/.Method with pointer method
-// expressions) actually retains its providers, matching the equivalent
-// pointer-receiver legacy registration byte-for-byte. This reproduces the
-// issue #73 review finding: providerRef previously rejected the *dst.StarExpr
-// inside "(*Example).ASchema" and silently dropped the provider option.
-func TestFluentPointerRootProviderParityWithLegacy(t *testing.T) {
-	t.Parallel()
-
-	legacy := writeFluentFixture(t, fmt.Sprintf(fluentPointerProviderFixture, legacyPointerProviderRegistration))
-	fluent := writeFluentFixture(t, fmt.Sprintf(fluentPointerProviderFixture, fluentPointerProviderRegistration))
-
-	legacyJSON := jsonFor(t, legacy, "Example")
-	require.Equal(t, legacyJSON, jsonFor(t, fluent, "Example"))
-	require.Contains(t, legacyJSON, `{{.a}}`)
-	require.Contains(t, legacyJSON, `{{.b}}`)
+type FluentPointer struct {
+	A string ` + "`json:\"a\"`" + `
+	B int    ` + "`json:\"b\"`" + `
 }
 
-const enumMarkerFixture = `//go:build jsonschema
+func (*FluentPointer) Schema() json.RawMessage { panic("not implemented") }
+func (*FluentPointer) ASchema() json.Marshaler {
+	return json.RawMessage(` + "`{\"type\":\"string\",\"description\":\"A\"}`" + `)
+}
+func (*FluentPointer) BSchema(_ int) json.Marshaler {
+	return json.RawMessage(` + "`{\"type\":\"integer\",\"description\":\"B\"}`" + `)
+}
 
-package fixture
+type LegacyShared struct {
+	Name string ` + "`json:\"name\"`" + `
+}
 
-import (
-	"encoding/json"
+func (LegacyShared) Schema() json.RawMessage { panic("not implemented") }
 
-	"github.com/tylergannon/polytype"
-)
+type FluentShared struct {
+	Name string ` + "`json:\"name\"`" + `
+}
+
+func (FluentShared) Schema() json.RawMessage { panic("not implemented") }
+
+type LegacyOwner struct {
+	Value LegacyShared ` + "`json:\"value\"`" + `
+}
+
+func (LegacyOwner) Schema() json.RawMessage { panic("not implemented") }
+
+type FluentOwner struct {
+	Value FluentShared ` + "`json:\"value\"`" + `
+}
+
+func (FluentOwner) Schema() json.RawMessage { panic("not implemented") }
 
 type Paint string
 
@@ -192,64 +143,122 @@ type Widget struct {
 
 func (Widget) Schema() json.RawMessage { panic("not implemented") }
 
-var _ = polytype.Declare(Widget.Schema).
-	StringerEnum(polytype.Field[Widget, Level]("ViaStringer"))
-`
-
-// TestEnumMarkerEmitsConstantValuesAndIgnoresStringer proves that a type
-// declaring func (T) enum() is emitted as an enum of its typed constants
-// with no field-level declaration, that a String() method on the marked
-// type does not change the wire values, and that an explicit .StringerEnum
-// on a field of the marked type still selects name mode for that field.
-func TestEnumMarkerEmitsConstantValuesAndIgnoresStringer(t *testing.T) {
-	t.Parallel()
-
-	builder := writeFluentFixture(t, enumMarkerFixture)
-	rendered := jsonFor(t, builder, "Widget")
-	require.Contains(t, rendered, `"direct":{"type":"string","enum":["red","green"]}`)
-	require.Contains(t, rendered, `"level":{"type":"integer","enum":[1,2]}`)
-	require.Contains(t, rendered, `"viaStringer":{"type":"string","enum":["Low","High"]}`)
-}
-
-const fluentRefFixture = `//go:build jsonschema
-
-package fixture
-
-import (
-	"encoding/json"
-
-	"github.com/tylergannon/polytype"
+var (
+	_ = polytype.NewJSONSchemaMethod(
+		Legacy.Schema,
+		polytype.WithStructAccessorMethod(Legacy{}.A, (Legacy).ASchema),
+		polytype.WithStructFunctionMethod(Legacy{}.B, (Legacy).BSchema),
+		polytype.WithFunction(Legacy{}.C, BoolSchemaFunc),
+		polytype.WithRenderProviders(),
+	)
+	_ = polytype.Declare(Fluent.Schema).
+		Accessor(polytype.Field[Fluent, string]("A"), Fluent.ASchema).
+		Method(polytype.Field[Fluent, int]("B"), Fluent.BSchema).
+		Function(polytype.Field[Fluent, bool]("C"), BoolSchemaFunc).
+		RenderProviders()
+	_ = polytype.NewJSONSchemaMethod(
+		(*LegacyPointer).Schema,
+		polytype.WithStructAccessorMethod(LegacyPointer{}.A, (*LegacyPointer).ASchema),
+		polytype.WithStructFunctionMethod(LegacyPointer{}.B, (*LegacyPointer).BSchema),
+	)
+	_ = polytype.Declare((*FluentPointer).Schema).
+		Accessor(polytype.Field[FluentPointer, string]("A"), (*FluentPointer).ASchema).
+		Method(polytype.Field[FluentPointer, int]("B"), (*FluentPointer).BSchema)
+	_ = polytype.NewJSONSchemaMethod(LegacyShared.Schema, polytype.AsRef())
+	_ = polytype.Declare(FluentShared.Schema).Ref()
+	_ = polytype.NewJSONSchemaMethod(LegacyOwner.Schema)
+	_ = polytype.NewJSONSchemaMethod(FluentOwner.Schema)
+	_ = polytype.Declare(Widget.Schema).
+		StringerEnum(polytype.Field[Widget, Level]("ViaStringer"))
 )
-
-type Shared struct {
-	Name string ` + "`json:\"name\"`" + `
-}
-
-func (Shared) Schema() json.RawMessage { panic("not implemented") }
-
-type Owner struct {
-	Value Shared ` + "`json:\"value\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = %s
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
 `
 
-const legacyRefRegistration = `polytype.NewJSONSchemaMethod(Shared.Schema, polytype.AsRef())`
-const fluentRefRegistration = `polytype.Declare(Shared.Schema).Ref()`
+func fieldValues(object *typegrammar.Object) []typegrammar.FieldValue {
+	values := make([]typegrammar.FieldValue, 0, len(object.Fields))
+	for _, field := range object.Fields {
+		values = append(values, field.Value)
+	}
+	return values
+}
 
-// TestFluentRefParityWithLegacy proves that .Ref() produces the same
-// "$ref"-based owner schema as AsRef().
-func TestFluentRefParityWithLegacy(t *testing.T) {
+func refTypeNames(b SchemaBuilder) []string {
+	var names []string
+	for id := range b.RefTypes {
+		names = append(names, id.TypeName)
+	}
+	return names
+}
+
+// TestFluentDeclarationParityWithLegacy proves the fluent chain lowers to
+// the same definitions and resolves the same provider table as the
+// equivalent legacy registration, through the one builder path real
+// generation uses. The pointer-root case reproduces the issue #73 review
+// finding: providerRef previously rejected the *dst.StarExpr inside
+// "(*Example).ASchema" and silently dropped the provider option.
+func TestFluentDeclarationParityWithLegacy(t *testing.T) {
 	t.Parallel()
+	builder := writeFluentFixture(t, fluentParityFixture)
 
-	legacy := writeFluentFixture(t, fmt.Sprintf(fluentRefFixture, legacyRefRegistration))
-	fluent := writeFluentFixture(t, fmt.Sprintf(fluentRefFixture, fluentRefRegistration))
+	t.Run("providers", func(t *testing.T) {
+		legacy, fluent := loweredObject(t, builder, "Legacy"), loweredObject(t, builder, "Fluent")
+		require.Equal(t, []typegrammar.FieldValue{&typegrammar.Provided{}, &typegrammar.Provided{}, &typegrammar.Provided{}}, fieldValues(legacy))
+		require.Equal(t, fieldValues(legacy), fieldValues(fluent))
+		require.Len(t, builder.TypeProvidersMap["Legacy"], 3)
+		require.Equal(t, builder.TypeProvidersMap["Legacy"], builder.TypeProvidersMap["Fluent"])
+		require.True(t, builder.Rendered["Legacy"])
+		require.True(t, builder.Rendered["Fluent"])
+	})
 
-	require.Equal(t, jsonFor(t, legacy, "Owner"), jsonFor(t, fluent, "Owner"))
-	require.Contains(t, jsonFor(t, legacy, "Owner"), `"$ref"`)
+	t.Run("pointer root providers", func(t *testing.T) {
+		legacy, fluent := loweredObject(t, builder, "LegacyPointer"), loweredObject(t, builder, "FluentPointer")
+		require.Equal(t, []typegrammar.FieldValue{&typegrammar.Provided{}, &typegrammar.Provided{}}, fieldValues(legacy))
+		require.Equal(t, fieldValues(legacy), fieldValues(fluent))
+		require.Len(t, builder.TypeProvidersMap["LegacyPointer"], 2)
+		require.Equal(t, builder.TypeProvidersMap["LegacyPointer"], builder.TypeProvidersMap["FluentPointer"])
+		require.False(t, builder.Rendered["LegacyPointer"])
+		require.False(t, builder.Rendered["FluentPointer"])
+	})
+
+	t.Run("ref", func(t *testing.T) {
+		require.ElementsMatch(t, []string{"LegacyShared", "FluentShared"}, refTypeNames(builder))
+		for _, owner := range []string{"LegacyOwner", "FluentOwner"} {
+			value := requireField(t, loweredObject(t, builder, owner).Fields, "value")
+			require.IsType(t, &typegrammar.Ref{}, fieldType[typegrammar.Type](t, value.Value), owner)
+		}
+	})
+
+	// A type declaring func (T) enum() is an enum of its typed constants with
+	// no field-level declaration; a String() method on the marked type does
+	// not change the wire values; and an explicit .StringerEnum on a field
+	// of the marked type still selects name mode for that field.
+	t.Run("enum marker", func(t *testing.T) {
+		widget := loweredObject(t, builder, "Widget")
+		direct := loweredEnum(t, builder, requireField(t, widget.Fields, "direct").Value)
+		require.Equal(t, typegrammar.EnumValues, direct.Mode)
+		require.Equal(t, []string{"red", "green"}, enumStringValues(direct.Members))
+		level := loweredEnum(t, builder, requireField(t, widget.Fields, "level").Value)
+		require.Equal(t, typegrammar.EnumValues, level.Mode)
+		require.Equal(t, []string{"1", "2"}, enumExactValues(level.Members))
+		viaStringer := loweredEnum(t, builder, requireField(t, widget.Fields, "viaStringer").Value)
+		require.Equal(t, typegrammar.EnumNames, viaStringer.Mode)
+		require.Equal(t, []string{"Low", "High"}, enumMemberNames(viaStringer.Members))
+	})
+}
+
+func enumStringValues(members []typegrammar.EnumMember) []string {
+	values := make([]string, 0, len(members))
+	for _, member := range members {
+		values = append(values, constant.StringVal(member.Value))
+	}
+	return values
+}
+
+func enumExactValues(members []typegrammar.EnumMember) []string {
+	values := make([]string, 0, len(members))
+	for _, member := range members {
+		values = append(values, member.Value.ExactString())
+	}
+	return values
 }
 
 // TestFluentAccessorRejectsFreeFunctionProvider proves the issue #73 review

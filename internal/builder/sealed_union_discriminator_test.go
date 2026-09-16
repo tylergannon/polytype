@@ -42,35 +42,27 @@ type Shelter struct {
 // TestSealedUnionDiscriminatorAppliesToEveryUse proves that one
 // SealedUnion[Animal]("kind") declaration changes the discriminator property
 // for every use of Animal - a scalar field on one owner and a slice on
-// another - while values stay the concrete type names.
+// another - while values stay the concrete type names, and that every
+// owner's codec plan carries the declaration its helper reads (rendered in
+// TestRenderGoCodeUnionHelpersUseTheDeclaredDiscriminator).
 func TestSealedUnionDiscriminatorAppliesToEveryUse(t *testing.T) {
-	targetDir := writeSealedUnionDiscriminatorFixture(t, sealedTwoOwnerTypes, `var _ = polytype.SealedUnion[Animal]("kind")`)
-	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
-	require.Equal(t, []string{"Cat", "Dog"}, unionDiscriminators(t, targetDir, "Zoo", "resident", "kind"))
-	require.Equal(t, []string{"", ""}, unionDiscriminators(t, targetDir, "Zoo", "resident", "type"), "the default property must not appear")
-
-	generated, err := os.ReadFile(filepath.Join(targetDir, "jsonschema_gen.go"))
-	require.NoError(t, err)
-	require.Contains(t, string(generated), `"kind"`)
-	shelter, err := os.ReadFile(filepath.Join(targetDir, "jsonschema", "Shelter.json"))
-	require.NoError(t, err)
-	require.Contains(t, string(shelter), `"kind"`)
-	require.NotContains(t, string(shelter), `"type":{"type":"string","const"`)
+	builder := loadBuilder(t, writeSealedUnionDiscriminatorFixture(t, sealedTwoOwnerTypes, `var _ = polytype.SealedUnion[Animal]("kind")`))
+	for _, use := range []struct{ owner, field string }{{"Zoo", "resident"}, {"Shelter", "residents"}} {
+		union := loweredUnion(t, builder, use.owner, use.field)
+		require.Equal(t, "kind", union.Discriminator, use.owner)
+		require.Equal(t, []string{"Cat", "Dog"}, variantTags(union), use.owner)
+		require.Equal(t, "kind", builder.ownerCodecs[use.owner].UnionFields[0].DiscPropName, use.owner)
+	}
 }
 
 func TestSealedUnionNamedInflectionAppliesToEveryUse(t *testing.T) {
-	targetDir := writeSealedUnionDiscriminatorFixture(t, sealedTwoOwnerTypes, `var _ = polytype.SealedUnion[Animal]("kind", polytype.Snake)`)
-	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
-	require.Equal(t, []string{"cat", "dog"}, unionDiscriminators(t, targetDir, "Zoo", "resident", "kind"))
-	shelter, err := os.ReadFile(filepath.Join(targetDir, "jsonschema", "Shelter.json"))
-	require.NoError(t, err)
-	require.Contains(t, string(shelter), `"const":"cat"`)
-	require.Contains(t, string(shelter), `"const":"dog"`)
-
-	generated, err := os.ReadFile(filepath.Join(targetDir, "jsonschema_gen.go"))
-	require.NoError(t, err)
-	require.Contains(t, string(generated), `case "cat":`)
-	require.Contains(t, string(generated), `case "dog":`)
+	builder := loadBuilder(t, writeSealedUnionDiscriminatorFixture(t, sealedTwoOwnerTypes, `var _ = polytype.SealedUnion[Animal]("kind", polytype.Snake)`))
+	for _, use := range []struct{ owner, field string }{{"Zoo", "resident"}, {"Shelter", "residents"}} {
+		union := loweredUnion(t, builder, use.owner, use.field)
+		require.Equal(t, "kind", union.Discriminator, use.owner)
+		require.Equal(t, []string{"cat", "dog"}, variantTags(union), use.owner)
+		require.Equal(t, []string{"cat", "dog"}, variantTags(builder.ownerCodecs[use.owner].UnionFields[0].Union), "the codec switches on the inflected tags")
+	}
 }
 
 // TestSealedUnionDiscriminatorDiagnosticsNameTheInterface covers every

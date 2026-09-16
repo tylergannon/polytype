@@ -94,19 +94,19 @@ var _ = polytype.Declare(Root.Schema)
 	}
 }
 
-// TestFreeFunctionRootForRegisteredInterfaceGeneratesFreeFunction proves
-// that a free-function schema root for a sealed interface (recorded in
-// Scan.Interfaces, not Scan.LocalNamedTypes) is correctly classified as
-// needing a free function, not a method: before this fix,
-// hasInvalidMethodReceiverBase only consulted LocalNamedTypes, so this exact
-// shape would be misrouted into SchemaMethods() and generate an uncompilable
-// `func (Value) ValueSchema()` (Go forbids an interface receiver base).
-// This is a fast, source-level check of the classification only;
-// TestInterfaceFuncTypeSchemaCallable in
-// testfixtures/entrypoints/entrypoints_test.go is the real compile-and-call
-// proof, run through TestBasic's full go-build-and-test harness.
-func TestFreeFunctionRootForRegisteredInterfaceGeneratesFreeFunction(t *testing.T) {
-	dir := writeMultiFileFixture(t, map[string]string{
+// TestFreeFunctionRootsForInvalidReceiversAreClassifiedAsFreeFunctions
+// proves a free-function root whose type cannot carry a method is generated
+// as a free function, never misrouted into a method: a sealed interface
+// (recorded in Scan.Interfaces, not Scan.LocalNamedTypes), and a type
+// defined in terms of another named pointer type (type Q P, where P is
+// itself a pointer), which the classifier resolves through go/types'
+// Underlying() rather than by pattern-matching the immediate declaration's
+// AST. The free-function rendering is pinned without a load in
+// TestRenderGoCodeSchemaAccessorsValidationAndRenderedSchemas, and
+// TestInterfaceFuncTypeSchemaCallable in testfixtures/entrypoints is the
+// compile-and-call proof through TestBasic.
+func TestFreeFunctionRootsForInvalidReceiversAreClassifiedAsFreeFunctions(t *testing.T) {
+	builder := loadBuilder(t, writeMultiFileFixture(t, map[string]string{
 		"types.go": `package fixture
 
 type Value interface{ value() }
@@ -116,6 +116,9 @@ type First struct {
 }
 
 func (First) value() {}
+
+type P *int
+type Q P
 `,
 		"schema.go": `//go:build jsonschema
 
@@ -128,17 +131,20 @@ import (
 )
 
 func ValueSchema(Value) json.RawMessage { panic("not implemented") }
+func QSchema(Q) json.RawMessage         { panic("not implemented") }
 
-var _ = polytype.Declare(ValueSchema)
+var (
+	_ = polytype.Declare(ValueSchema)
+	_ = polytype.Declare(QSchema)
+)
 `,
-	})
+	}))
 
-	require.NoError(t, Run(BuilderArgs{TargetDir: dir}))
-
-	generated, err := os.ReadFile(filepath.Join(dir, "jsonschema_gen.go"))
-	require.NoError(t, err)
-	require.Contains(t, string(generated), "func ValueSchema(Value) json.RawMessage {")
-	require.NotContains(t, string(generated), "func (Value) ValueSchema()")
+	require.Empty(t, schemaAccessors(builder.SchemaMethods()))
+	require.ElementsMatch(t, []SchemaAccessor{
+		{TypeName: "Value", MethodName: "ValueSchema"},
+		{TypeName: "Q", MethodName: "QSchema"},
+	}, schemaAccessors(builder.SchemaFreeFuncs()))
 }
 
 // TestValidateRejectsFreeFunctionInterfaceRoot proves the same --validate
@@ -230,42 +236,4 @@ var _ = polytype.NewJSONSchemaBuilder[PointerRoot](BuildSchema)
 
 	err := Run(BuilderArgs{TargetDir: dir})
 	require.ErrorContains(t, err, "PointerRoot: NewJSONSchemaBuilder is not supported")
-}
-
-// TestFreeFunctionRootForForwardingPointerTypeGeneratesFreeFunction proves
-// that a type defined in terms of another named pointer type (type Q P,
-// where P is itself a pointer) is classified as an invalid method receiver
-// base, not just a type declared directly as a pointer (type Q *int). The
-// classifier resolves through go/types' Underlying(), which follows
-// arbitrary chains of named-type indirection, rather than pattern-matching
-// only the immediate declaration's AST expression.
-func TestFreeFunctionRootForForwardingPointerTypeGeneratesFreeFunction(t *testing.T) {
-	dir := writeMultiFileFixture(t, map[string]string{
-		"types.go": `package fixture
-
-type P *int
-type Q P
-`,
-		"schema.go": `//go:build jsonschema
-
-package fixture
-
-import (
-	"encoding/json"
-
-	"github.com/tylergannon/polytype"
-)
-
-func QSchema(Q) json.RawMessage { panic("not implemented") }
-
-var _ = polytype.Declare(QSchema)
-`,
-	})
-
-	require.NoError(t, Run(BuilderArgs{TargetDir: dir}))
-
-	generated, err := os.ReadFile(filepath.Join(dir, "jsonschema_gen.go"))
-	require.NoError(t, err)
-	require.Contains(t, string(generated), "func QSchema(Q) json.RawMessage {")
-	require.NotContains(t, string(generated), "func (Q) QSchema()")
 }

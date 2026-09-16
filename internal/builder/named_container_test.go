@@ -29,8 +29,9 @@ var _ = polytype.Declare(Root.Schema)
 }
 
 // TestNamedContainerTraversesReachableCodecs is the issue #127 regression:
-// a named slice type (type Items []Item) must not stop codec discovery.
-// Uses a non-recursive shape so the full schema+codec path exercises it.
+// a named slice type (type Items []Item) must not stop codec discovery. The
+// plan is asserted directly; TestNestedNamedContainerTraversal is the
+// runtime round trip through the same traversal.
 func TestNamedContainerTraversesReachableCodecs(t *testing.T) {
 	types := `type Root struct {
 	Items Items ` + "`json:\"items\"`" + `
@@ -50,40 +51,13 @@ type Leaf struct {
 
 func (Leaf) block() {}
 `
-	targetDir := writeNamedContainerFixture(t, types)
-	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
-
-	generated, err := os.ReadFile(filepath.Join(targetDir, "jsonschema_gen.go"))
-	require.NoError(t, err)
-	require.Contains(t, string(generated), `case "Leaf":`)
-
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "codec_test.go"), []byte(`package fixture
-
-import (
-	"encoding/json"
-	"strings"
-	"testing"
-)
-
-func TestNamedContainerRoundTrip(t *testing.T) {
-	want := Root{Items: Items{{Blocks: []Block{Leaf{Text: "hello"}}}}}
-	data, err := json.Marshal(want)
-	if err != nil { t.Fatal(err) }
-	if !strings.Contains(string(data), `+"`"+`"type":"Leaf"`+"`"+`) {
-		t.Fatalf("missing discriminator in wire: %s", data)
-	}
-	var got Root
-	if err := json.Unmarshal(data, &got); err != nil { t.Fatal(err) }
-	if len(got.Items) != 1 { t.Fatalf("items = %d", len(got.Items)) }
-	if leaf, ok := got.Items[0].Blocks[0].(Leaf); !ok || leaf.Text != "hello" {
-		t.Fatalf("block = %#v", got.Items[0].Blocks[0])
-	}
-}
-`), 0o644))
-
-	exit, stdout, stderr, err := testutils.RunCommand("go", targetDir, "test", "./...")
-	require.NoError(t, err)
-	require.Equal(t, 0, exit, "stdout:\n%s\nstderr:\n%s", stdout, stderr)
+	builder := loadBuilder(t, writeNamedContainerFixture(t, types))
+	require.NotContains(t, builder.ownerCodecs, "Root", "Root declares no union field of its own")
+	item, ok := builder.ownerCodecs["Item"]
+	require.True(t, ok, "codec discovery must reach Item through named container Items")
+	require.Len(t, item.UnionFields, 1)
+	require.True(t, item.UnionFields[0].Repeated)
+	require.Equal(t, []string{"Leaf"}, variantTags(item.UnionFields[0].Union))
 }
 
 // TestNestedNamedContainerTraversal verifies codec discovery through multiple
