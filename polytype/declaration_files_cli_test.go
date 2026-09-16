@@ -19,6 +19,7 @@ import (
 func TestGenCommandDeclarationFilesForRecursiveTypes(t *testing.T) {
 	t.Parallel()
 
+	testutils.TrackFixtureDependencies(t, "../codegen/testdata/recursive_declarations", "github.com/tylergannon/polytype")
 	repoRoot, err := filepath.Abs("..")
 	require.NoError(t, err)
 	root := t.TempDir()

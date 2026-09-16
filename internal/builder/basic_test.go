@@ -64,6 +64,7 @@ var basicFixtures = []fixture{
 func TestBasic(t *testing.T) {
 	t.Parallel()
 
+	testutils.TrackFixtureDependencies(t, "testfixtures", "github.com/tylergannon/polytype", fixtureModulePath)
 	moduleDir := materializeFixtureModule(t)
 
 	cfg := *syntax.DefaultPackageCfg

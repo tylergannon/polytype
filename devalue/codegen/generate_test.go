@@ -25,6 +25,7 @@ import (
 // emitted code touches nothing unexported.
 func TestGeneratedCodecsCompileAndRun(t *testing.T) {
 	t.Parallel()
+	testutils.TrackFixtureDependencies(t, "testdata", "github.com/tylergannon/polytype")
 
 	repoRoot, err := filepath.Abs("../..")
 	if err != nil {
