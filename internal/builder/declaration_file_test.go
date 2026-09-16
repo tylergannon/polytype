@@ -81,6 +81,52 @@ func TestDeclarationFileRejectsNonMarkerCallsBeforeWriting(t *testing.T) {
 	}
 }
 
+// TestOrdinaryFileBlankDeclarationIsRefusedBeforeWriting proves a
+// declaration written in ordinary Go fails instead of being ignored (#151).
+// A blank var cannot be configuration, so the author meant it for the CLI;
+// before this refusal, moving past v1.0.1 silently dropped it, which changed
+// discriminators and deleted generated output.
+func TestOrdinaryFileBlankDeclarationIsRefusedBeforeWriting(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct{ decls, want string }{
+		"Declare with an entrypoint": {
+			decls: "var _ = polytype.Declare(Watcher.Schema)\n\nfunc (Watcher) Schema() json.RawMessage { panic(\"x\") }\n",
+			want:  "polytype.Declare at ",
+		},
+		"Declare without an entrypoint": {
+			decls: "var _ = polytype.Declare[Watcher]()\n",
+			want:  "polytype.Declare at ",
+		},
+		"chained Declare": {
+			decls: "var _ = polytype.Declare(Watcher.Schema).RenderProviders()\n\nfunc (Watcher) Schema() json.RawMessage { panic(\"x\") }\n",
+			want:  "polytype.Declare at ",
+		},
+		"SealedUnion": {
+			decls: "var _ = polytype.SealedUnion[Node](\"kind\")\n",
+			want:  "polytype.SealedUnion at ",
+		},
+		"legacy method marker": {
+			decls: "var _ = polytype.NewJSONSchemaMethod(Watcher.Schema)\n\nfunc (Watcher) Schema() json.RawMessage { panic(\"x\") }\n",
+			want:  "polytype.NewJSONSchemaMethod at ",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := writeMultiFileFixture(t, map[string]string{
+				"types.go": recursiveTypes,
+				"config.go": "package fixture\n\nimport (\n\t\"encoding/json\"\n\n\t\"github.com/tylergannon/polytype\"\n)\n\nvar _ json.RawMessage\n\n" + test.decls,
+				"schema.go": declarationFile("var _ = polytype.Declare[Tree]()\n"),
+			})
+			before := dirNames(t, dir)
+			err := Run(BuilderArgs{TargetDir: dir})
+			require.ErrorContains(t, err, test.want)
+			require.ErrorContains(t, err, "config.go:11:9")
+			require.ErrorContains(t, err, "//go:build jsonschema")
+			require.Equal(t, before, dirNames(t, dir))
+		})
+	}
+}
+
 // ordinaryConfiguration is executable configuration in an ordinary Go file,
 // as a generator program would import it: a Compose value, a root, and a
 // sealed union whose inflector only executable configuration may supply.

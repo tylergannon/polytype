@@ -29,6 +29,10 @@ type (
 		// innermost (leftmost in source) first. Empty for every other marker
 		// function and for a bare Declare(fn) call with no chained options.
 		fluentLinks []fluentChainLink
+		// blank reports that the call is the value of a blank var (var _ =),
+		// the form a declaration takes. A blank value cannot be referenced,
+		// so it is never executable configuration.
+		blank bool
 	}
 )
 
@@ -66,7 +70,9 @@ func (m MarkerFunctionCall) String() string {
 // unnoticed.
 func ParseValueExprForMarkerFunctionCall(e ValueSpec) []MarkerFunctionCall {
 	var results []MarkerFunctionCall
-	for _, arg := range e.Value().Values {
+	names := e.Value().Names
+	for i, arg := range e.Value().Values {
+		blank := i < len(names) && names[i].Name == "_"
 		ce, ok := arg.(*dst.CallExpr)
 		if !ok {
 			continue
@@ -79,6 +85,7 @@ func ParseValueExprForMarkerFunctionCall(e ValueSpec) []MarkerFunctionCall {
 			}
 			results = append(results, MarkerFunctionCall{
 				CallExpr: callExpr,
+				blank:    blank,
 			})
 			continue
 		}
@@ -91,6 +98,7 @@ func ParseValueExprForMarkerFunctionCall(e ValueSpec) []MarkerFunctionCall {
 			results = append(results, MarkerFunctionCall{
 				CallExpr:    base,
 				fluentLinks: links,
+				blank:       blank,
 			})
 		}
 	}

@@ -835,8 +835,10 @@ Per-union discriminator property and value inflection are declared once with
 
 These declarations are executable configuration values. The CLI also reads
 the same calls from the AST of a build-tagged `schema.go`, and only there: a
-value in an ordinary Go file is configuration for a generator program, not a
-declaration.
+named value in an ordinary Go file is configuration for a generator program,
+not a declaration. A blank `var _ = polytype.Declare(...)` or
+`var _ = polytype.SealedUnion[I](...)` in an ordinary file can only be a
+misplaced declaration, so generation fails and names it.
 
 `NewJSONSchemaMethod`/`NewJSONSchemaFunc` with their remaining `With*`
 options remain supported for source compatibility; each carries a `Deprecated:` godoc comment naming its
