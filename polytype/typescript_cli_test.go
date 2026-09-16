@@ -38,11 +38,6 @@ func TestGenCommandTypeScriptOutput(t *testing.T) {
 		goDirective(t, repoRoot), repoRoot)), 0o644))
 	runGo(t, consumer, "mod", "tidy")
 
-	cli := filepath.Join(root, "polytype")
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	runGo(t, cwd, "build", "-o", cli, ".")
-
 	generate := func(t *testing.T, args ...string) (int, string) {
 		t.Helper()
 		exit, stdout, stderr, err := testutils.RunCommand(cli, root, append([]string{"gen", "--target", consumer}, args...)...)

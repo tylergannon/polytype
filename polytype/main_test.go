@@ -2,12 +2,38 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tylergannon/polytype/internal/testutils"
 )
+
+// cli is the polytype binary every command-level test in this package runs.
+//
+// It is built once. The tests used to reach the command through `go run .`,
+// which relinks the CLI on every invocation, so a package whose command tests
+// are otherwise just subprocess launches paid six full links per run.
+var cli string
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "polytype-cli")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	cli = filepath.Join(dir, "polytype")
+	if output, err := exec.Command("go", "build", "-o", cli, ".").CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "building the polytype CLI: %v\n%s", err, output)
+		os.Exit(1)
+	}
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
 
 func TestGenTypeScriptFlags(t *testing.T) {
 	t.Parallel()
@@ -40,10 +66,12 @@ func TestGenTypeScriptFlagsDefaultToDisabled(t *testing.T) {
 // fails with a non-zero exit and a source-positioned diagnostic naming the
 // offending file for an invalid fluent chain.
 func TestGenCommandRejectsInvalidFluentFieldAssociationWithSourcePosition(t *testing.T) {
+	t.Parallel()
+
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 
-	exitCode, _, stderr, err := testutils.RunCommand("go", cwd, "run", ".", "-target", "../internal/syntax/testfixtures/fluent_field_mismatch")
+	exitCode, _, stderr, err := testutils.RunCommand(cli, cwd, "-target", "../internal/syntax/testfixtures/fluent_field_mismatch")
 	require.NoError(t, err)
 	require.NotEqual(t, 0, exitCode, "stderr:\n%s", stderr)
 	require.Contains(t, stderr, "polytype.Declare: .StringerEnum expects a field selector on Owner{}")
@@ -55,10 +83,12 @@ func TestGenCommandRejectsInvalidFluentFieldAssociationWithSourcePosition(t *tes
 // fixture, proving the command itself fails with a non-zero exit and a
 // source-positioned diagnostic naming the mis-marked enum type.
 func TestGenCommandRejectsEnumMarkerWithPointerReceiver(t *testing.T) {
+	t.Parallel()
+
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 
-	exitCode, _, stderr, err := testutils.RunCommand("go", cwd, "run", ".", "-target", "../internal/syntax/testfixtures/enum_marker_pointer_receiver")
+	exitCode, _, stderr, err := testutils.RunCommand(cli, cwd, "-target", "../internal/syntax/testfixtures/enum_marker_pointer_receiver")
 	require.NoError(t, err)
 	require.NotEqual(t, 0, exitCode, "stderr:\n%s", stderr)
 	require.Contains(t, stderr, "enum marker on Status at ")
@@ -71,10 +101,12 @@ func TestGenCommandRejectsEnumMarkerWithPointerReceiver(t *testing.T) {
 // command itself fails with a non-zero exit and a source-positioned
 // diagnostic naming both the field and the non-sealed interface.
 func TestGenCommandRejectsUnsealedInterfaceField(t *testing.T) {
+	t.Parallel()
+
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 
-	exitCode, _, stderr, err := testutils.RunCommand("go", cwd, "run", ".", "-target", "../internal/syntax/testfixtures/unsealed_interface")
+	exitCode, _, stderr, err := testutils.RunCommand(cli, cwd, "-target", "../internal/syntax/testfixtures/unsealed_interface")
 	require.NoError(t, err)
 	require.NotEqual(t, 0, exitCode, "stderr:\n%s", stderr)
 	require.Contains(t, stderr, "field Drawing.Shape at ")
@@ -89,10 +121,12 @@ func TestGenCommandRejectsUnsealedInterfaceField(t *testing.T) {
 // source-positioned diagnostic naming the interface and the package that
 // must hold the declaration.
 func TestGenCommandRejectsSealedUnionDeclaredOutsideInterfacePackage(t *testing.T) {
+	t.Parallel()
+
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 
-	exitCode, _, stderr, err := testutils.RunCommand("go", cwd, "run", ".", "-target", "../internal/syntax/testfixtures/sealed_union_foreign_package")
+	exitCode, _, stderr, err := testutils.RunCommand(cli, cwd, "-target", "../internal/syntax/testfixtures/sealed_union_foreign_package")
 	require.NoError(t, err)
 	require.NotEqual(t, 0, exitCode, "stderr:\n%s", stderr)
 	require.Contains(t, stderr, "polytype.SealedUnion[Animal] at ")
