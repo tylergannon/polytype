@@ -37,68 +37,6 @@ var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
 `,
 		},
 		{
-			name: "v1 nested slice field",
-			body: commonTypes + `
-type Owner struct {
-	Values [][]Variant ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "v1 nullable slice field",
-			body: commonTypes + `
-type Owner struct {
-	Values polytype.Nullable[[]Variant] ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "v1 optional slice field",
-			body: commonTypes + `
-type Owner struct {
-	Values polytype.Optional[[]Variant] ` + "`json:\"values,omitzero\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "v1 named slice field",
-			body: commonTypes + `
-type Variants []Variant
-
-type Owner struct {
-	Values Variants ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
-			name: "fixed array field",
-			body: commonTypes + `
-type Owner struct {
-	Values [2]Variant ` + "`json:\"values\"`" + `
-}
-
-func (Owner) Schema() json.RawMessage { panic("not implemented") }
-
-var _ = polytype.NewJSONSchemaMethod(Owner.Schema)
-`,
-		},
-		{
 			name: "nested slice field",
 			body: commonTypes + `
 type Owner struct {

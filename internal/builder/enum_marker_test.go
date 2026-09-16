@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tylergannon/polytype/typegrammar"
 )
 
 // writeEnumMarkerFixture writes a package whose only registration is a bare
@@ -78,56 +79,17 @@ type Owner struct { Color Color ` + "`json:\"color\"`" + ` }
 	}
 }
 
-// TestEnumMarkerSharedAcrossStructsAndSlices proves the marker is a
-// property of the type: two owners, a slice element, and an Optional
-// wrapper all render the same enum from a single marker with no field-level
-// declaration anywhere.
-func TestEnumMarkerSharedAcrossStructsAndSlices(t *testing.T) {
-	targetDir := writeEnumMarkerFixture(t, `import "github.com/tylergannon/polytype"
+// TestEnumMarkerIsAPropertyOfTheType proves the marker alone makes a type an
+// enum wherever it is used and resolves its type-level codec: two owners, a
+// slice element and an Optional wrapper all lower to one value-mode enum
+// with no field-level declaration anywhere, and both a string and an
+// integer marked type get a marker keyed on their first typed constant in
+// declaration order. The assertion and codecs rendered from these markers
+// are pinned in TestRenderGoCodeEnumMarkers without a load.
+func TestEnumMarkerIsAPropertyOfTheType(t *testing.T) {
+	builder := loadBuilder(t, writeEnumMarkerFixture(t, `import "github.com/tylergannon/polytype"
 
 type Status string
-
-func (Status) enum() {}
-
-const (
-	Ready   Status = "ready"
-	Waiting Status = "waiting"
-)
-
-type Other struct {
-	Status Status `+"`json:\"status\"`"+`
-}
-
-type Owner struct {
-	Status  Status                    `+"`json:\"status\"`"+`
-	History []Status                  `+"`json:\"history\"`"+`
-	Next    polytype.Optional[Status] `+"`json:\"next,omitzero\"`"+`
-	Other   Other                     `+"`json:\"other\"`"+`
-}
-`)
-	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
-	schema, err := os.ReadFile(filepath.Join(targetDir, "jsonschema", "Owner.json"))
-	require.NoError(t, err)
-	want := `"enum":["ready","waiting"]`
-	require.Equal(t, 4, countOccurrences(string(schema), want), "expected every use of Status to be an enum:\n%s", schema)
-}
-
-func countOccurrences(haystack, needle string) int {
-	count := 0
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if haystack[i:i+len(needle)] == needle {
-			count++
-		}
-	}
-	return count
-}
-
-// TestEnumMarkerAssertionUsesFirstConstant pins the spelling of the marker
-// assertion in the generated file: each marked type is referenced through
-// its first typed constant in declaration order (unexported is fine within
-// the package), never through *new(T).
-func TestEnumMarkerAssertionUsesFirstConstant(t *testing.T) {
-	targetDir := writeEnumMarkerFixture(t, `type Status string
 
 func (Status) enum() {}
 
@@ -143,15 +105,40 @@ func (mode) enum() {}
 const modeFast mode = 1
 const modeSlow mode = 2
 
-type Owner struct {
+type Other struct {
 	Status Status `+"`json:\"status\"`"+`
-	Mode   mode   `+"`json:\"mode\"`"+`
 }
-`)
-	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
-	generated, err := os.ReadFile(filepath.Join(targetDir, "jsonschema_gen.go"))
-	require.NoError(t, err)
-	require.Contains(t, string(generated), "_ interface{ enum() } = Ready\n")
-	require.Contains(t, string(generated), "_ interface{ enum() } = modeFast\n")
-	require.NotContains(t, string(generated), "*new(")
+
+type Owner struct {
+	Status  Status                    `+"`json:\"status\"`"+`
+	History []Status                  `+"`json:\"history\"`"+`
+	Next    polytype.Optional[Status] `+"`json:\"next,omitzero\"`"+`
+	Other   Other                     `+"`json:\"other\"`"+`
+	Mode    mode                      `+"`json:\"mode\"`"+`
+}
+`))
+
+	owner := loweredObject(t, builder, "Owner")
+	other := loweredObject(t, builder, "Other")
+	for _, use := range []typegrammar.Field{
+		requireField(t, owner.Fields, "status"),
+		requireField(t, owner.Fields, "history"),
+		requireField(t, owner.Fields, "next"),
+		requireField(t, other.Fields, "status"),
+	} {
+		enum := loweredEnum(t, builder, use.Value)
+		require.Equal(t, typegrammar.EnumValues, enum.Mode, use.JSONName)
+		require.Equal(t, typegrammar.String, enum.Kind, use.JSONName)
+		require.Equal(t, []string{"Ready", "Waiting"}, enumMemberNames(enum.Members), use.JSONName)
+	}
+	require.Equal(t, typegrammar.Int, loweredEnum(t, builder, requireField(t, owner.Fields, "mode").Value).Kind)
+
+	require.Equal(t, []EnumMarker{
+		{TypeName: "Status", Constant: "Ready", Underlying: "string", IsString: true, Members: []EnumMember{
+			{Constant: "Ready", Wire: `"ready"`}, {Constant: "Waiting", Wire: `"waiting"`},
+		}},
+		{TypeName: "mode", Constant: "modeFast", Underlying: "int", Members: []EnumMember{
+			{Constant: "modeFast", Wire: "1"}, {Constant: "modeSlow", Wire: "2"},
+		}},
+	}, builder.enumMarkers())
 }

@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,30 +53,20 @@ type Zoo struct {
 `
 
 // TestSealedUnionInferredFromSealingMethod is the issue #87 acceptance
-// example: a single Declare(Zoo.Schema) yields a union of Dog (value
-// variant) and Cat (pointer variant) discriminated by "type" with the
-// concrete type names as values, with no field-level declaration.
+// example and its membership-drift golden. A single Declare(Zoo.Schema)
+// yields a union of Dog (value variant) and Cat (pointer variant)
+// discriminated by "type" with the concrete type names as values, with no
+// field-level declaration; the exact variant list is then pinned across an
+// added implementation and a renamed one, so membership drift is visible in
+// review. How each variant's receiver is constructed by the codec is pinned
+// in TestRenderGoCodeUnionHelpersConstructEachVariantByReceiver.
 func TestSealedUnionInferredFromSealingMethod(t *testing.T) {
 	targetDir := writeSealedUnionFixture(t, sealedZooTypes)
-	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
-	require.Equal(t, []string{"Cat", "Dog"}, unionDiscriminators(t, targetDir, "Zoo", "resident", "type"))
-
-	generated, err := os.ReadFile(filepath.Join(targetDir, "jsonschema_gen.go"))
-	require.NoError(t, err)
-	// The codec constructs each variant according to its receiver kind.
-	require.Contains(t, string(generated), "case \"Dog\":")
-	require.Contains(t, string(generated), "case \"Cat\":")
-	require.Contains(t, string(generated), "*Cat")
-}
-
-// TestSealedUnionMembershipDrift is the membership-drift golden: the exact
-// discriminator list for a representative union is pinned, so adding a
-// qualifying implementation or renaming a variant changes the generated
-// schema and is visible in review.
-func TestSealedUnionMembershipDrift(t *testing.T) {
-	targetDir := writeSealedUnionFixture(t, sealedZooTypes)
-	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
-	require.Equal(t, []string{"Cat", "Dog"}, unionDiscriminators(t, targetDir, "Zoo", "resident", "type"))
+	union := loweredUnion(t, loadBuilder(t, targetDir), "Zoo", "resident")
+	require.Equal(t, "type", union.Discriminator)
+	require.Equal(t, []string{"Cat", "Dog"}, variantTags(union))
+	require.True(t, union.Variants[0].Pointer, "Cat seals through a pointer receiver")
+	require.False(t, union.Variants[1].Pointer, "Dog seals through a value receiver")
 
 	added := sealedZooTypes + `
 type Bird struct {
@@ -87,13 +76,11 @@ type Bird struct {
 func (Bird) isAnimal() {}
 `
 	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte("package fixture\n\n"+added), 0o644))
-	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
-	require.Equal(t, []string{"Bird", "Cat", "Dog"}, unionDiscriminators(t, targetDir, "Zoo", "resident", "type"))
+	require.Equal(t, []string{"Bird", "Cat", "Dog"}, variantTags(loweredUnion(t, loadBuilder(t, targetDir), "Zoo", "resident")))
 
 	renamed := strings.ReplaceAll(sealedZooTypes, "Dog", "Hound")
 	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "types.go"), []byte("package fixture\n\n"+renamed), 0o644))
-	require.NoError(t, Run(BuilderArgs{TargetDir: targetDir}))
-	require.Equal(t, []string{"Cat", "Hound"}, unionDiscriminators(t, targetDir, "Zoo", "resident", "type"))
+	require.Equal(t, []string{"Cat", "Hound"}, variantTags(loweredUnion(t, loadBuilder(t, targetDir), "Zoo", "resident")))
 }
 
 // TestSealedUnionDiagnosticsNameTheType covers every negative rule from
@@ -190,27 +177,4 @@ type Zoo struct { Resident Animal ` + "`json:\"resident\"`" + ` }
 			require.True(t, os.IsNotExist(statErr), "generation must not write output on a sealed-union diagnostic")
 		})
 	}
-}
-
-// unionDiscriminators reads the generated schema for owner and returns the
-// discriminator const of every anyOf option under property, in order.
-func unionDiscriminators(t *testing.T, targetDir, owner, property, discriminator string) []string {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(targetDir, "jsonschema", owner+".json"))
-	require.NoError(t, err)
-	var schema struct {
-		Properties map[string]struct {
-			AnyOf []struct {
-				Properties map[string]struct {
-					Const string `json:"const"`
-				} `json:"properties"`
-			} `json:"anyOf"`
-		} `json:"properties"`
-	}
-	require.NoError(t, json.Unmarshal(data, &schema))
-	var values []string
-	for _, option := range schema.Properties[property].AnyOf {
-		values = append(values, option.Properties[discriminator].Const)
-	}
-	return values
 }

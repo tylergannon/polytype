@@ -369,10 +369,6 @@ type SchemaBuilder struct {
 	ownerCodecs map[string]OwnerCodec
 }
 
-func (s SchemaBuilder) GeneratesJSONUnmarshalers() bool {
-	return true
-}
-
 // HasGeneratedJSONCode reports whether the configured roots require enum or
 // owner codecs. A GoJSON-only request for plain structs therefore performs no
 // write instead of emitting an otherwise empty generated file.
@@ -380,11 +376,41 @@ func (s SchemaBuilder) HasGeneratedJSONCode() bool {
 	return len(s.enumMarkers()) > 0 || len(s.sortedOwnerCodecNames()) > 0
 }
 
+// schemaTemplateData is the complete input of renderGoCode: every value the
+// generated Go file is rendered from, resolved ahead of rendering so that the
+// template consults no scan, package graph or filesystem. A test builds one
+// by hand and asserts on the rendered code without loading a package.
 type schemaTemplateData struct {
-	SchemaBuilder
-	Imports     []string
-	OwnerCodecs []OwnerCodec
-	Interfaces  []InterfaceInfo
+	// PackageName is the package clause of the generated file.
+	PackageName string
+	// BuildTag is the constraint the generated file is excluded from
+	// (//go:build !BuildTag), so it never compiles beside the declarations.
+	BuildTag string
+	// Subdir is the embedded schema directory, relative to the package.
+	Subdir string
+	// Validate emits ValidateJSON and the compiled schemas behind it.
+	Validate bool
+	// GenerateSchemas emits the embed.FS and the schema accessors; codec-only
+	// output leaves it false.
+	GenerateSchemas bool
+	// DiscriminatorProp is the package's default discriminator property, used
+	// by every union helper whose interface declared none of its own.
+	DiscriminatorProp string
+	// Imports are the import specs the codecs need beyond the standard
+	// library, already aliased and quoted.
+	Imports []string
+	// SchemaMethods are the schema entrypoints generated as methods;
+	// SchemaFreeFuncs those whose receiver type cannot carry a method.
+	SchemaMethods   []SchemaAccessor
+	SchemaFreeFuncs []SchemaAccessor
+	// Rendered marks the roots whose schema is a provider template and
+	// RenderedTypes lists them: they get RenderedSchema, not ValidateJSON.
+	Rendered      map[string]bool
+	RenderedTypes []string
+	// TypeProviders are the provider registrations RenderedSchema calls.
+	TypeProviders []TypeProviders
+	OwnerCodecs   []OwnerCodec
+	Interfaces    []InterfaceInfo
 	// EnumMarkers lists every type in the generated package that declares
 	// the func (T) enum() marker, sorted by type name. The template emits one
 	// interface assertion per type, assigning the type's first typed constant,
@@ -392,6 +418,27 @@ type schemaTemplateData struct {
 	// checked at compile time and satisfies the staticcheck unused-method
 	// check without any lint directives.
 	EnumMarkers []EnumMarker
+}
+
+// SchemaAccessor is one generated schema entrypoint: the method (or, when Go
+// forbids a method on the receiver type, the free function) MethodName that
+// returns TypeName's embedded schema.
+type SchemaAccessor struct {
+	TypeName   string
+	MethodName string
+	Pointer    bool
+}
+
+func schemaAccessors(methods []syntax.SchemaMethod) []SchemaAccessor {
+	out := make([]SchemaAccessor, 0, len(methods))
+	for _, m := range methods {
+		out = append(out, SchemaAccessor{
+			TypeName:   m.Receiver.TypeName,
+			MethodName: m.SchemaMethodName,
+			Pointer:    m.IsPointer(),
+		})
+	}
+	return out
 }
 
 // EnumMarker is one enum-marked type in the generated package together with
@@ -422,6 +469,21 @@ type EnumMarker struct {
 type EnumMember struct {
 	Constant string
 	Wire     string
+}
+
+func (schemaTemplateData) GeneratesJSONUnmarshalers() bool {
+	return true
+}
+
+// HasNonRenderedTypes reports whether at least one schema method is for a
+// non-rendered type, which is what ValidateJSON can be generated for.
+func (s schemaTemplateData) HasNonRenderedTypes() bool {
+	for _, m := range s.SchemaMethods {
+		if !s.Rendered[m.TypeName] {
+			return true
+		}
+	}
+	return false
 }
 
 func (s schemaTemplateData) HaveInterfaces() bool {
@@ -634,16 +696,6 @@ func ownerCodecCollision(owner, method string, position token.Position) error {
 		method,
 		position,
 	)
-}
-
-// HasNonRenderedTypes returns true if at least one schema method is for a non-rendered type.
-func (s SchemaBuilder) HasNonRenderedTypes() bool {
-	for _, m := range s.SchemaMethods() {
-		if !s.Rendered[m.Receiver.TypeName] {
-			return true
-		}
-	}
-	return false
 }
 
 // imports lists every package the generated codecs name: each union's
@@ -1032,12 +1084,66 @@ func enumCodecMembers(enumSet *syntax.EnumSet) (underlying string, isString bool
 	return basic.Name(), isString, members
 }
 
-func (s *SchemaBuilder) RenderGoCode() (err error) {
+// RenderGoCode writes the generated Go file for the scanned package: it
+// resolves the template data, renders it, and replaces whichever of the two
+// generated file names this run owns.
+func (s *SchemaBuilder) RenderGoCode() error {
+	result, err := renderGoCode(s.templateData())
+	if err != nil {
+		return err
+	}
+	// The file is named for what it holds. The other name is removed when an
+	// earlier run wrote it, so switching between schema and codec-only output
+	// never leaves two generated files declaring the same methods.
+	name, other := syntax.GeneratedCodecFile, syntax.GeneratedSchemaFile
+	if s.GenerateSchemas {
+		name, other = syntax.GeneratedSchemaFile, syntax.GeneratedCodecFile
+	}
+	otherPath := filepath.Join(s.Scan.Pkg.Dir, other)
+	stale, err := ownedGeneratedFile(otherPath)
+	if err != nil {
+		return err
+	}
+	if err = os.WriteFile(filepath.Join(s.Scan.Pkg.Dir, name), result, 0644); err != nil {
+		return err
+	}
+	if stale {
+		return os.Remove(otherPath)
+	}
+	return nil
+}
+
+// renderGoCode renders and formats the generated Go file from data alone. It
+// is a pure function of its argument, consulting no scan, package graph or
+// filesystem, so a test asserts on the code rendered from a value it built.
+func renderGoCode(data schemaTemplateData) ([]byte, error) {
+	rendered, err := RenderTemplate(schemasTemplate, data)
+	if err != nil {
+		return nil, err
+	}
+	return FormatCodeWithGoimports(rendered.Bytes())
+}
+
+// templateData resolves everything the generated file is rendered from. It
+// is the only step of the rendering path that reads the scan: for the
+// package clause, the import aliases, the schema entrypoints and the enum
+// markers of the generated package.
+func (s *SchemaBuilder) templateData() schemaTemplateData {
 	importMap := s.imports()
 	templateData := schemaTemplateData{
-		SchemaBuilder: *s,
-		Imports:       importMap.ImportStatements(),
-		EnumMarkers:   s.enumMarkers(),
+		PackageName:       s.Scan.Pkg.Name,
+		BuildTag:          s.BuildTag,
+		Subdir:            s.Subdir,
+		Validate:          s.Validate,
+		GenerateSchemas:   s.GenerateSchemas,
+		DiscriminatorProp: s.DiscriminatorProp,
+		Imports:           importMap.ImportStatements(),
+		SchemaMethods:     schemaAccessors(s.SchemaMethods()),
+		SchemaFreeFuncs:   schemaAccessors(s.SchemaFreeFuncs()),
+		Rendered:          s.Rendered,
+		RenderedTypes:     s.RenderedTypes,
+		TypeProviders:     s.TypeProviders,
+		EnumMarkers:       s.enumMarkers(),
 	}
 	generatedInterfaceHelpers := make(map[string]bool)
 
@@ -1087,33 +1193,7 @@ func (s *SchemaBuilder) RenderGoCode() (err error) {
 			})
 		}
 	}
-	data, err := RenderTemplate(schemasTemplate, templateData)
-	if err != nil {
-		return err
-	}
-	result, err := FormatCodeWithGoimports(data.Bytes())
-	if err != nil {
-		return err
-	}
-	// The file is named for what it holds. The other name is removed when an
-	// earlier run wrote it, so switching between schema and codec-only output
-	// never leaves two generated files declaring the same methods.
-	name, other := syntax.GeneratedCodecFile, syntax.GeneratedSchemaFile
-	if s.GenerateSchemas {
-		name, other = syntax.GeneratedSchemaFile, syntax.GeneratedCodecFile
-	}
-	otherPath := filepath.Join(s.Scan.Pkg.Dir, other)
-	stale, err := ownedGeneratedFile(otherPath)
-	if err != nil {
-		return err
-	}
-	if err = os.WriteFile(filepath.Join(s.Scan.Pkg.Dir, name), result, 0644); err != nil {
-		return err
-	}
-	if stale {
-		return os.Remove(otherPath)
-	}
-	return nil
+	return templateData
 }
 
 // generatedGoHeader opens every Go file this generator writes.
