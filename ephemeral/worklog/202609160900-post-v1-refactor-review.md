@@ -29,3 +29,28 @@
   has no golden. Proven by deleting two goldens in a scratch copy: TestBasic fails
   naming both artifacts. `TestArtifactsWithoutGoldens` covers the classifier.
 - `go test ./...` and `just lint` clean.
+
+## Fixing the filed regressions (one PR)
+- decision: #150 and #149 share one change (explicit ref checked first; the
+  static value behind a Provided field is lowered speculatively and used by
+  codec planning), so they landed in one commit.
+- decision: #148 is enforced inside that speculation: failures roll back,
+  except sealed-union misuse (`sealedUnionMisuse`), which still refuses.
+- decision: #151 refuses only blank `var _ =` markers in ordinary files; named
+  values stay legal executable configuration (TestOrdinaryFileIsNotReadAsDeclarations).
+  A "no declarations at all" error was not added.
+- correction: first #152 attempt used blank imports; the cache stayed stale
+  because the linker drops unreferenced code, so the binary hash is unchanged.
+  Reading dependency sources from the test process (testlog-tracked) works.
+- friction: embedding a foreign type that has generated codecs is refused by a
+  check that reads the dependency's generated files from disk, so its outcome
+  in TestBasic depends on parallel generation order -> crosspkg_union embeds a
+  codec-free foreign struct instead. Worth a follow-up if that shape matters.
+- friction: no golden-update flag; regenerated goldens by running the worktree
+  CLI with TestBasic's flags on a scratch copy of the fixture module.
+- friction: zsh does not word-split `$VAR` file lists; a revert-and-test
+  command failed before reverting (harmless), and a broad `git checkout --
+  devalue/` cleanup reverted an intended edit (re-applied).
+- proof: every fix was checked by reverting the source change and watching
+  the new tests fail. Final: `go test ./...`, `just lint`, `just build-tagged`,
+  `go generate ./...` with a clean tree.

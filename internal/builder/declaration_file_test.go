@@ -113,7 +113,7 @@ func TestOrdinaryFileBlankDeclarationIsRefusedBeforeWriting(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dir := writeMultiFileFixture(t, map[string]string{
-				"types.go": recursiveTypes,
+				"types.go":  recursiveTypes,
 				"config.go": "package fixture\n\nimport (\n\t\"encoding/json\"\n\n\t\"github.com/tylergannon/polytype\"\n)\n\nvar _ json.RawMessage\n\n" + test.decls,
 				"schema.go": declarationFile("var _ = polytype.Declare[Tree]()\n"),
 			})
