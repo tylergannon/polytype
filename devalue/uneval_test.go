@@ -587,6 +587,52 @@ func TestUnevalErrors(t *testing.T) {
 			message: "Cannot stringify arbitrary non-POJOs",
 			path:    ".object.invalid",
 		},
+		{
+			name:    "function value",
+			value:   NewObject("fn", func() {}),
+			message: "Cannot stringify arbitrary non-POJOs",
+			path:    ".fn",
+		},
+		{
+			name:    "unhashable interface field",
+			value:   NewObject("value", struct{ Data any }{Data: []any{1}}),
+			message: "Cannot stringify arbitrary non-POJOs",
+			path:    ".value",
+		},
+		{
+			name:    "typed nil",
+			value:   NewObject("value", (*Object)(nil)),
+			message: "Cannot stringify arbitrary non-POJOs",
+			path:    ".value",
+		},
+		{
+			name:    "invalid Temporal kind",
+			value:   NewObject("value", Temporal{Kind: "alert(1)//", Value: "x"}),
+			message: "Cannot stringify arbitrary non-POJOs",
+			path:    ".value",
+		},
+		{
+			name:    "non-canonical BigInt",
+			value:   NewObject("value", BigInt("01")),
+			message: "Cannot stringify arbitrary non-POJOs",
+			path:    ".value",
+		},
+		{
+			name:    "invalid RegExp flags",
+			value:   NewObject("value", RegExp{Source: "a", Flags: "uv"}),
+			message: "Cannot stringify arbitrary non-POJOs",
+			path:    ".value",
+		},
+		{
+			name: "invalid typed array kind",
+			value: NewObject("value", &TypedArray{
+				Kind:       "Bogus;alert(1)",
+				Buffer:     ArrayBuffer{1},
+				ByteLength: 1,
+			}),
+			message: "Cannot stringify arbitrary non-POJOs",
+			path:    ".value",
+		},
 	}
 
 	for _, tt := range tests {
@@ -606,6 +652,45 @@ func TestUnevalErrors(t *testing.T) {
 				t.Errorf("path: got %q, want %q", de.Path, tt.path)
 			}
 		})
+	}
+}
+
+func TestUnevalRejectsExecutableFlatMetadata(t *testing.T) {
+	tests := []struct {
+		name string
+		flat string
+	}{
+		{"RegExp flags", `[["RegExp","a","\"),(globalThis.pwned=1),(\""]]`},
+		{"BigInt digits", `[["BigInt","(globalThis.pwned=2),1"]]`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			value, err := Parse(tt.flat, nil)
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if _, err := Uneval(value); err == nil {
+				t.Fatal("Uneval accepted executable type metadata")
+			}
+		})
+	}
+}
+
+func TestUnevalReplacerSeesUnhashableValue(t *testing.T) {
+	type response struct{ Data any }
+	replacer := func(v any, _ func(any) (string, error)) (string, bool, error) {
+		if _, ok := v.(response); ok {
+			return "REPLACED", true, nil
+		}
+		return "", false, nil
+	}
+
+	got, err := UnevalWith(NewObject("r", response{Data: []any{1}}), replacer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != `{r:REPLACED}` {
+		t.Fatalf("got %s, want {r:REPLACED}", got)
 	}
 }
 

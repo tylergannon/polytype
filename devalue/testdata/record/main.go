@@ -81,7 +81,20 @@ func run() error {
 	}
 	write("shared_reference", `(() => { const value = {"x": 1}; return [value, value] })()`)
 	write("self_cycle", `(() => { const value = {}; value.self = value; return value })()`)
-	write("sparse_array", `Object.assign(Array(10), {9: "x"})`)
+	write("sparse_array", `Object.assign(Array(40), {39: "x"})`)
+	write("special_undefined", `undefined`)
+	write("special_nan", `NaN`)
+	write("special_infinity", `Infinity`)
+	write("special_negative_infinity", `-Infinity`)
+	write("special_negative_zero", `-0`)
+	write("special_bigint", `12345678901234567890n`)
+	write("special_date", `new Date(1000000000000)`)
+	write("special_regexp", `new RegExp("a+b", "gi")`)
+	write("special_map", `new Map([["a", 1], ["b", 2]])`)
+	write("special_set", `new Set([1, 2, 3])`)
+	write("special_boxed", `Object(42)`)
+	write("special_array_buffer", `new Uint8Array([1, 2, 3]).buffer`)
+	write("special_null_proto", `Object.assign(Object.create(null), {"x": 1})`)
 	for i := range nested {
 		write(fmt.Sprintf("nested_%03d", i), value(random, maxDepth))
 	}

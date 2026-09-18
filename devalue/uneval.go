@@ -11,8 +11,9 @@ import (
 // JavaScript for a value before the built-in type handling sees it.
 //
 // It is called once for each non-primitive value, on first encounter. When it
-// returns ok, the string it returns is spliced into the output verbatim and
-// the value's contents are not walked. `uneval` is a nested emitter for
+// returns ok, the trusted JavaScript string it returns is spliced into the
+// output verbatim and the value's contents are not walked. Replacer is not a
+// flat-format [Reducer]. `uneval` is a nested emitter for
 // producing the expression of a sub-value — SvelteKit's transport uses it to
 // write `app.decode("name", <uneval(encoded)>)`.
 //
@@ -135,6 +136,9 @@ func (u *unevaler) errorf(msg string) error {
 
 // walk counts references and runs the replacer, mirroring devalue's `walk`.
 func (u *unevaler) walk(v any) error {
+	if bigint, ok := v.(BigInt); ok && !validBigInt(bigint) {
+		return u.errorf("Cannot stringify arbitrary non-POJOs")
+	}
 	if isPrimitive(v) {
 		return nil
 	}
@@ -184,11 +188,26 @@ func (u *unevaler) walk(v any) error {
 	}
 
 	switch t := v.(type) {
-	case Date, RegExp, URL, URLSearchParams, Temporal, ArrayBuffer, *Boxed:
+	case RegExp:
+		if !validRegExpFlags(t.Flags) {
+			return u.errorf("Cannot stringify arbitrary non-POJOs")
+		}
+		return nil
+
+	case Temporal:
+		if !validTemporalKind(t.Kind) {
+			return u.errorf("Cannot stringify arbitrary non-POJOs")
+		}
+		return nil
+
+	case Date, URL, URLSearchParams, ArrayBuffer, *Boxed:
 		// Leaves: devalue serializes these whole and never descends.
 		return nil
 
 	case *TypedArray:
+		if t.Kind.BytesPerElement() == 0 {
+			return u.errorf("Cannot stringify arbitrary non-POJOs")
+		}
 		return u.walk(t.Buffer)
 
 	case *DataView:

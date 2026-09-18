@@ -662,8 +662,10 @@ and `*Boxed`. `Uneval` additionally supports typed arrays, `DataView`, `URL`,
 `URLSearchParams`, and `Temporal`, while those values remain unsupported by
 the flat format. `StringifyWith(v, reducers)` and the `revivers` argument to
 `Parse` are flat-format custom-type hooks. `UnevalWith(v, replacer)` accepts a
-separate hook whose returned string is trusted JavaScript. Output is
-byte-identical to devalue 5.9 for every supported shape.
+separate hook whose returned string is trusted JavaScript. Output is checked
+against devalue 5.9 for supported shapes. Equal value-modeled objects such as
+`Date` cannot express distinct JavaScript identity in Go, and zero-length
+slices cannot express shared identity.
 
 ### Typed codecs: `devalue/codegen`
 

@@ -10,8 +10,8 @@ the CLI does not drive them.
 
 devalue is the structured-value format SvelteKit uses for `load` data and
 remote functions. `github.com/tylergannon/polytype/devalue` ports its flat
-`stringify`/`parse` pair and expression-producing `uneval`, and is
-byte-identical to devalue 5.9 for every supported shape.
+`stringify`/`parse` pair and expression-producing `uneval`; supported shapes
+are checked against devalue 5.9.
 
 ```go
 import "github.com/tylergannon/polytype/devalue"
@@ -37,6 +37,9 @@ js, err := devalue.Uneval(devalue.NewObject("name", "Ada"))
   values remain unsupported by the flat format.
 - `UnevalWith(v, replacer)` accepts a separate custom hook whose result is
   trusted JavaScript and inserted verbatim.
+- Equal value-modeled objects such as `Date` cannot express distinct
+  JavaScript identity in Go, and zero-length slices cannot express shared
+  identity.
 
 ## Typed flat-format codecs — `devalue/codegen`
 

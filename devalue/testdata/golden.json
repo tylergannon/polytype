@@ -216,8 +216,73 @@
   },
   {
     "name": "sparse_array",
-    "devalue": "[[-7,10,9,1],\"x\"]",
-    "uneval": "[,,,,,,,,,\"x\"]"
+    "devalue": "[[-7,40,39,1],\"x\"]",
+    "uneval": "Object.assign(Array(40),{39:\"x\"})"
+  },
+  {
+    "name": "special_undefined",
+    "devalue": "-1",
+    "uneval": "void 0"
+  },
+  {
+    "name": "special_nan",
+    "devalue": "-3",
+    "uneval": "NaN"
+  },
+  {
+    "name": "special_infinity",
+    "devalue": "-4",
+    "uneval": "Infinity"
+  },
+  {
+    "name": "special_negative_infinity",
+    "devalue": "-5",
+    "uneval": "-Infinity"
+  },
+  {
+    "name": "special_negative_zero",
+    "devalue": "-6",
+    "uneval": "-0"
+  },
+  {
+    "name": "special_bigint",
+    "devalue": "[[\"BigInt\",\"12345678901234567890\"]]",
+    "uneval": "12345678901234567890n"
+  },
+  {
+    "name": "special_date",
+    "devalue": "[[\"Date\",\"2001-09-09T01:46:40.000Z\"]]",
+    "uneval": "new Date(1000000000000)"
+  },
+  {
+    "name": "special_regexp",
+    "devalue": "[[\"RegExp\",\"a+b\",\"gi\"]]",
+    "uneval": "new RegExp(\"a+b\",\"gi\")"
+  },
+  {
+    "name": "special_map",
+    "devalue": "[[\"Map\",1,2,3,4],\"a\",1,\"b\",2]",
+    "uneval": "new Map([[\"a\",1],[\"b\",2]])"
+  },
+  {
+    "name": "special_set",
+    "devalue": "[[\"Set\",1,2,3],1,2,3]",
+    "uneval": "new Set([1,2,3])"
+  },
+  {
+    "name": "special_boxed",
+    "devalue": "[[\"Object\",1],42]",
+    "uneval": "Object(42)"
+  },
+  {
+    "name": "special_array_buffer",
+    "devalue": "[[\"ArrayBuffer\",\"AQID\"]]",
+    "uneval": "new Uint8Array([1,2,3]).buffer"
+  },
+  {
+    "name": "special_null_proto",
+    "devalue": "[[\"null\",\"x\",1],1]",
+    "uneval": "{x:1,__proto__:null}"
   },
   {
     "name": "nested_000",

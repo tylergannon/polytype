@@ -5,7 +5,10 @@
 // and [UnevalWith] emit JavaScript expressions and preserve shared references
 // and cycles. The value model is shared, but support is serializer-specific:
 // typed arrays, DataView, URL, URLSearchParams and Temporal are available to
-// Uneval and remain unsupported by the flat format.
+// Uneval and remain unsupported by the flat format. Generated typed codecs
+// target the flat format. Go value types cannot preserve distinct JavaScript
+// identity for equal Date, RegExp, URL, URLSearchParams, or Temporal values, or
+// shared identity for zero-length slices.
 package devalue
 
 import (

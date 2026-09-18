@@ -40,7 +40,9 @@ js, err := devalue.Uneval(devalue.NewObject("name", "Ada"))
   values remain unsupported by the flat format.
 - `UnevalWith(v, replacer)` accepts a separate custom hook. Its result is
   trusted JavaScript and is inserted verbatim.
-- Output is byte-identical to devalue 5.9 for every supported shape.
+- Output is checked against devalue 5.9 for supported shapes. Equal
+  value-modeled objects such as `Date` cannot express distinct JavaScript
+  identity in Go, and zero-length slices cannot express shared identity.
 
 ## 2. Generate typed flat-format codecs: `devalue/codegen`
 

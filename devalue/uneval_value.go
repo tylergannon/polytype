@@ -6,6 +6,8 @@ import (
 	"reflect"
 )
 
+// URL is a JavaScript URL, held as the serialized href returned by
+// URL.prototype.toString. The caller owns WHATWG URL normalization.
 type URL string
 
 // URLSearchParams is a JavaScript URLSearchParams, held as its serialized
@@ -232,15 +234,7 @@ func isHole(v any) bool {
 	return ok
 }
 
-// ptrKey stands in for a JavaScript object reference. n distinguishes buffers
-// of different length that happen to start at the same address.
-type referencePtrKey struct {
-	kind string
-	p    uintptr
-	n    int
-}
-
-// dateKey and the other value keys below stand in for reference identity for
+// referenceDateKey and the other value keys below stand in for reference identity for
 // the types this package models as Go values rather than pointers. Two Go
 // values that compare equal serialize identically, so treating them as one
 // object is safe for hydration; the only visible difference from JavaScript is
@@ -256,6 +250,16 @@ type referenceDateKey int64
 // hydrated client. Such a value has no children and cannot take part in a
 // cycle, so nothing is lost by not tracking it.
 func refKey(v any) (any, bool) {
+	rv := reflect.ValueOf(v)
+	if rv.IsValid() {
+		switch rv.Kind() {
+		case reflect.Pointer, reflect.UnsafePointer, reflect.Chan, reflect.Func, reflect.Map, reflect.Slice:
+			if rv.IsNil() {
+				return nil, false
+			}
+		}
+	}
+
 	switch t := v.(type) {
 	case *Object:
 		return t, true
@@ -283,39 +287,37 @@ func refKey(v any) (any, bool) {
 		if len(t) == 0 {
 			return nil, false
 		}
-		return referencePtrKey{"array", reflect.ValueOf(t).Pointer(), len(t)}, true
+		return ptrKey{"array", reflect.ValueOf(t).Pointer(), len(t)}, true
 	case ArrayBuffer:
 		if len(t) == 0 {
 			return nil, false
 		}
-		return referencePtrKey{"buffer", reflect.ValueOf(t).Pointer(), len(t)}, true
+		return ptrKey{"buffer", reflect.ValueOf(t).Pointer(), len(t)}, true
 	case map[string]any:
 		if len(t) == 0 {
 			return nil, false
 		}
-		return referencePtrKey{"map", reflect.ValueOf(t).Pointer(), -1}, true
+		return ptrKey{"map", reflect.ValueOf(t).Pointer(), -1}, true
 	}
 
 	// Anything else is a type this package does not model, which is still a
 	// JavaScript object as far as the replacer is concerned: it has to be
-	// counted and offered to the replacer before it can be rejected. A pointer
-	// (or map/slice/chan/func) keys on its address; any other comparable value
-	// keys on itself, which is how this package already treats Date and RegExp.
-	rv := reflect.ValueOf(v)
+	// counted and offered to the replacer before it can be rejected. Pointers,
+	// maps, slices and channels key on identity; any other comparable value keys
+	// on itself, which is how this package already treats Date and RegExp.
 	switch rv.Kind() {
-	case reflect.Pointer, reflect.UnsafePointer, reflect.Chan, reflect.Func:
-		if rv.IsNil() {
-			return nil, false
-		}
+	case reflect.Pointer, reflect.UnsafePointer, reflect.Chan:
 		// An interface holding a pointer compares by type and address.
 		return v, true
+	case reflect.Func:
+		return nil, false
 	case reflect.Map, reflect.Slice:
 		if rv.Len() == 0 {
 			return nil, false
 		}
-		return referencePtrKey{rv.Type().String(), rv.Pointer(), rv.Len()}, true
+		return ptrKey{rv.Type().String(), rv.Pointer(), rv.Len()}, true
 	}
-	if rv.IsValid() && rv.Type().Comparable() {
+	if rv.IsValid() && rv.Comparable() {
 		return v, true
 	}
 	return nil, false

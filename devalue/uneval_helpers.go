@@ -1,5 +1,54 @@
 package devalue
 
+func validBigInt(v BigInt) bool {
+	s := string(v)
+	if s == "" {
+		return false
+	}
+	if s[0] == '-' {
+		s = s[1:]
+		if s == "" {
+			return false
+		}
+	}
+	if len(s) > 1 && s[0] == '0' {
+		return false
+	}
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func validRegExpFlags(flags string) bool {
+	seen := [256]bool{}
+	for i := range len(flags) {
+		flag := flags[i]
+		switch flag {
+		case 'd', 'g', 'i', 'm', 's', 'u', 'v', 'y':
+		default:
+			return false
+		}
+		if seen[flag] {
+			return false
+		}
+		seen[flag] = true
+	}
+	return !seen['u'] || !seen['v']
+}
+
+func validTemporalKind(kind TemporalKind) bool {
+	switch kind {
+	case TemporalDuration, TemporalInstant, TemporalPlainDate, TemporalPlainTime,
+		TemporalPlainDateTime, TemporalPlainMonthDay, TemporalPlainYearMonth,
+		TemporalZonedDateTime:
+		return true
+	}
+	return false
+}
+
 // isIdentifier is devalue's /^[_$a-zA-Z][_$a-zA-Z0-9]*$/. It is written out
 // rather than compiled as a regexp because it runs once per property.
 func isIdentifier(s string) bool {
