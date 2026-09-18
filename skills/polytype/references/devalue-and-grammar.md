@@ -10,8 +10,8 @@ the CLI does not drive them.
 
 devalue is the structured-value format SvelteKit uses for `load` data and
 remote functions. `github.com/tylergannon/polytype/devalue` ports its flat
-`stringify`/`parse` pair and is byte-identical to devalue 5.9 for every shape
-it implements.
+`stringify`/`parse` pair and expression-producing `uneval`, and is
+byte-identical to devalue 5.9 for every supported shape.
 
 ```go
 import "github.com/tylergannon/polytype/devalue"
@@ -20,6 +20,9 @@ s, err := devalue.Stringify(devalue.NewObject("name", "Ada", "tags", []any{"a", 
 // [{"name":1,"tags":2},"Ada",[3,4],"a","b"]
 
 v, err := devalue.Parse(s, nil) // *devalue.Object; numbers float64, null nil
+
+js, err := devalue.Uneval(devalue.NewObject("name", "Ada"))
+// {name:"Ada"}
 ```
 
 - Value model: `*devalue.Object` (ordered properties; `Get`, `Set`, `Keys`;
@@ -27,12 +30,15 @@ v, err := devalue.Parse(s, nil) // *devalue.Object; numbers float64, null nil
   `string`, Go numeric kinds (float64 after parse), `bool`, `nil`,
   `devalue.Undefined`, `devalue.Hole`, and the tagged forms `Date`, `*Map`,
   `*Set`, `BigInt`, `RegExp`, `ArrayBuffer`, `*Boxed`.
-- `StringifyWith(v, []Reducer)` and `Parse(s, revivers)` are the custom-type
-  hooks, tried in order before the built-ins.
-- Typed arrays, `URL`, `URLSearchParams` and `Temporal` are not implemented;
-  a payload containing one parses to an "Unknown type" error.
+- `StringifyWith(v, []Reducer)` and `Parse(s, revivers)` are the flat format's
+  custom-type hooks, tried in order before the built-ins.
+- `Uneval` preserves shared references and cycles and additionally supports
+  typed arrays, `DataView`, `URL`, `URLSearchParams`, and `Temporal`. Those
+  values remain unsupported by the flat format.
+- `UnevalWith(v, replacer)` accepts a separate custom hook whose result is
+  trusted JavaScript and inserted verbatim.
 
-## Typed codecs — `devalue/codegen`
+## Typed flat-format codecs — `devalue/codegen`
 
 Generation is a small Go program you own. Run it from a `//go:generate`
 directive in the package that will hold the codecs:

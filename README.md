@@ -634,9 +634,9 @@ the browser.
 ## 🧬 Go ↔ JavaScript transport with devalue
 
 [devalue](https://github.com/sveltejs/devalue) is the structured-value wire
-format SvelteKit uses for `load` data and remote functions. polytype ships a
-Go port of its flat `stringify`/`parse` pair and a code generator that emits
-strict, typed Go codecs for your types on that wire, so a Go service can
+format SvelteKit uses for `load` data and remote functions. polytype ships Go
+ports of its flat `stringify`/`parse` pair and expression-producing `uneval`,
+plus a code generator that emits strict, typed Go codecs for the flat wire. A Go service can
 produce exactly what `devalue.parse` expects in the browser and consume what
 `devalue.stringify` sends back.
 
@@ -649,16 +649,21 @@ s, err := devalue.Stringify(devalue.NewObject("name", "Ada", "tags", []any{"a", 
 // [{"name":1,"tags":2},"Ada",[3,4],"a","b"]
 
 v, err := devalue.Parse(s, nil)   // *devalue.Object; numbers are float64, null is nil
+
+js, err := devalue.Uneval(devalue.NewObject("name", "Ada"))
+// {name:"Ada"}
 ```
 
 The value model is `*devalue.Object` (ordered properties; `map[string]any` is
 accepted on encode with sorted keys), `[]any`, `string`, `float64` and the
 other Go numeric kinds, `bool`, `nil`, `devalue.Undefined`, `devalue.Hole`,
 and the tagged forms `Date`, `*Map`, `*Set`, `BigInt`, `RegExp`, `ArrayBuffer`
-and `*Boxed`. `StringifyWith(v, reducers)` and the `revivers` argument to
-`Parse` are devalue's custom-type hooks. Output is byte-identical to devalue
-5.9 for every shape the port implements; typed arrays, `URL` and `Temporal`
-values are not implemented and parse to an error.
+and `*Boxed`. `Uneval` additionally supports typed arrays, `DataView`, `URL`,
+`URLSearchParams`, and `Temporal`, while those values remain unsupported by
+the flat format. `StringifyWith(v, reducers)` and the `revivers` argument to
+`Parse` are flat-format custom-type hooks. `UnevalWith(v, replacer)` accepts a
+separate hook whose returned string is trusted JavaScript. Output is
+byte-identical to devalue 5.9 for every supported shape.
 
 ### Typed codecs: `devalue/codegen`
 

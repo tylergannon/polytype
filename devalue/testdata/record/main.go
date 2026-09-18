@@ -79,6 +79,9 @@ func run() error {
 	} {
 		write(fmt.Sprintf("shape_%02d", i), expr)
 	}
+	write("shared_reference", `(() => { const value = {"x": 1}; return [value, value] })()`)
+	write("self_cycle", `(() => { const value = {}; value.self = value; return value })()`)
+	write("sparse_array", `Object.assign(Array(10), {9: "x"})`)
 	for i := range nested {
 		write(fmt.Sprintf("nested_%03d", i), value(random, maxDepth))
 	}

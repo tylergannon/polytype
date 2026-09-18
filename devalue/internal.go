@@ -34,8 +34,9 @@ const maxParsedArrayLen = 1 << 21
 type nullKey struct{}
 
 type ptrKey struct {
-	p uintptr
-	n int
+	kind string
+	p    uintptr
+	n    int
 }
 
 type dateKey string
@@ -55,6 +56,12 @@ func identityKey(v any) (any, bool) {
 		return t, true
 	case RegExp:
 		return t, true
+	case URL:
+		return t, true
+	case URLSearchParams:
+		return t, true
+	case Temporal:
+		return t, true
 	case Date:
 		return dateKey(isoString(t)), true
 	case *Object:
@@ -65,21 +72,25 @@ func identityKey(v any) (any, bool) {
 		return t, true
 	case *Boxed:
 		return t, true
+	case *TypedArray:
+		return t, true
+	case *DataView:
+		return t, true
 	case []any:
 		if len(t) == 0 {
 			return nil, false
 		}
-		return ptrKey{reflect.ValueOf(t).Pointer(), len(t)}, true
+		return ptrKey{"array", reflect.ValueOf(t).Pointer(), len(t)}, true
 	case ArrayBuffer:
 		if len(t) == 0 {
 			return nil, false
 		}
-		return ptrKey{reflect.ValueOf(t).Pointer(), len(t)}, true
+		return ptrKey{"buffer", reflect.ValueOf(t).Pointer(), len(t)}, true
 	case map[string]any:
 		if len(t) == 0 {
 			return nil, false
 		}
-		return ptrKey{reflect.ValueOf(t).Pointer(), -1}, true
+		return ptrKey{"map", reflect.ValueOf(t).Pointer(), -1}, true
 	}
 
 	if f, ok := asFloat(v); ok {
