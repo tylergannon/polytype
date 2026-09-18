@@ -4,9 +4,9 @@ description: Generate strict Go codecs for the devalue wire format SvelteKit use
 ---
 
 [devalue](https://github.com/sveltejs/devalue) is the structured-value wire
-format SvelteKit uses for `load` data and remote functions. polytype ships a
-Go port of its flat `stringify`/`parse` pair and a generator that emits typed
-Go codecs for your types on that wire. A Go service can then produce exactly
+format SvelteKit uses for `load` data and remote functions. polytype ships Go
+ports of its flat `stringify`/`parse` pair and expression-producing `uneval`,
+plus a generator that emits typed Go codecs for the flat wire. A Go service can then produce exactly
 what `devalue.parse` expects in the browser and consume what
 `devalue.stringify` sends back, with every value checked against the type
 grammar on the way in.
@@ -23,6 +23,9 @@ s, err := devalue.Stringify(devalue.NewObject("name", "Ada", "tags", []any{"a", 
 // [{"name":1,"tags":2},"Ada",[3,4],"a","b"]
 
 v, err := devalue.Parse(s, nil) // *devalue.Object; numbers are float64, null is nil
+
+js, err := devalue.Uneval(devalue.NewObject("name", "Ada"))
+// {name:"Ada"}
 ```
 
 - Value model: `*devalue.Object` with ordered properties (`Get`, `Set`,
@@ -30,13 +33,18 @@ v, err := devalue.Parse(s, nil) // *devalue.Object; numbers are float64, null is
   `[]any`, `string`, the Go numeric kinds (float64 after parse), `bool`,
   `nil`, `devalue.Undefined`, `devalue.Hole`, and the tagged forms `Date`,
   `*Map`, `*Set`, `BigInt`, `RegExp`, `ArrayBuffer`, `*Boxed`.
-- `StringifyWith(v, reducers)` and the `revivers` argument to `Parse` are
-  devalue's custom-type hooks, tried in order before the built-ins.
-- Output is byte-identical to devalue 5.9 for every shape the port
-  implements. Typed arrays, `URL`, `URLSearchParams` and `Temporal` are not
-  implemented and parse to an error.
+- `StringifyWith(v, reducers)` and the `revivers` argument to `Parse` are the
+  flat format's custom-type hooks, tried in order before the built-ins.
+- `Uneval` preserves shared references and cycles. It additionally supports
+  typed arrays, `DataView`, `URL`, `URLSearchParams`, and `Temporal`; those
+  values remain unsupported by the flat format.
+- `UnevalWith(v, replacer)` accepts a separate custom hook. Its result is
+  trusted JavaScript and is inserted verbatim.
+- Output is checked against devalue 5.9 for supported shapes. Equal
+  value-modeled objects such as `Date` cannot express distinct JavaScript
+  identity in Go, and zero-length slices cannot express shared identity.
 
-## 2. Generate typed codecs: `devalue/codegen`
+## 2. Generate typed flat-format codecs: `devalue/codegen`
 
 Put a generator program next to the package that will hold the codecs and
 run it from a `//go:generate` directive:

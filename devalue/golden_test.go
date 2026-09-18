@@ -13,6 +13,30 @@ import (
 type goldenCase struct {
 	Name    string `json:"name"`
 	Devalue string `json:"devalue"`
+	Uneval  string `json:"uneval"`
+}
+
+// TestUnevalGolden compares Polytype's expression serializer with the pinned
+// devalue implementation for every value shared with the flat format.
+func TestUnevalGolden(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range goldenCases(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			t.Parallel()
+			value, err := devalue.Parse(c.Devalue, nil)
+			if err != nil {
+				t.Fatalf("parse %s: %v", c.Devalue, err)
+			}
+			out, err := devalue.Uneval(value)
+			if err != nil {
+				t.Fatalf("uneval: %v", err)
+			}
+			if out != c.Uneval {
+				t.Fatalf("uneval differs\n want: %s\n  got: %s", c.Uneval, out)
+			}
+		})
+	}
 }
 
 func goldenCases(t testing.TB) []goldenCase {

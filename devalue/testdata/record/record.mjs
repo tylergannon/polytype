@@ -3,7 +3,7 @@
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { stringify } from "devalue";
+import { stringify, uneval } from "devalue";
 
 import { values } from "./values.mjs";
 
@@ -12,7 +12,7 @@ const seen = new Set();
 const entries = values.map(([name, value]) => {
   if (seen.has(name)) throw new Error(`duplicate case name ${name}`);
   seen.add(name);
-  return { name, devalue: stringify(value) };
+  return { name, devalue: stringify(value), uneval: uneval(value) };
 });
 writeFileSync(join(here, "..", "golden.json"), JSON.stringify(entries, null, 2) + "\n");
 process.stdout.write(`wrote ${entries.length} cases\n`);

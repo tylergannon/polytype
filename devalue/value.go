@@ -1,12 +1,14 @@
-// Package devalue implements the `devalue` wire format for structured values.
+// Package devalue implements devalue's two serialization forms for structured
+// JavaScript values.
 //
-// It is a port of the JavaScript `devalue` package's flat "stringify"/"parse"
-// pair (the JSON-array form, not `uneval`), scoped to the value shapes that
-// travel over that format in practice: plain and null-prototype objects,
-// arrays with holes, strings, numbers, booleans, null, undefined, Date, Map,
-// Set, BigInt, RegExp, ArrayBuffer and boxed primitives. Typed arrays,
-// DataView, URL, URLSearchParams and Temporal values are deliberately not
-// implemented; a payload containing one parses to an "Unknown type" error.
+// [Stringify] and [Parse] use the flat JSON-array transport format. [Uneval]
+// and [UnevalWith] emit JavaScript expressions and preserve shared references
+// and cycles. The value model is shared, but support is serializer-specific:
+// typed arrays, DataView, URL, URLSearchParams and Temporal are available to
+// Uneval and remain unsupported by the flat format. Generated typed codecs
+// target the flat format. Go value types cannot preserve distinct JavaScript
+// identity for equal Date, RegExp, URL, URLSearchParams, or Temporal values, or
+// shared identity for zero-length slices.
 package devalue
 
 import (

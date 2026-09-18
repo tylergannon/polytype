@@ -71,7 +71,7 @@ Task runner is `just` (justfile), not `make`.
 - **`polytype/`** — CLI entry point (`gen`, the only subcommand)
 - **`typegrammar/`** — The closed, validated type grammar every backend consumes (`Scalar`, `Time`, `Enum`, `Object`, `Pointer`, `Slice`, `Array`, `Ref`; field values `Required`/`Optional`/`Nullable`/`Union`/`OptionalUnion`/`UnionSlice`). `Validate` is the admission boundary
 - **`grammar/`** — Public lowering entry point: `Load(dir)`, `(*Package).Types()`, `(*Package).Lower(roots)`; thin bridge over `builder.SchemaBuilder.LowerRoots`
-- **`devalue/`** — Go port of the devalue flat `stringify`/`parse` runtime; goldens in `testdata/golden.json` recorded from devalue 5.9 by `testdata/record`
+- **`devalue/`** — Go port of devalue's flat `stringify`/`parse` runtime and expression-producing `uneval`; the shared value model has serializer-specific support. Goldens in `testdata/golden.json` are recorded from devalue 5.9 by `testdata/record`
 - **`devalue/codegen/`** — Emits strict Go encoders/decoders (`EncodeT`/`DecodeT`/`StringifyT`/`ParseT`) for a lowered definition graph; compile-and-run fixture in `testdata/fixture`
 - **`typescript/`** — Public TypeScript declaration backend over `typegrammar`; `Generate` returns the files plus the emitted identifier per definition. The marker-free fixture in `testdata/fixture` proves the library path matches `--typescript` byte for byte
 - **`internal/syntax/`** — AST parsing, package loading (uses `golang.org/x/tools/go/packages` with `jsonschema` build tag), type scanning, comment extraction

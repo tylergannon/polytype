@@ -1,8 +1,8 @@
 # devalue goldens
 
 `golden.json` records what the pinned JavaScript `devalue` (see the repository
-root `package.json`) produces for each generated value; `go test` reads it and
-never runs Node.
+root `package.json`) produces from both `stringify` and `uneval` for each
+generated value; `go test` reads it and never runs Node.
 
 Regenerate with `npm ci` installed at the repository root:
 
