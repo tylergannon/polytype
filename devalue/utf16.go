@@ -60,6 +60,20 @@ func sign(d int32) int {
 	return 0
 }
 
+// utf16Len returns the JavaScript `length` of s: its UTF-16 code units. Each
+// invalid UTF-8 byte counts as the one U+FFFD it decodes to.
+func utf16Len(s string) int {
+	n := 0
+	for _, r := range s {
+		if r >= 0x10000 {
+			n += 2
+		} else {
+			n++
+		}
+	}
+	return n
+}
+
 // SortStringsUTF16 sorts a slice the way JavaScript's `Array#sort` sorts an
 // array of strings.
 func SortStringsUTF16(s []string) {

@@ -8,12 +8,45 @@ import (
 	"github.com/tylergannon/polytype/devalue"
 )
 
+// golden is testdata/golden.json: the devalue release that recorded it and
+// what that release produced for each generated value expression. See
+// testdata/record/README.md.
+type golden struct {
+	Devalue string       `json:"devalue"`
+	Cases   []goldenCase `json:"cases"`
+}
+
 // goldenCase is one recorded value: the bytes the pinned JavaScript devalue
-// produced for a generated value expression. See testdata/record/README.md.
+// produced for a generated value expression.
 type goldenCase struct {
 	Name    string `json:"name"`
 	Devalue string `json:"devalue"`
 	Uneval  string `json:"uneval"`
+}
+
+// TestUpstreamVersion holds the parity promise together: the goldens were
+// recorded by the devalue release UpstreamVersion names, and that release is
+// the exact version package.json pins for recording them.
+func TestUpstreamVersion(t *testing.T) {
+	t.Parallel()
+
+	if recorded := readGolden(t).Devalue; recorded != devalue.UpstreamVersion {
+		t.Errorf("testdata/golden.json was recorded from devalue %q, but UpstreamVersion is %q; re-record it (testdata/record/README.md)", recorded, devalue.UpstreamVersion)
+	}
+
+	contents, err := os.ReadFile("../package.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pkg struct {
+		DevDependencies map[string]string `json:"devDependencies"`
+	}
+	if err := json.Unmarshal(contents, &pkg); err != nil {
+		t.Fatalf("package.json: %v", err)
+	}
+	if pinned := pkg.DevDependencies["devalue"]; pinned != devalue.UpstreamVersion {
+		t.Errorf("package.json pins devalue %q, but UpstreamVersion is %q; the pin must be that exact version", pinned, devalue.UpstreamVersion)
+	}
 }
 
 // TestUnevalGolden compares Polytype's expression serializer with the pinned
@@ -39,16 +72,22 @@ func TestUnevalGolden(t *testing.T) {
 	}
 }
 
-func goldenCases(t testing.TB) []goldenCase {
+func readGolden(t testing.TB) golden {
 	t.Helper()
 	contents, err := os.ReadFile("testdata/golden.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var cases []goldenCase
-	if err := json.Unmarshal(contents, &cases); err != nil {
+	var g golden
+	if err := json.Unmarshal(contents, &g); err != nil {
 		t.Fatalf("testdata/golden.json: %v", err)
 	}
+	return g
+}
+
+func goldenCases(t testing.TB) []goldenCase {
+	t.Helper()
+	cases := readGolden(t).Cases
 	if len(cases) == 0 {
 		t.Fatal("testdata/golden.json holds no cases")
 	}

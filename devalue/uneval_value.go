@@ -96,6 +96,13 @@ func NewTypedArray(kind TypedArrayKind, buf ArrayBuffer) *TypedArray {
 
 // Subarray returns the [start, end) element range of t, as
 // `TypedArray#subarray` does. It shares t's buffer.
+//
+// Serializing the result discloses the whole buffer, not just the range:
+// [Uneval] writes every byte of Buffer and selects the range with a trailing
+// `.subarray(start,end)`. Serialize a subarray only if its entire buffer is
+// safe to disclose, or copy the range into a buffer of its own first:
+//
+//	own := NewTypedArray(sub.Kind, append(ArrayBuffer(nil), sub.Buffer[sub.ByteOffset:sub.ByteOffset+sub.ByteLength]...))
 func (t *TypedArray) Subarray(start, end int) *TypedArray {
 	n := t.Kind.BytesPerElement()
 	return &TypedArray{
@@ -128,7 +135,8 @@ func NewDataView(buf ArrayBuffer) *DataView {
 	return &DataView{Buffer: buf, ByteLength: len(buf)}
 }
 
-// NewDataViewRange views byteLength bytes of buf starting at byteOffset.
+// NewDataViewRange views byteLength bytes of buf starting at byteOffset. As
+// with [TypedArray.Subarray], serializing it discloses all of buf.
 func NewDataViewRange(buf ArrayBuffer, byteOffset, byteLength int) *DataView {
 	return &DataView{Buffer: buf, ByteOffset: byteOffset, ByteLength: byteLength}
 }
