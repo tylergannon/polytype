@@ -41,7 +41,12 @@ func (e *DevalueError) Error() string {
 //
 // Values referenced more than once (and every cycle) are hoisted into an
 // immediately-invoked function so that reference identity survives the round
-// trip: `(function(a){a.self=a;return a}({}))`.
+// trip: `(function(a){a.self=a;return a}({}))`. A BigInt, or a string of at
+// least 128 UTF-16 code units, that repeats is hoisted the same way when that
+// is shorter, so the output grows linearly with the input.
+//
+// A typed array or DataView is written with the whole of its Buffer, including
+// bytes outside the view; see [TypedArray.Subarray].
 func Uneval(v any) (string, error) {
 	return UnevalWith(v, nil)
 }
@@ -67,15 +72,30 @@ func UnevalWith(v any, replacer Replacer) (string, error) {
 	// first. The sort must be stable: devalue sorts a Map's entries, which are
 	// in first-encounter order, and the resulting parameter order is visible
 	// in the output.
-	var named []*refEntry
+	var repeated []*refEntry
 	for _, e := range u.order {
 		if e.count > 1 {
-			named = append(named, e)
+			repeated = append(repeated, e)
 		}
 	}
-	sort.SliceStable(named, func(i, j int) bool { return named[i].count > named[j].count })
-	for i, e := range named {
-		e.name = getName(i)
+	sort.SliceStable(repeated, func(i, j int) bool { return repeated[i].count > repeated[j].count })
+
+	var named []*refEntry
+	for _, e := range repeated {
+		name := getName(len(named))
+		if isPrimitive(e.value) {
+			// Hoisting costs one literal, a parameter and a reference per
+			// occurrence, plus 25 for the IIFE wrapper and separators even
+			// if one already exists, so inexpensive repetitions stay inline.
+			// A primitive left inline does not use up the name.
+			e.literal = stringifyPrimitive(e.value)
+			length := utf16Len(e.literal)
+			if length*e.count <= length+(e.count+1)*len(name)+25 {
+				continue
+			}
+		}
+		e.name = name
+		named = append(named, e)
 	}
 
 	str, err := u.stringify(v)
@@ -111,13 +131,16 @@ func UnevalWith(v any, replacer Replacer) (string, error) {
 	return "(function(" + strings.Join(params, ",") + "){" + body + "}(" + strings.Join(values, ",") + "))", nil
 }
 
-// refEntry is one non-primitive value seen during the walk.
+// refEntry is one value whose references the walk counts: a non-primitive, or
+// a primitive expensive enough to repeat (see countsRepetitions).
 type refEntry struct {
 	value     any
 	count     int
 	name      string
 	custom    string
 	hasCustom bool
+	// literal is a counted primitive's JavaScript literal, once computed.
+	literal string
 }
 
 type unevaler struct {
@@ -140,6 +163,15 @@ func (u *unevaler) walk(v any) error {
 		return u.errorf("Cannot stringify arbitrary non-POJOs")
 	}
 	if isPrimitive(v) {
+		if countsRepetitions(v) {
+			if e, ok := u.byKey[v]; ok {
+				e.count++
+			} else {
+				e := &refEntry{value: v, count: 1}
+				u.byKey[v] = e
+				u.order = append(u.order, e)
+			}
+		}
 		return nil
 	}
 	if isHole(v) {
@@ -200,7 +232,16 @@ func (u *unevaler) walk(v any) error {
 		}
 		return nil
 
-	case Date, URL, URLSearchParams, ArrayBuffer, *Boxed:
+	case *Boxed:
+		// A boxed String or BigInt counts its primitive, which can then be
+		// hoisted and shared with the unboxed copies.
+		switch t.Value.(type) {
+		case string, BigInt:
+			return u.walk(t.Value)
+		}
+		return nil
+
+	case Date, URL, URLSearchParams, ArrayBuffer:
 		// Leaves: devalue serializes these whole and never descends.
 		return nil
 
@@ -289,6 +330,26 @@ func (u *unevaler) walkProperty(k string, val any) error {
 	return nil
 }
 
+// minCountedStringLength is devalue's MIN_STRING_LENGTH, in UTF-16 code units.
+// A shorter string costs a bounded amount per repetition, so it stays inline
+// without being counted.
+const minCountedStringLength = 128
+
+// countsRepetitions reports whether the walk counts references to the
+// primitive v so that it can be hoisted: a BigInt, or a string of at least
+// minCountedStringLength code units. Repeating those inline makes the output
+// grow quadratically with the input.
+func countsRepetitions(v any) bool {
+	switch t := v.(type) {
+	case BigInt:
+		return true
+	case string:
+		// A UTF-16 code unit takes at least one UTF-8 byte.
+		return len(t) >= minCountedStringLength && utf16Len(t) >= minCountedStringLength
+	}
+	return false
+}
+
 // isEmptyContainer reports whether v is one of the container types refKey
 // refuses to give an identity to because it is empty.
 func isEmptyContainer(v any) bool {
@@ -306,6 +367,9 @@ func isEmptyContainer(v any) bool {
 // stringify renders one value, substituting a hoisted name where there is one.
 func (u *unevaler) stringify(v any) (string, error) {
 	if isPrimitive(v) {
+		if name := u.nameOf(v); name != "" {
+			return name, nil
+		}
 		return stringifyPrimitive(v), nil
 	}
 
@@ -334,15 +398,31 @@ func (u *unevaler) stringify(v any) (string, error) {
 	return u.render(v)
 }
 
-// isNamed reports whether v was hoisted, which is devalue's `names.has(...)`.
-func (u *unevaler) isNamed(v any) bool {
-	key, dedupe := refKey(v)
-	if !dedupe {
-		return false
+// nameOf returns the name v was hoisted under, or "" when it was not hoisted;
+// devalue's `names.get(...)`.
+func (u *unevaler) nameOf(v any) string {
+	key := v
+	switch v.(type) {
+	case string, BigInt:
+		// A counted primitive is its own key; see walk.
+	default:
+		if isPrimitive(v) {
+			return ""
+		}
+		k, dedupe := refKey(v)
+		if !dedupe {
+			return ""
+		}
+		key = k
 	}
-	e := u.byKey[key]
-	return e != nil && e.name != ""
+	if e := u.byKey[key]; e != nil {
+		return e.name
+	}
+	return ""
 }
+
+// isNamed reports whether v was hoisted, which is devalue's `names.has(...)`.
+func (u *unevaler) isNamed(v any) bool { return u.nameOf(v) != "" }
 
 // render emits a value inline, ignoring hoisting.
 func (u *unevaler) render(v any) (string, error) {
@@ -440,9 +520,9 @@ func renderArrayBuffer(buf ArrayBuffer) string {
 
 // renderArray ports devalue's array case, holes and all.
 //
-// The choice between a holey array literal and `Object.assign(Array(n),{...})`
-// is made at the first hole, and only then, so that a hugely sparse array is
-// never iterated slot by slot.
+// The choice between a holey array literal and `Object.assign(sparse,{...})`,
+// where sparse is the [sparseArray] allocator, is made at the first hole, and
+// only then, so that a hugely sparse array is never written slot by slot.
 func (u *unevaler) renderArray(items []any) (string, error) {
 	n := len(items)
 	hasHoles := false
@@ -468,9 +548,10 @@ func (u *unevaler) renderArray(items []any) (string, error) {
 		}
 
 		// Array literal overhead is one comma per slot plus the brackets:
-		// L + 2. Object.assign overhead is the 25-char wrapper plus the
-		// length's digits, plus index + ":" + "," for each populated element:
-		// (25 + d) + P * (d + 2).
+		// L + 2. Object.assign overhead is "Object.assign(" and ",{" and
+		// "})" around the A-char allocator, plus index + ":" + "," for each
+		// populated element: (18 + A) + P * (d + 2), where d is the digit
+		// count of L, an upper bound on any index's.
 		population := 0
 		for _, item := range items {
 			if !isHole(item) {
@@ -478,14 +559,15 @@ func (u *unevaler) renderArray(items []any) (string, error) {
 			}
 		}
 		d := len(strconv.Itoa(n))
+		array := sparseArray(n)
 		holeCost := n + 2
-		sparseCost := 25 + d + population*(d+2)
+		sparseCost := len(array) + 18 + population*(d+2)
 
 		if holeCost > sparseCost {
 			var sb strings.Builder
-			sb.WriteString("Object.assign(Array(")
-			sb.WriteString(strconv.Itoa(n))
-			sb.WriteString("),{")
+			sb.WriteString("Object.assign(")
+			sb.WriteString(array)
+			sb.WriteString(",{")
 			first := true
 			for j, item := range items {
 				if isHole(item) {
@@ -511,11 +593,23 @@ func (u *unevaler) renderArray(items []any) (string, error) {
 	}
 
 	// A trailing hole needs an extra comma, because `[a,]` has length 1.
+	// devalue tests the last index with Object.hasOwn; a Go array has no
+	// prototype to inherit an element from, so only a Hole is missing.
 	tail := ""
 	if n > 0 && isHole(items[n-1]) {
 		tail = ","
 	}
 	return b.String() + tail + "]", nil
+}
+
+// sparseArray is devalue's `stringify_sparse_array`: an expression for an
+// empty array of the given length whose storage is not proportional to it.
+// Touching and deleting the largest valid index forces V8 into
+// dictionary-elements mode before the length is set; `Array(n)` allocates n
+// slots when evaluated.
+func sparseArray(length int) string {
+	index := strconv.FormatUint(maxArrayIndex, 10)
+	return "(function(a){a[" + index + "]=0;delete a[" + index + "];a.length=" + strconv.Itoa(length) + ";return a}([]))"
 }
 
 func (u *unevaler) renderTypedArray(t *TypedArray) (string, error) {
@@ -618,7 +712,7 @@ func (u *unevaler) hoist(e *refEntry) (value, reconstruction string, statements 
 		return e.custom, "", nil, nil
 	}
 	if isPrimitive(e.value) {
-		return stringifyPrimitive(e.value), "", nil, nil
+		return e.literal, "", nil, nil
 	}
 
 	switch t := e.value.(type) {
@@ -626,6 +720,11 @@ func (u *unevaler) hoist(e *refEntry) (value, reconstruction string, statements 
 		inner, err := u.stringify(t.Value)
 		if err != nil {
 			return "", "", nil, err
+		}
+		if u.isNamed(t.Value) {
+			// A hoisted primitive is a parameter, in scope inside the IIFE but
+			// not in its arguments, so the box is rebuilt in the body.
+			return "{}", e.name + "=Object(" + inner + ")", nil, nil
 		}
 		return "Object(" + inner + ")", "", nil, nil
 
@@ -645,16 +744,24 @@ func (u *unevaler) hoist(e *refEntry) (value, reconstruction string, statements 
 		return string(t.Kind) + ".from(" + quoteString(t.Value) + ")", "", nil, nil
 
 	case []any:
-		// Array#forEach skips holes, so a hoisted sparse array keeps them.
+		// Only populated indices are assigned, so a hoisted sparse array
+		// keeps its holes.
+		populated := 0
 		for i, item := range t {
 			if isHole(item) {
 				continue
 			}
+			populated++
 			s, err := u.stringify(item)
 			if err != nil {
 				return "", "", nil, err
 			}
 			statements = append(statements, e.name+"["+strconv.Itoa(i)+"]="+s)
+		}
+		// Preallocate with Array(n) only when the length is bounded by the
+		// population, plus a small constant for short arrays.
+		if len(t) > 32+2*populated {
+			return sparseArray(len(t)), "", statements, nil
 		}
 		return "Array(" + strconv.Itoa(len(t)) + ")", "", statements, nil
 

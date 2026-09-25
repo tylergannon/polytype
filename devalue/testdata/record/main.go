@@ -95,6 +95,36 @@ func run() error {
 	write("special_boxed", `Object(42)`)
 	write("special_array_buffer", `new Uint8Array([1, 2, 3]).buffer`)
 	write("special_null_proto", `Object.assign(Object.create(null), {"x": 1})`)
+
+	// Repeated primitives: devalue hoists a repeated BigInt, or string of at
+	// least 128 UTF-16 code units, when that makes the output shorter.
+	write("repeated_string_127", `Array(3).fill("x".repeat(127))`)
+	write("repeated_string_128", `Array(3).fill("x".repeat(128))`)
+	write("repeated_string_astral", `Array(2).fill(`+jsString("\U0001F600")+`.repeat(64))`)
+	write("repeated_string_multibyte_127", `Array(3).fill(`+jsString("\u96ea")+`.repeat(127))`)
+	write("repeated_string_escaped", `Array(2).fill("<".repeat(128))`)
+	write("repeated_string_ranked", `(() => { const s = "x".repeat(128); const o = {}; return [o, o, s, s, s] })()`)
+	write("repeated_bigint_twice", `[12345678901234567890n, 12345678901234567890n]`)
+	write("repeated_bigint_thrice", `Array(3).fill(12345678901234567890n)`)
+	write("repeated_bigint_short_28", `Array(28).fill(1n)`)
+	write("repeated_bigint_short_29", `Array(29).fill(1n)`)
+	write("repeated_bigint_unnamed", `(() => { const o = {}; return [1n, 1n, 1n, o, o] })()`)
+	write("repeated_map_key", `(() => { const s = "k".repeat(128); return new Map([[s, s]]) })()`)
+	write("boxed_string_distinct", `(() => { const s = "x".repeat(128); return [Object(s), s, s] })()`)
+	write("boxed_string_shared", `(() => { const s = "x".repeat(128); const b = Object(s); return [b, b, s, s] })()`)
+	write("boxed_bigint_shared", `(() => { const b = Object(12345678901234567890n); return [b, b, 12345678901234567890n, 12345678901234567890n, 12345678901234567890n] })()`)
+
+	// Sparse arrays: the Object.assign form starts from an allocator that
+	// does not reserve every slot, and so does a hoisted sparse array once it
+	// is long enough.
+	write("sparse_array_96", `Object.assign(Array(96), {0: "x"})`)
+	write("sparse_array_97", `Object.assign(Array(97), {0: "x"})`)
+	write("sparse_array_1000", `Object.assign(Array(1000), {0: 1, 500: "x", 999: null})`)
+	write("sparse_array_shared", `(() => { const a = Object.assign(Array(1000), {1: "x"}); return [a, a] })()`)
+	write("sparse_array_cycle", `(() => { const a = Array(1000); a[500] = a; return a })()`)
+	write("sparse_array_cycle_34", `(() => { const a = Array(34); a[0] = a; return a })()`)
+	write("sparse_array_cycle_35", `(() => { const a = Array(35); a[0] = a; return a })()`)
+
 	for i := range nested {
 		write(fmt.Sprintf("nested_%03d", i), value(random, maxDepth))
 	}

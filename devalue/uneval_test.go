@@ -7,8 +7,9 @@ import (
 	"time"
 )
 
-// The expected JavaScript in this file is ported from devalue@5.9.2's
-// test/index.test.js. The malformed lone-surrogate fixtures are deliberately
+// The expected JavaScript in this file is ported from devalue@5.9.4's
+// test/index.test.js; uneval_primitives_test.go ports its
+// test/uneval-primitives.test.js. The malformed lone-surrogate fixtures are deliberately
 // excluded: Go represents them as invalid UTF-8 bytes, and the harvested
 // snapshots were not executable JavaScript proof.
 
@@ -174,7 +175,7 @@ func unevalCases(t *testing.T) []unevalCase {
 		{
 			name:     "Array (very sparse)",
 			value:    sparse(1000001, map[int]any{1000000: "x"}),
-			js:       `Object.assign(Array(1000001),{1000000:"x"})`,
+			js:       `Object.assign((function(a){a[4294967294]=0;delete a[4294967294];a.length=1000001;return a}([])),{1000000:"x"})`,
 			validate: "$.length === 1000001 && $[1000000] === 'x' && !(0 in $) && !(999999 in $)",
 		},
 		{
@@ -618,6 +619,20 @@ func TestUnevalErrors(t *testing.T) {
 			path:    ".value",
 		},
 		{
+			name:    "non-canonical boxed BigInt",
+			value:   NewObject("value", NewBoxed(BigInt("01"))),
+			message: "Cannot stringify arbitrary non-POJOs",
+			path:    ".value",
+		},
+		{
+			// devalue's "uneval reports the path of invalid sparse array
+			// elements", at an index a Go slice can afford.
+			name:    "invalid sparse array element",
+			value:   NewObject("array", sparse(100000, map[int]any{99999: notSupported{}})),
+			message: "Cannot stringify arbitrary non-POJOs",
+			path:    ".array[99999]",
+		},
+		{
 			name:    "invalid RegExp flags",
 			value:   NewObject("value", RegExp{Source: "a", Flags: "uv"}),
 			message: "Cannot stringify arbitrary non-POJOs",
@@ -662,6 +677,9 @@ func TestUnevalRejectsExecutableFlatMetadata(t *testing.T) {
 	}{
 		{"RegExp flags", `[["RegExp","a","\"),(globalThis.pwned=1),(\""]]`},
 		{"BigInt digits", `[["BigInt","(globalThis.pwned=2),1"]]`},
+		// A boxed BigInt is walked for its primitive, which is where the
+		// digits are checked.
+		{"boxed BigInt digits", `[["Object",1],["BigInt","(globalThis.pwned=3),1"]]`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -756,7 +774,7 @@ func TestUnevalReplacerSeesEmptyContainers(t *testing.T) {
 // rule flips from a holey array literal to Object.assign, for one, two and
 // three populated slots. The reference's own fixtures only sit at the extremes,
 // so the constants in the rule can be wrong by several characters and still
-// pass them; these expectations were produced by running devalue's own
+// pass them; these expectations were produced by running devalue 5.9.4's own
 // `uneval` over the same arrays.
 func TestUnevalSparseCostBoundary(t *testing.T) {
 	// build makes an array of the given length populated at every second index.
@@ -776,12 +794,12 @@ func TestUnevalSparseCostBoundary(t *testing.T) {
 		population int
 		js         string
 	}{
-		{29, 1, `["v0",,,,,,,,,,,,,,,,,,,,,,,,,,,,,]`},
-		{30, 1, `Object.assign(Array(30),{0:"v0"})`},
-		{33, 2, `["v0",,"v1",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,]`},
-		{34, 2, `Object.assign(Array(34),{0:"v0",2:"v1"})`},
-		{37, 3, `["v0",,"v1",,"v2",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,]`},
-		{38, 3, `Object.assign(Array(38),{0:"v0",2:"v1",4:"v2"})`},
+		{96, 1, `["v0"` + strings.Repeat(",", 96) + `]`},
+		{97, 1, `Object.assign((function(a){a[4294967294]=0;delete a[4294967294];a.length=97;return a}([])),{0:"v0"})`},
+		{103, 2, `["v0",,"v1"` + strings.Repeat(",", 101) + `]`},
+		{104, 2, `Object.assign((function(a){a[4294967294]=0;delete a[4294967294];a.length=104;return a}([])),{0:"v0",2:"v1"})`},
+		{108, 3, `["v0",,"v1",,"v2"` + strings.Repeat(",", 104) + `]`},
+		{109, 3, `Object.assign((function(a){a[4294967294]=0;delete a[4294967294];a.length=109;return a}([])),{0:"v0",2:"v1",4:"v2"})`},
 	}
 
 	for _, tt := range tests {

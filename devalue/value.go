@@ -1,5 +1,6 @@
 // Package devalue implements devalue's two serialization forms for structured
-// JavaScript values.
+// JavaScript values, feature-equivalent to the devalue release named by
+// [UpstreamVersion].
 //
 // [Stringify] and [Parse] use the flat JSON-array transport format. [Uneval]
 // and [UnevalWith] emit JavaScript expressions and preserve shared references
@@ -8,7 +9,8 @@
 // Uneval and remain unsupported by the flat format. Generated typed codecs
 // target the flat format. Go value types cannot preserve distinct JavaScript
 // identity for equal Date, RegExp, URL, URLSearchParams, or Temporal values, or
-// shared identity for zero-length slices.
+// shared identity for zero-length slices. Go strings are UTF-8, so a JavaScript
+// string holding an unpaired surrogate has no Go form.
 package devalue
 
 import (

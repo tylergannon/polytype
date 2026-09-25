@@ -40,7 +40,9 @@ js, err := devalue.Uneval(devalue.NewObject("name", "Ada"))
   values remain unsupported by the flat format.
 - `UnevalWith(v, replacer)` accepts a separate custom hook. Its result is
   trusted JavaScript and is inserted verbatim.
-- Output is checked against devalue 5.9 for supported shapes. Equal
+- Each polytype release is feature-equivalent to one exact devalue release,
+  named by `devalue.UpstreamVersion` (currently 5.9.4): for supported shapes,
+  `Stringify` and `Uneval` write the bytes that release writes. Equal
   value-modeled objects such as `Date` cannot express distinct JavaScript
   identity in Go, and zero-length slices cannot express shared identity.
 

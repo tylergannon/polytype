@@ -662,8 +662,12 @@ and `*Boxed`. `Uneval` additionally supports typed arrays, `DataView`, `URL`,
 `URLSearchParams`, and `Temporal`, while those values remain unsupported by
 the flat format. `StringifyWith(v, reducers)` and the `revivers` argument to
 `Parse` are flat-format custom-type hooks. `UnevalWith(v, replacer)` accepts a
-separate hook whose returned string is trusted JavaScript. Output is checked
-against devalue 5.9 for supported shapes. Equal value-modeled objects such as
+separate hook whose returned string is trusted JavaScript.
+
+Each polytype release is feature-equivalent to one exact devalue release,
+named by `devalue.UpstreamVersion` (currently 5.9.4): for supported shapes,
+`Stringify` and `Uneval` write the bytes that release writes, checked against
+goldens it recorded. Equal value-modeled objects such as
 `Date` cannot express distinct JavaScript identity in Go, and zero-length
 slices cannot express shared identity.
 
@@ -931,8 +935,8 @@ go test ./...
 just lint    # task runner is `just`
 ```
 
-All tests are plain `go test`. Two of them consult Node tooling when it is
-present and skip otherwise: the TypeScript backend compiles its edge-case
-output with `tsc`, and the devalue runtime compares against goldens recorded
-from devalue 5.9 by `devalue/testdata/record`. `npm ci` at the repository root
-installs both pinned packages.
+All tests are plain `go test`. The TypeScript backend's test compiles its
+edge-case output with `tsc` when Node tooling is present and skips otherwise.
+The devalue runtime never runs Node: it compares against goldens recorded from
+the pinned devalue release by `devalue/testdata/record`, whose README covers
+moving the pin. `npm ci` at the repository root installs both pinned packages.

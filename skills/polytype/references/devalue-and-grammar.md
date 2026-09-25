@@ -10,8 +10,9 @@ the CLI does not drive them.
 
 devalue is the structured-value format SvelteKit uses for `load` data and
 remote functions. `github.com/tylergannon/polytype/devalue` ports its flat
-`stringify`/`parse` pair and expression-producing `uneval`; supported shapes
-are checked against devalue 5.9.
+`stringify`/`parse` pair and expression-producing `uneval`. Each polytype
+release is feature-equivalent to one exact devalue release, named by
+`devalue.UpstreamVersion` (currently 5.9.4).
 
 ```go
 import "github.com/tylergannon/polytype/devalue"
