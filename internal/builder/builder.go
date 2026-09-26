@@ -2,11 +2,13 @@ package builder
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/dave/dst/decorator"
 	"github.com/tylergannon/polytype/internal/syntax"
+	"github.com/tylergannon/polytype/javascript"
 	"github.com/tylergannon/polytype/typescript"
 )
 
@@ -20,14 +22,52 @@ type BuilderArgs struct {
 	// Relative paths are resolved against the invocation working directory.
 	TypeScriptDir    string
 	TypeScriptBarrel bool
+	// JavaScriptDir selects a directory for JSDoc JavaScript declarations.
+	// Relative paths are resolved against the invocation working directory.
+	JavaScriptDir string
+}
+
+// sameOutputDirectory reports whether two declaration output directories
+// resolve to the same location. An empty argument never matches.
+func sameOutputDirectory(a, b string) (bool, error) {
+	if a == "" || b == "" {
+		return false, nil
+	}
+	absA, err := filepath.Abs(a)
+	if err != nil {
+		return false, fmt.Errorf("resolve output directory %s: %w", a, err)
+	}
+	absB, err := filepath.Abs(b)
+	if err != nil {
+		return false, fmt.Errorf("resolve output directory %s: %w", b, err)
+	}
+	return filepath.Clean(absA) == filepath.Clean(absB), nil
+}
+
+// validateDeclarationOutputArgs rejects flag combinations that cannot be
+// honored: a barrel without TypeScript, and both declaration modes claiming
+// one directory. The modes own different files, so sharing a directory would
+// make each run delete the other's output.
+func validateDeclarationOutputArgs(args BuilderArgs) error {
+	if args.TypeScriptBarrel && args.TypeScriptDir == "" {
+		return fmt.Errorf("--typescript-barrel requires --typescript")
+	}
+	same, err := sameOutputDirectory(args.TypeScriptDir, args.JavaScriptDir)
+	if err != nil {
+		return err
+	}
+	if same {
+		return fmt.Errorf("--typescript and --javascript cannot target the same directory %s: the modes are exclusive per directory", args.TypeScriptDir)
+	}
+	return nil
 }
 
 // Run loads args.TargetDir and generates from it. args.TargetDir is used only
 // for the load; every later step reads the loaded package, so a caller that
 // already holds one can skip straight to RunLoaded.
 func Run(args BuilderArgs) (err error) {
-	if args.TypeScriptBarrel && args.TypeScriptDir == "" {
-		return fmt.Errorf("--typescript-barrel requires --typescript")
+	if err = validateDeclarationOutputArgs(args); err != nil {
+		return err
 	}
 	var pkgs []*decorator.Package
 	if pkgs, err = syntax.Load(args.TargetDir); err != nil {
@@ -48,8 +88,8 @@ func Run(args BuilderArgs) (err error) {
 // not mutate the loaded graph, so one loaded package graph may back several
 // concurrent RunLoaded calls for different packages in it.
 func RunLoaded(pkg *decorator.Package, args BuilderArgs) (err error) {
-	if args.TypeScriptBarrel && args.TypeScriptDir == "" {
-		return fmt.Errorf("--typescript-barrel requires --typescript")
+	if err = validateDeclarationOutputArgs(args); err != nil {
+		return err
 	}
 	var builder SchemaBuilder
 	if builder, err = New(pkg); err != nil {
@@ -101,22 +141,35 @@ func RunLoaded(pkg *decorator.Package, args BuilderArgs) (err error) {
 		return err
 	}
 
-	// Lower, render, and preflight all TypeScript outputs before any output is
-	// mutated. In particular, an unsupported source shape or an unowned output
-	// collision must leave ordinary generated artifacts untouched.
-	var typeScriptPlan *typescriptOutputPlan
-	if args.TypeScriptDir != "" {
+	// Lower, render, and preflight all declaration outputs before any output
+	// is mutated. In particular, an unsupported source shape or an unowned
+	// output collision must leave ordinary generated artifacts untouched.
+	var typeScriptPlan *outputPlan
+	var javaScriptPlan *outputPlan
+	if args.TypeScriptDir != "" || args.JavaScriptDir != "" {
 		definitions, definitionsErr := (&builder).TypeDefinitions()
 		if definitionsErr != nil {
-			return fmt.Errorf("generate TypeScript definitions: %w", definitionsErr)
+			return fmt.Errorf("generate declarations: %w", definitionsErr)
 		}
-		result, generateErr := typescript.Generate(definitions, typescript.Options{Barrel: args.TypeScriptBarrel})
-		if generateErr != nil {
-			return fmt.Errorf("generate TypeScript output: %w", generateErr)
+		if args.TypeScriptDir != "" {
+			result, generateErr := typescript.Generate(definitions, typescript.Options{Barrel: args.TypeScriptBarrel})
+			if generateErr != nil {
+				return fmt.Errorf("generate TypeScript output: %w", generateErr)
+			}
+			typeScriptPlan, err = prepareTypeScriptOutput(args.TypeScriptDir, result.Files, args.TypeScriptBarrel)
+			if err != nil {
+				return err
+			}
 		}
-		typeScriptPlan, err = prepareTypeScriptOutput(args.TypeScriptDir, result.Files, args.TypeScriptBarrel)
-		if err != nil {
-			return err
+		if args.JavaScriptDir != "" {
+			result, generateErr := javascript.Generate(definitions, javascript.Options{})
+			if generateErr != nil {
+				return fmt.Errorf("generate JavaScript output: %w", generateErr)
+			}
+			javaScriptPlan, err = prepareJavaScriptOutput(args.JavaScriptDir, result.Files)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -148,6 +201,9 @@ func RunLoaded(pkg *decorator.Package, args BuilderArgs) (err error) {
 		if typeScriptPlan != nil && typeScriptPlan.changed() {
 			return fmt.Errorf("TypeScript output changes detected for paths: %s (and --no-changes or JSONSCHEMA_NO_CHANGES was set)", strings.Join(typeScriptPlan.changedPaths(), ", "))
 		}
+		if javaScriptPlan != nil && javaScriptPlan.changed() {
+			return fmt.Errorf("JavaScript output changes detected for paths: %s (and --no-changes or JSONSCHEMA_NO_CHANGES was set)", strings.Join(javaScriptPlan.changedPaths(), ", "))
+		}
 	}
 
 	if err = builder.RenderGoCode(); err != nil {
@@ -155,6 +211,11 @@ func RunLoaded(pkg *decorator.Package, args BuilderArgs) (err error) {
 	}
 	if typeScriptPlan != nil {
 		if err = typeScriptPlan.apply(args.Force); err != nil {
+			return err
+		}
+	}
+	if javaScriptPlan != nil {
+		if err = javaScriptPlan.apply(args.Force); err != nil {
 			return err
 		}
 	}
