@@ -1,0 +1,5 @@
+[
+  "A Go caller can project admitted typegrammar.Definitions into an ESM types.js with exported JSDoc type names and no runtime type exports. The independent JavaScript projection faithfully handles every wire shape accepted by the TypeScript backend, including recursive references, collision-safe names, documentation, optionality, enums, and sealed unions; unsupported shapes fail clearly.",
+  "The Polytype CLI can generate JavaScript declarations in a selected directory with deterministic results. Repeated generation is unchanged, switching JavaScript and TypeScript modes removes obsolete Polytype-owned files, no-changes detects drift, and user-owned files remain intact. Existing TypeScript output stays byte-for-byte unchanged.",
+  "A real ESM JavaScript consumer imports the generated JSDoc types and passes strict allowJs/checkJs checking with tsgo for valid values, while incorrect required fields, enum or discriminator values, and nested values produce diagnostics. Include a recursive case; pass representative generated JavaScript through pinned oxfmt and oxlint; keep the TypeScript tests and go test ./... green."
+]
