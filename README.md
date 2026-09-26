@@ -12,6 +12,7 @@ grammar into the other type systems your program has to speak:
 | **Validation** | `ValidateJSON` methods backed by the schemas | `--validate` |
 | **Go JSON codecs** | Membership-checked enums and discriminated sealed unions | Inferred from your types; no flag |
 | **TypeScript** | Structural `types.ts` declarations for the same shapes | `--typescript DIR`, or the `typescript` package |
+| **JavaScript** | JSDoc `types.js` declarations for the same shapes | `--javascript DIR`, or the `javascript` package |
 | **devalue transport** | Go encoders/decoders for the [devalue](https://github.com/sveltejs/devalue) wire format SvelteKit uses, plus a Go port of the runtime | `devalue` and `devalue/codegen` packages |
 | **Your own backend** | Load a package, lower any roots, walk the grammar | `grammar` and `typegrammar` packages |
 
@@ -631,6 +632,35 @@ this generator does not emit them. For a checked Go/JavaScript boundary, use
 the devalue codecs below on the Go side with `devalue.parse`/`stringify` in
 the browser.
 
+## JavaScript declarations
+
+Pass `--javascript <directory>` to generate JSDoc type declarations in
+`<directory>/types.js` from the same lowered definitions the other backends
+use. Relative directories resolve from the directory where the command is
+invoked; absolute paths also work. The module is type-only: it declares an
+exported JSDoc `@typedef` per definition and carries no runtime decoder,
+validator, or value export. Consumers read the types with
+`import('./types.js').Name` under `allowJs`/`checkJs`.
+
+```go
+//go:generate go tool polytype --javascript web/src/generated
+```
+
+JavaScript and TypeScript are exclusive per directory, so a single directory
+cannot be passed to both `--javascript` and `--typescript` in one run. The two
+modes share the generated-file header, so ownership of a stale file is decided
+by that header together with the fixed Polytype file names (`types.js`,
+`types.ts`, `index.ts`): generating JavaScript into a directory that holds a
+generated `types.ts` or `index.ts` removes them, and generating TypeScript into
+a directory that holds a generated `types.js` removes it. A headerless file
+with one of those names belongs to the application and is never overwritten or
+removed; unrelated files are untouched. `--no-changes` reports a missing,
+stale, or obsolete generated JavaScript file as drift without writing.
+
+`--javascript` has no barrel option: a JSDoc typedef is not a runtime binding,
+so an ES module cannot re-export it. Use the `javascript` package directly to
+project the same definitions from a Go program.
+
 ## 🧬 Go ↔ JavaScript transport with devalue
 
 [devalue](https://github.com/sveltejs/devalue) is the structured-value wire
@@ -862,11 +892,12 @@ schema accessor stub) has no fluent form yet and is unaffected.
 polytype [gen] [options]     # generate (default subcommand)
   -target DIR          package to process (default: current directory)
   -pretty              pretty-print the .json output
-  -no-changes          fail, writing nothing, if schemas or requested TypeScript output would change
+  -no-changes          fail, writing nothing, if schemas or requested TypeScript or JavaScript output would change
   -force               force regeneration and allow removal of generated validation methods (incompatible with -no-changes)
   --validate           generate JSON validation methods
   --typescript DIR     generate structural TypeScript declarations in DIR
   --typescript-barrel  also generate index.ts type-only exports (requires --typescript)
+  --javascript DIR     generate JSDoc JavaScript declarations in DIR
 ```
 
 Environment: `JSONSCHEMA_NO_CHANGES` (any non-empty value) ≡ `-no-changes`.
@@ -935,8 +966,9 @@ go test ./...
 just lint    # task runner is `just`
 ```
 
-All tests are plain `go test`. The TypeScript backend's test compiles its
-edge-case output with `tsc` when Node tooling is present and skips otherwise.
-The devalue runtime never runs Node: it compares against goldens recorded from
-the pinned devalue release by `devalue/testdata/record`, whose README covers
-moving the pin. `npm ci` at the repository root installs both pinned packages.
+All tests are plain `go test`. The TypeScript backend checks representative
+generated output with pinned `oxfmt` and `oxlint`. The JavaScript backend uses
+those tools and type-checks an ESM consumer with pinned `tsgo`. These checks
+skip when Node tooling is absent; CI runs `npm ci` before the tests. The devalue
+runtime never runs Node: it compares against goldens recorded from the pinned
+devalue release by `devalue/testdata/record`, whose README covers moving the pin.
