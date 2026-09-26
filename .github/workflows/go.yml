@@ -33,7 +33,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Install pinned TypeScript compiler
+      - name: Install pinned JavaScript and TypeScript tools
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Test clean checkout

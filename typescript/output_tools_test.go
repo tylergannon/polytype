@@ -1,7 +1,6 @@
 package typescript
 
 import (
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,12 +48,10 @@ func edgeDefinitions() typegrammar.Definitions {
 	}
 }
 
-// TestGenerateEdgeCasesCompile projects the edge-case graph, asserts the
-// escaping and collision properties in Go, and then hands the actual output to
-// the pinned TypeScript compiler when one is available. Compilation is what
-// proves the escaped discriminator is a legal property name and a legal `Omit`
-// key rather than merely the byte sequence this test expects.
-func TestGenerateEdgeCasesCompile(t *testing.T) {
+// TestGenerateEdgeCasesLint projects the edge-case graph, asserts its escaping
+// and collision properties, and checks the actual output with the pinned
+// formatter and linter when installed. CI installs both tools before go test.
+func TestGenerateEdgeCasesLint(t *testing.T) {
 	t.Parallel()
 
 	result, err := Generate(edgeDefinitions(), Options{Barrel: true})
@@ -71,49 +68,41 @@ func TestGenerateEdgeCasesCompile(t *testing.T) {
 		"the Unicode name and the literal name must both be suffixed:\n%s", types)
 	require.NotRegexp(t, permissiveType, types)
 
-	tsc := findTSC(t)
-	if tsc == "" {
-		t.Skip("no TypeScript compiler: set $POLYTYPE_TSC or run `npm ci` at the repository root")
+	oxfmt := findNodeTool(t, "oxfmt")
+	oxlint := findNodeTool(t, "oxlint")
+	if oxfmt == "" || oxlint == "" {
+		t.Skip("oxfmt and oxlint require `npm ci` at the repository root")
 	}
 
 	dir := t.TempDir()
+	paths := make([]string, 0, len(files))
 	for _, file := range files {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, file.Name), file.Content, 0o644))
-	}
-	config, err := json.Marshal(map[string]any{
-		"compilerOptions": map[string]any{
-			"exactOptionalPropertyTypes": true,
-			"module":                     "NodeNext",
-			"moduleResolution":           "NodeNext",
-			"noEmit":                     true,
-			"noUncheckedIndexedAccess":   true,
-			"strict":                     true,
-			"target":                     "ES2022",
-			"types":                      []string{},
-		},
-		"include": []string{"*.ts"},
-	})
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "tsconfig.json"), config, 0o644))
+		path := filepath.Join(dir, file.Name)
+		require.NoError(t, os.WriteFile(path, file.Content, 0o644))
+		paths = append(paths, path)
 
-	output, err := exec.Command(tsc, "--project", dir, "--pretty", "false").CombinedOutput()
-	require.NoError(t, err, "tsc rejected the generated declarations:\n%s", output)
+		// Formatting on stdin checks that oxfmt can parse the generated syntax.
+		// The generator keeps its own deterministic style and bytes.
+		command := exec.Command(oxfmt, "--stdin-filepath", path)
+		command.Stdin = strings.NewReader(string(file.Content))
+		output, err := command.CombinedOutput()
+		require.NoError(t, err, "oxfmt rejected %s:\n%s", file.Name, output)
+		require.NotEmpty(t, output)
+	}
+	output, err := exec.Command(oxlint, append([]string{"--deny-warnings"}, paths...)...).CombinedOutput()
+	require.NoError(t, err, "oxlint rejected generated declarations:\n%s", output)
 }
 
-// findTSC returns $POLYTYPE_TSC when set, otherwise node_modules/.bin/tsc under
-// the repository root (the nearest ancestor holding a go.mod), otherwise "".
-func findTSC(t *testing.T) string {
+// findNodeTool locates a pinned npm development tool at the repository root.
+func findNodeTool(t *testing.T, name string) string {
 	t.Helper()
-	if tsc := os.Getenv("POLYTYPE_TSC"); tsc != "" {
-		return tsc
-	}
 	dir, err := os.Getwd()
 	require.NoError(t, err)
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			tsc := filepath.Join(dir, "node_modules", ".bin", "tsc")
-			if _, err := os.Stat(tsc); err == nil {
-				return tsc
+			tool := filepath.Join(dir, "node_modules", ".bin", name)
+			if _, err := os.Stat(tool); err == nil {
+				return tool
 			}
 			return ""
 		}
