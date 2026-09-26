@@ -2,9 +2,10 @@
   "name": "polytype-dev",
   "private": true,
   "type": "module",
-  "description": "Development-only pins: the TypeScript compiler the internal/typescript conformance test runs, and the devalue release the devalue goldens are recorded against. Neither production generation nor `go test ./...` needs npm.",
+  "description": "Development-only pins: oxfmt and oxlint check generated language output, and the devalue release records golden values. Production generation does not need npm.",
   "devDependencies": {
     "devalue": "5.9.4",
-    "typescript": "6.0.3"
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0"
   }
 }
