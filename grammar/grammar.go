@@ -16,8 +16,11 @@ package grammar
 
 import (
 	"fmt"
+	"github.com/dave/dst/decorator"
 	"go/token"
 	"go/types"
+	"golang.org/x/tools/go/packages"
+	"strings"
 
 	"github.com/tylergannon/polytype/internal/builder"
 	"github.com/tylergannon/polytype/internal/syntax"
@@ -76,4 +79,56 @@ func (p *Package) Lower(roots []Root) (typegrammar.Definitions, []typegrammar.Ty
 		converted[i] = builder.RootType{Type: root.Type, Position: root.Position}
 	}
 	return p.builder.LowerRoots(converted)
+}
+
+// LoadWithConfig loads pattern using the caller's module, environment, parser,
+// and overlay configuration. The same configuration resolves every recursively
+// discovered type dependency. It includes the jsonschema build tag alongside
+// caller tags and adds the load modes required by grammar. The caller must keep
+// any backing files or parser resources alive until all Lower calls finish.
+// Config and its BuildFlags are not modified.
+func LoadWithConfig(config *packages.Config, pattern string) (*Package, error) {
+	cfg := packages.Config{}
+	if config != nil {
+		cfg = *config
+	}
+	cfg.Mode |= syntax.PackageLoadNeeds
+	cfg.Tests = false
+	cfg.BuildFlags = append([]string(nil), cfg.BuildFlags...)
+	tags := syntax.BuildTag
+	for i := 0; i < len(cfg.BuildFlags); i++ {
+		flag := cfg.BuildFlags[i]
+		if flag == "-tags" && i+1 < len(cfg.BuildFlags) {
+			tags = syntax.BuildTag + "," + strings.Join(strings.FieldsFunc(cfg.BuildFlags[i+1], func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), ",")
+			cfg.BuildFlags = append(cfg.BuildFlags[:i], cfg.BuildFlags[i+2:]...)
+			i--
+		} else if strings.HasPrefix(flag, "-tags=") {
+			tags = syntax.BuildTag + "," + strings.Join(strings.FieldsFunc(strings.TrimPrefix(flag, "-tags="), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), ",")
+			cfg.BuildFlags = append(cfg.BuildFlags[:i], cfg.BuildFlags[i+1:]...)
+			i--
+		}
+	}
+	cfg.BuildFlags = append(cfg.BuildFlags, "-tags="+tags)
+	loader := func(pattern string) ([]*decorator.Package, error) {
+		pkgs, err := decorator.Load(&cfg, pattern)
+		if err != nil {
+			return nil, err
+		}
+		if len(pkgs) != 1 {
+			return nil, fmt.Errorf("expected one package for %s, got %d", pattern, len(pkgs))
+		}
+		if errs := pkgs[0].Errors; len(errs) > 0 {
+			return nil, fmt.Errorf("package %s has errors: %s", pkgs[0].PkgPath, errs[0])
+		}
+		return pkgs, nil
+	}
+	pkgs, err := loader(pattern)
+	if err != nil {
+		return nil, err
+	}
+	b, err := builder.NewForLoadWithLoader(pkgs[0], loader)
+	if err != nil {
+		return nil, err
+	}
+	return &Package{builder: b}, nil
 }
