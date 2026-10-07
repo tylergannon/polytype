@@ -223,7 +223,10 @@ type decls struct {
 	funcDecls  []FuncDecl
 }
 
+type DependencyLoader func(string) ([]*decorator.Package, error)
+
 type ScanResult struct {
+	loader      DependencyLoader
 	Pkg         *decorator.Package
 	Constants   map[string]*EnumSet
 	MarkerCalls []MarkerFunctionCall
@@ -280,7 +283,13 @@ func (s seenPackages) add(pkg *decorator.Package) (seenPackages, bool) {
 // Note: we pass a non-nil map to loadPackageInternal(...) so we can safely store references
 // to local types without panicking.
 func LoadPackage(pkg *decorator.Package) (res ScanResult, err error) {
+	return LoadPackageWithLoader(pkg, nil)
+}
+
+// LoadPackageWithLoader keeps recursive type discovery in the caller's package view.
+func LoadPackageWithLoader(pkg *decorator.Package, loader DependencyLoader) (res ScanResult, err error) {
 	res = newScanResult(pkg, map[string]ScanResult{})
+	res.loader = loader
 	res.declarations = true
 	// Pass an empty map so we never do `typesToMap[foo] = true` on a nil map.
 	err = res.loadPackageInternal(seenPackages{}, make(map[string]bool))
@@ -735,6 +744,7 @@ func (r *ScanResult) resolveTypes() error {
 			return err
 		} else {
 			remote = newScanResult(pkgs[0], r.deps)
+			remote.loader = r.loader
 			if err = remote.loadPackageInternal(seenPackages{}, typeNames); err != nil {
 				return fmt.Errorf("resolving type at %s: %w", pkgPath, err)
 			}
@@ -749,6 +759,9 @@ func (r *ScanResult) resolveTypes() error {
 // instead would look it up in the wrong module whenever the loaded package is
 // not the one the process was started in.
 func (r *ScanResult) loadDependency(pkgPath string) ([]*decorator.Package, error) {
+	if r.loader != nil {
+		return r.loader(pkgPath)
+	}
 	files := r.Pkg.GoFiles
 	if len(files) == 0 {
 		files = r.Pkg.CompiledGoFiles

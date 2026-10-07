@@ -1,0 +1,1 @@
+decision: SKGo #262 needs its current generated view passed through Polytype, including recursive imported-type discovery. Add LoadWithConfig without changing Load. Caller configuration stays live through Lower; temporary overlay backing files must live that long too.

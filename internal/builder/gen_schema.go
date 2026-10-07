@@ -45,7 +45,12 @@ func New(pkg *decorator.Package) (SchemaBuilder, error) {
 // roots. The result is suitable for callers that only need LowerRoots (the
 // grammar path) and never render JSON Schema or Go codecs.
 func NewForLoad(pkg *decorator.Package) (SchemaBuilder, error) {
-	data, err := syntax.LoadPackage(pkg)
+	return NewForLoadWithLoader(pkg, nil)
+}
+
+// NewForLoadWithLoader uses one package view for roots and recursive dependencies.
+func NewForLoadWithLoader(pkg *decorator.Package, loader syntax.DependencyLoader) (SchemaBuilder, error) {
+	data, err := syntax.LoadPackageWithLoader(pkg, loader)
 	if err != nil {
 		return SchemaBuilder{}, err
 	}
