@@ -7,3 +7,6 @@ doc_bug: Migration plan says the root JS devalue pin is recorder-only, but TestR
 
 friction: Generated fixtures live in nested modules, so root go mod tidy cannot see their runtime imports. The fixture dependency test imports the standalone runtime and identifies its real package path, preserving the root dependency needed by the fixture source tracker.
 friction: just lint's modernize -fix rewrites newly merged grammar LoaderConfig flag parsing and import formatting unrelated to runtime migration -> discard those automatic edits after verifying lint succeeds; keep this change scoped to the runtime separation.
+
+decision: Independent review found that tidy drops standalone runtime requirements in two fixtures before their generated code exists. Pin that dependency with an import in existing fixture tests, then tidy all changed fixture modules.
+decision: Include the small pre-existing grammar modernize/import-format change so just lint is idempotent; the reviewer reproduced the drift.

@@ -1,11 +1,10 @@
 package codegen_test
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tylergannon/devalue/v5"
+	_ "github.com/tylergannon/devalue/v5"
 	"github.com/tylergannon/polytype/internal/testutils"
 )
 
@@ -15,7 +14,7 @@ import (
 // also keeps the fixture dependency in the root module after go mod tidy.
 func TestFixtureDependenciesIncludeTheRuntime(t *testing.T) {
 	t.Parallel()
-	imports, err := testutils.TrackedFixtureDependencies("testdata", reflect.TypeFor[devalue.Object]().PkgPath())
+	imports, err := testutils.TrackedFixtureDependencies("testdata", "github.com/tylergannon/devalue/v5")
 	require.NoError(t, err)
-	require.Contains(t, imports, reflect.TypeFor[devalue.Object]().PkgPath())
+	require.Contains(t, imports, "github.com/tylergannon/devalue/v5")
 }

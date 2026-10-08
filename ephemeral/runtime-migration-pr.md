@@ -6,4 +6,5 @@ Validation:
 - `go test ./...`, `just lint`, and `just build-tagged` pass.
 - Generation followed by `JSONSCHEMA_NO_CHANGES=1 go generate ./...` passes.
 - The recursive Go→JavaScript→Go typed-codec exchange passes against the pinned upstream JS package.
-- A compiling consumer generates codecs importing published v5.0.0, checks exact expected wire bytes, and decodes a tree parsed by the standalone runtime. [Consumer source and result](ephemeral/runtime-consumer/) are included in this branch.
+- A compiling consumer generates codecs importing published v5.0.0, checks exact expected wire bytes, and decodes a tree parsed by the standalone runtime. [Consumer source and result](https://github.com/tylergannon/polytype/tree/codex/devalue-runtime-migration/ephemeral/runtime-consumer) are included in this branch.
+- The Astro website builds, and all internal links resolve across its 20 HTML pages.

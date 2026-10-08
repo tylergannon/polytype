@@ -16,11 +16,12 @@ package grammar
 
 import (
 	"fmt"
-	"github.com/dave/dst/decorator"
 	"go/token"
 	"go/types"
-	"golang.org/x/tools/go/packages"
 	"strings"
+
+	"github.com/dave/dst/decorator"
+	"golang.org/x/tools/go/packages"
 
 	"github.com/tylergannon/polytype/internal/builder"
 	"github.com/tylergannon/polytype/internal/syntax"
@@ -102,8 +103,8 @@ func LoadWithConfig(config *packages.Config, pattern string) (*Package, error) {
 			tags = syntax.BuildTag + "," + strings.Join(strings.FieldsFunc(cfg.BuildFlags[i+1], func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), ",")
 			cfg.BuildFlags = append(cfg.BuildFlags[:i], cfg.BuildFlags[i+2:]...)
 			i--
-		} else if strings.HasPrefix(flag, "-tags=") {
-			tags = syntax.BuildTag + "," + strings.Join(strings.FieldsFunc(strings.TrimPrefix(flag, "-tags="), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), ",")
+		} else if after, ok := strings.CutPrefix(flag, "-tags="); ok {
+			tags = syntax.BuildTag + "," + strings.Join(strings.FieldsFunc(after, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), ",")
 			cfg.BuildFlags = append(cfg.BuildFlags[:i], cfg.BuildFlags[i+1:]...)
 			i--
 		}

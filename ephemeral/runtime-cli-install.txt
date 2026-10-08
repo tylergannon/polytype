@@ -1,0 +1,22 @@
+Usage:
+  [gen] [options]
+
+Run 'gen --help' for options.
+bin/runtime-cli/polytype: go1.27.1
+	path	github.com/tylergannon/polytype/polytype
+	mod	github.com/tylergannon/polytype	v1.4.1-0.20261008090257-e77d2430c57b	h1:xdS8SDQlHG3A6LvDOSm4dWV/0yKIGkfW8HpS/FXYJsw=
+	dep	github.com/dave/dst	v0.27.3	h1:P1HPoMza3cMEquVf9kKy8yXsFirry4zEnWOdYPOoIzY=
+	dep	github.com/tylergannon/structtag	v0.1.0	h1:Vn4ZEemGUtAfw9ddEtHQILKnIWqSWCSpciFTNPh1gcY=
+	dep	golang.org/x/mod	v0.39.0	h1:UF5zwQdCRRUpHfyPwr7d4UrGiVeldIsogtzWVnczL74=
+	dep	golang.org/x/sync	v0.22.0	h1:SZjpbeLmrCk4xhRSZFNZW5gFUeCeFgjekvI/+gfScek=
+	dep	golang.org/x/tools	v0.49.0	h1:3NI7VXzL9+1WZD52Dx2ttoPwD5DWrFGpl9mFZDlmisI=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=arm64
+	build	GOOS=darwin
+	build	GOARM64=v8.0
