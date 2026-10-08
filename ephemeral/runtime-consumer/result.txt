@@ -1,0 +1,4 @@
+standalone-runtime-wire-and-roundtrip=ok
+upstream=5.9.4
+[{"name":1,"values":2},"Ada",[3,4],1,2]
+github.com/tylergannon/devalue/v5 v5.0.0

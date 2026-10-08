@@ -2,7 +2,10 @@ module recursivefixture
 
 go 1.27
 
-require github.com/tylergannon/polytype v0.0.0
+require (
+	github.com/tylergannon/devalue/v5 v5.0.0
+	github.com/tylergannon/polytype v0.0.0
+)
 
 require (
 	github.com/dave/dst v0.27.3 // indirect

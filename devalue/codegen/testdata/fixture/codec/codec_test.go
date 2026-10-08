@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tylergannon/devalue/v5"
 	"github.com/tylergannon/polytype"
-	"github.com/tylergannon/polytype/devalue"
 
 	"polytypedevaluefixture/model"
 )

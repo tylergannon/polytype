@@ -2,7 +2,7 @@
   "name": "polytype-dev",
   "private": true,
   "type": "module",
-  "description": "Development-only pins: oxfmt and oxlint check generated language output, tsgo type-checks the generated JSDoc consumer, and the devalue release records golden values. Production generation does not need npm.",
+  "description": "Development-only pins: oxfmt and oxlint check generated language output, tsgo type-checks the generated JSDoc consumer, and devalue verifies generated codec interoperability. Production generation does not need Node.",
   "devDependencies": {
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "devalue": "5.9.4",

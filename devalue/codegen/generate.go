@@ -111,7 +111,7 @@ var reservedIdentifiers = []string{
 	"dvWithout", "dvTagged", "dvEncodeTime", "dvDecodeTime",
 }
 
-const devaluePackagePath = "github.com/tylergannon/polytype/devalue"
+const devaluePackagePath = "github.com/tylergannon/devalue/v5"
 
 type generator struct {
 	opts  Options

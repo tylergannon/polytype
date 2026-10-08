@@ -8,8 +8,8 @@ import (
 	"recursivefixture/generated/codec"
 	"recursivefixture/model"
 
+	devalue "github.com/tylergannon/devalue/v5"
 	"github.com/tylergannon/polytype"
-	devalue "github.com/tylergannon/polytype/devalue"
 )
 
 // --- devalue round-trips ---
