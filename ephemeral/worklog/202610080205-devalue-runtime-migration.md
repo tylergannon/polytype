@@ -10,3 +10,7 @@ friction: just lint's modernize -fix rewrites newly merged grammar LoaderConfig 
 
 decision: Independent review found that tidy drops standalone runtime requirements in two fixtures before their generated code exists. Pin that dependency with an import in existing fixture tests, then tidy all changed fixture modules.
 decision: Include the small pre-existing grammar modernize/import-format change so just lint is idempotent; the reviewer reproduced the drift.
+
+correction: The final fixture dependency assertion uses a blank runtime import and literal package path, rather than reflection, so the generated import contract remains explicit. The earlier decision to discard grammar lint drift was superseded by the review decision above.
+
+decision: Independent round 2 outcome is only nitpicks remain. CI confirms the npm-locked website path as well as Go tests and generation; retain the README migration notice for this release. PR #163 is ready for a feat squash merge after the final documentation checkpoint passes CI, followed by the public release consumer check.

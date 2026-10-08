@@ -8,3 +8,4 @@ Validation:
 - The recursive Go→JavaScript→Go typed-codec exchange passes against the pinned upstream JS package.
 - A compiling consumer generates codecs importing published v5.0.0, checks exact expected wire bytes, and decodes a tree parsed by the standalone runtime. [Consumer source and result](https://github.com/tylergannon/polytype/tree/codex/devalue-runtime-migration/ephemeral/runtime-consumer) are included in this branch.
 - The Astro website builds, and all internal links resolve across its 20 HTML pages.
+- Independent review converged after two rounds; [final review](https://github.com/tylergannon/polytype/blob/codex/devalue-runtime-migration/ephemeral/reviews/20261008-runtime-migration-round-02.md) has only nitpicks.

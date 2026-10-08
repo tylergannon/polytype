@@ -19,3 +19,5 @@ The Astro docs site builds successfully, and all internal links resolve across 2
 The public Go proxy also builds and installs the polytype CLI from this branch at e77d2430c57b with GOWORK=off. The executable help and module build metadata are recorded in ephemeral/runtime-cli-install.txt. Final publication proof will use the release tag.
 
 Independent review round 1 identified tidy-removable fixture dependencies and recurring pre-existing grammar formatting/modernization drift. Both were corrected, and the full Go suite, lint and tagged build pass with those changes.
+
+Independent re-review round 2 found only nitpicks; it independently repeated the suite, JavaScript exchange, lint idempotency, tagged build, no-change generation and tidy checks. CI also passed the npm-ci website path and the Go generation gates at 62cb0c5: https://github.com/tylergannon/polytype/actions/runs/37754517044 and https://github.com/tylergannon/polytype/actions/runs/37754517070.
