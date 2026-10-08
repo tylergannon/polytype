@@ -34,72 +34,72 @@ Error: ERR_PNPM_IGNORED_BUILDS
 03:01:29 [build] Collecting build info...
 03:01:29 [build] ✓ Completed in 837ms.
 03:01:29 [build] Building static entrypoints...
-03:01:30 [WARN] [vite] [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use astro:head-inject" in "src/content/docs/spec.mdx?astroPropagatedAssets" may not be preserved when bundling.
-   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/content/docs/spec.mdx?astroPropagatedAssets:2:6 [38;5;246m][0m
-   [38;5;246m│[0m
- [38;5;246m2 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m"use astro:head-inject";
- [38;5;240m  │[0m               ────────────┬───────────  
- [38;5;240m  │[0m                           ╰───────────── module level directive may not be preserved
- [38;5;240m  │[0m 
- [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
-[38;5;246m───╯[0m
+03:01:30 [WARN] [vite] [MODULE_LEVEL_DIRECTIVE] The semantics of the module level directive "use astro:head-inject" in "src/content/docs/spec.mdx?astroPropagatedAssets" may not be preserved when bundling.
+   ╭─[ src/content/docs/spec.mdx?astroPropagatedAssets:2:6 ]
+   │
+ 2 │               "use astro:head-inject";
+   │               ────────────┬───────────
+   │                           ╰───────────── module level directive may not be preserved
+   │
+   │ Help: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+───╯
 
-03:01:30 [WARN] [vite] [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use astro:head-inject" in "src/content/docs/index.mdx?astroPropagatedAssets" may not be preserved when bundling.
-   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/content/docs/index.mdx?astroPropagatedAssets:2:6 [38;5;246m][0m
-   [38;5;246m│[0m
- [38;5;246m2 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m"use astro:head-inject";
- [38;5;240m  │[0m               ────────────┬───────────  
- [38;5;240m  │[0m                           ╰───────────── module level directive may not be preserved
- [38;5;240m  │[0m 
- [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
-[38;5;246m───╯[0m
+03:01:30 [WARN] [vite] [MODULE_LEVEL_DIRECTIVE] The semantics of the module level directive "use astro:head-inject" in "src/content/docs/index.mdx?astroPropagatedAssets" may not be preserved when bundling.
+   ╭─[ src/content/docs/index.mdx?astroPropagatedAssets:2:6 ]
+   │
+ 2 │               "use astro:head-inject";
+   │               ────────────┬───────────
+   │                           ╰───────────── module level directive may not be preserved
+   │
+   │ Help: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+───╯
 
-03:01:30 [WARN] [vite] [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use astro:head-inject" in "src/content/docs/getting-started.mdx?astroPropagatedAssets" may not be preserved when bundling.
-   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/content/docs/getting-started.mdx?astroPropagatedAssets:2:6 [38;5;246m][0m
-   [38;5;246m│[0m
- [38;5;246m2 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m"use astro:head-inject";
- [38;5;240m  │[0m               ────────────┬───────────  
- [38;5;240m  │[0m                           ╰───────────── module level directive may not be preserved
- [38;5;240m  │[0m 
- [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
-[38;5;246m───╯[0m
+03:01:30 [WARN] [vite] [MODULE_LEVEL_DIRECTIVE] The semantics of the module level directive "use astro:head-inject" in "src/content/docs/getting-started.mdx?astroPropagatedAssets" may not be preserved when bundling.
+   ╭─[ src/content/docs/getting-started.mdx?astroPropagatedAssets:2:6 ]
+   │
+ 2 │               "use astro:head-inject";
+   │               ────────────┬───────────
+   │                           ╰───────────── module level directive may not be preserved
+   │
+   │ Help: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+───╯
 
-03:01:30 [WARN] [vite] [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use astro:head-inject" in "src/content/docs/examples.mdx?astroPropagatedAssets" may not be preserved when bundling.
-   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/content/docs/examples.mdx?astroPropagatedAssets:2:6 [38;5;246m][0m
-   [38;5;246m│[0m
- [38;5;246m2 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m"use astro:head-inject";
- [38;5;240m  │[0m               ────────────┬───────────  
- [38;5;240m  │[0m                           ╰───────────── module level directive may not be preserved
- [38;5;240m  │[0m 
- [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
-[38;5;246m───╯[0m
+03:01:30 [WARN] [vite] [MODULE_LEVEL_DIRECTIVE] The semantics of the module level directive "use astro:head-inject" in "src/content/docs/examples.mdx?astroPropagatedAssets" may not be preserved when bundling.
+   ╭─[ src/content/docs/examples.mdx?astroPropagatedAssets:2:6 ]
+   │
+ 2 │               "use astro:head-inject";
+   │               ────────────┬───────────
+   │                           ╰───────────── module level directive may not be preserved
+   │
+   │ Help: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+───╯
 
 03:01:30 [vite] ✓ built in 782ms
 03:01:30 [vite] ✓ built in 26ms
 03:01:30 [build] Rearranging server assets...
 
- generating static routes 
+ generating static routes
 03:01:30   ├─ /404.htmlEntry docs → 404 was not found.
- (+13ms) 
-03:01:30   ├─ /guides/example/index.html (+1ms) 
-03:01:30   ├─ /implementation/index.html (+0ms) 
-03:01:30   ├─ /reference/example/index.html (+0ms) 
-03:01:30   ├─ /spec/v1/index.html (+0ms) 
-03:01:30   ├─ /api/index.html (+5ms) 
-03:01:30   ├─ /examples/index.html (+4ms) 
-03:01:30   ├─ /features/enums/index.html (+2ms) 
-03:01:30   ├─ /features/interfaces/index.html (+2ms) 
-03:01:30   ├─ /features/optionality/index.html (+3ms) 
-03:01:30   ├─ /features/providers/index.html (+2ms) 
-03:01:30   ├─ /features/ref-types/index.html (+2ms) 
-03:01:30   ├─ /getting-started/index.html (+3ms) 
-03:01:30   ├─ /guides/custom-backends/index.html (+6ms) 
-03:01:30   ├─ /guides/devalue/index.html (+2ms) 
-03:01:30   ├─ /guides/validation-ci/index.html (+1ms) 
-03:01:30   ├─ /index.html (+2ms) 
-03:01:30   ├─ /migration-v1/index.html (+1ms) 
-03:01:30   ├─ /reference/cli/index.html (+1ms) 
-03:01:30   ├─ /spec/index.html (+2ms) 
+ (+13ms)
+03:01:30   ├─ /guides/example/index.html (+1ms)
+03:01:30   ├─ /implementation/index.html (+0ms)
+03:01:30   ├─ /reference/example/index.html (+0ms)
+03:01:30   ├─ /spec/v1/index.html (+0ms)
+03:01:30   ├─ /api/index.html (+5ms)
+03:01:30   ├─ /examples/index.html (+4ms)
+03:01:30   ├─ /features/enums/index.html (+2ms)
+03:01:30   ├─ /features/interfaces/index.html (+2ms)
+03:01:30   ├─ /features/optionality/index.html (+3ms)
+03:01:30   ├─ /features/providers/index.html (+2ms)
+03:01:30   ├─ /features/ref-types/index.html (+2ms)
+03:01:30   ├─ /getting-started/index.html (+3ms)
+03:01:30   ├─ /guides/custom-backends/index.html (+6ms)
+03:01:30   ├─ /guides/devalue/index.html (+2ms)
+03:01:30   ├─ /guides/validation-ci/index.html (+1ms)
+03:01:30   ├─ /index.html (+2ms)
+03:01:30   ├─ /migration-v1/index.html (+1ms)
+03:01:30   ├─ /reference/cli/index.html (+1ms)
+03:01:30   ├─ /spec/index.html (+2ms)
 03:01:30 ✓ Completed in 105ms.
 
 03:01:30 [build] ✓ Completed in 930ms.

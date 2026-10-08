@@ -13,3 +13,5 @@ Validation completed:
 - ephemeral/runtime-consumer uses the current generator plus published v5.0.0, emits codecs importing the standalone runtime, checks exact wire [{"name":1,"values":2},"Ada",[3,4],1,2], then decodes a tree parsed by that standalone runtime. It prints standalone-runtime-wire-and-roundtrip=ok and upstream=5.9.4.
 
 The scratch consumer uses a local polytype replace before this branch is released; its runtime has no replace. Publication is followed by a fresh no-replace CLI install and rerunning this consumer with the released polytype version.
+
+The Astro docs site builds successfully, and all internal links resolve across 20 HTML pages. The API index now omits the removed runtime package.
