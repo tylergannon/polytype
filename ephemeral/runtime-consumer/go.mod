@@ -1,10 +1,10 @@
-module recursivedeclarations
+module example.com/runtime-consumer
 
 go 1.27
 
 require (
 	github.com/tylergannon/devalue/v5 v5.0.0
-	github.com/tylergannon/polytype v0.0.0
+	github.com/tylergannon/polytype v1.4.0
 )
 
 require (
@@ -15,4 +15,4 @@ require (
 	golang.org/x/tools v0.49.0 // indirect
 )
 
-replace github.com/tylergannon/polytype => ../../../
+replace github.com/tylergannon/polytype => ../..

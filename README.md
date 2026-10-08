@@ -13,7 +13,7 @@ grammar into the other type systems your program has to speak:
 | **Go JSON codecs** | Membership-checked enums and discriminated sealed unions | Inferred from your types; no flag |
 | **TypeScript** | Structural `types.ts` declarations for the same shapes | `--typescript DIR`, or the `typescript` package |
 | **JavaScript** | JSDoc `types.js` declarations for the same shapes | `--javascript DIR`, or the `javascript` package |
-| **devalue transport** | Go encoders/decoders for the [devalue](https://github.com/sveltejs/devalue) wire format SvelteKit uses, plus a Go port of the runtime | `devalue` and `devalue/codegen` packages |
+| **devalue transport** | Go encoders/decoders for the [devalue](https://github.com/sveltejs/devalue) wire format SvelteKit uses, using the separate Go runtime | `devalue/codegen` package and [`devalue/v5`](https://github.com/tylergannon/devalue) runtime |
 | **Your own backend** | Load a package, lower any roots, walk the grammar | `grammar` and `typegrammar` packages |
 
 The Go type is the single source of truth. Every projection is derived
@@ -664,16 +664,21 @@ project the same definitions from a Go program.
 ## 🧬 Go ↔ JavaScript transport with devalue
 
 [devalue](https://github.com/sveltejs/devalue) is the structured-value wire
-format SvelteKit uses for `load` data and remote functions. polytype ships Go
-ports of its flat `stringify`/`parse` pair and expression-producing `uneval`,
-plus a code generator that emits strict, typed Go codecs for the flat wire. A Go service can
+format SvelteKit uses for `load` data and remote functions. The separate
+[`devalue/v5`](https://github.com/tylergannon/devalue) runtime ports its flat
+`stringify`/`parse` pair and expression-producing `uneval`. polytype generates
+strict, typed Go codecs that import that runtime. A Go service can
 produce exactly what `devalue.parse` expects in the browser and consume what
 `devalue.stringify` sends back.
 
-### The runtime: `devalue`
+### The runtime: `devalue/v5`
+
+The bundled `github.com/tylergannon/polytype/devalue` runtime has been removed.
+Update runtime imports to `github.com/tylergannon/devalue/v5` and regenerate
+typed codecs. The generator remains at `github.com/tylergannon/polytype/devalue/codegen`.
 
 ```go
-import "github.com/tylergannon/polytype/devalue"
+import "github.com/tylergannon/devalue/v5"
 
 s, err := devalue.Stringify(devalue.NewObject("name", "Ada", "tags", []any{"a", "b"}))
 // [{"name":1,"tags":2},"Ada",[3,4],"a","b"]
@@ -687,14 +692,13 @@ js, err := devalue.Uneval(devalue.NewObject("name", "Ada"))
 The value model is `*devalue.Object` (ordered properties; `map[string]any` is
 accepted on encode with sorted keys), `[]any`, `string`, `float64` and the
 other Go numeric kinds, `bool`, `nil`, `devalue.Undefined`, `devalue.Hole`,
-and the tagged forms `Date`, `*Map`, `*Set`, `BigInt`, `RegExp`, `ArrayBuffer`
-and `*Boxed`. `Uneval` additionally supports typed arrays, `DataView`, `URL`,
-`URLSearchParams`, and `Temporal`, while those values remain unsupported by
-the flat format. `StringifyWith(v, reducers)` and the `revivers` argument to
+and the tagged forms `Date`, `*Map`, `*Set`, `BigInt`, `RegExp`, `ArrayBuffer`,
+`*TypedArray`, `*DataView`, and `*Boxed`. `Uneval` additionally supports `URL`,
+`URLSearchParams`, and `Temporal`, which remain unsupported by the flat format. `StringifyWith(v, reducers)` and the `revivers` argument to
 `Parse` are flat-format custom-type hooks. `UnevalWith(v, replacer)` accepts a
 separate hook whose returned string is trusted JavaScript.
 
-Each polytype release is feature-equivalent to one exact devalue release,
+Each runtime release is feature-equivalent to one exact devalue release,
 named by `devalue.UpstreamVersion` (currently 5.9.4): for supported shapes,
 `Stringify` and `Uneval` write the bytes that release writes, checked against
 goldens it recorded. Equal value-modeled objects such as
@@ -969,6 +973,6 @@ just lint    # task runner is `just`
 All tests are plain `go test`. The TypeScript backend checks representative
 generated output with pinned `oxfmt` and `oxlint`. The JavaScript backend uses
 those tools and type-checks an ESM consumer with pinned `tsgo`. These checks
-skip when Node tooling is absent; CI runs `npm ci` before the tests. The devalue
-runtime never runs Node: it compares against goldens recorded from the pinned
-devalue release by `devalue/testdata/record`, whose README covers moving the pin.
+skip when Node tooling is absent; CI runs `npm ci` before the tests. Runtime
+parity tests and the pinned upstream recorder live in the separate
+[devalue repository](https://github.com/tylergannon/devalue).

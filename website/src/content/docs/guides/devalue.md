@@ -4,20 +4,21 @@ description: Generate strict Go codecs for the devalue wire format SvelteKit use
 ---
 
 [devalue](https://github.com/sveltejs/devalue) is the structured-value wire
-format SvelteKit uses for `load` data and remote functions. polytype ships Go
-ports of its flat `stringify`/`parse` pair and expression-producing `uneval`,
-plus a generator that emits typed Go codecs for the flat wire. A Go service can then produce exactly
+format SvelteKit uses for `load` data and remote functions. The separate
+[`devalue/v5`](https://github.com/tylergannon/devalue) runtime ports its flat
+`stringify`/`parse` pair and expression-producing `uneval`. polytype generates
+typed Go codecs that import that runtime. A Go service can then produce exactly
 what `devalue.parse` expects in the browser and consume what
 `devalue.stringify` sends back, with every value checked against the type
 grammar on the way in.
 
-Both pieces are Go packages in the polytype module. The CLI does not drive
-them; you write a short generator program.
+The generator stays in the polytype module; the runtime is a separate module.
+The CLI does not drive devalue generation; you write a short generator program.
 
 ## 1. The runtime: `devalue`
 
 ```go
-import "github.com/tylergannon/polytype/devalue"
+import "github.com/tylergannon/devalue/v5"
 
 s, err := devalue.Stringify(devalue.NewObject("name", "Ada", "tags", []any{"a", "b"}))
 // [{"name":1,"tags":2},"Ada",[3,4],"a","b"]
@@ -32,15 +33,15 @@ js, err := devalue.Uneval(devalue.NewObject("name", "Ada"))
   `Keys`; a `map[string]any` is accepted on encode with sorted keys),
   `[]any`, `string`, the Go numeric kinds (float64 after parse), `bool`,
   `nil`, `devalue.Undefined`, `devalue.Hole`, and the tagged forms `Date`,
-  `*Map`, `*Set`, `BigInt`, `RegExp`, `ArrayBuffer`, `*Boxed`.
+  `*Map`, `*Set`, `BigInt`, `RegExp`, `ArrayBuffer`, `*TypedArray`, `*DataView`, `*Boxed`.
 - `StringifyWith(v, reducers)` and the `revivers` argument to `Parse` are the
   flat format's custom-type hooks, tried in order before the built-ins.
 - `Uneval` preserves shared references and cycles. It additionally supports
-  typed arrays, `DataView`, `URL`, `URLSearchParams`, and `Temporal`; those
-  values remain unsupported by the flat format.
+  `URL`, `URLSearchParams`, and `Temporal`, which remain unsupported by the
+  flat format.
 - `UnevalWith(v, replacer)` accepts a separate custom hook. Its result is
   trusted JavaScript and is inserted verbatim.
-- Each polytype release is feature-equivalent to one exact devalue release,
+- Each runtime release is feature-equivalent to one exact devalue release,
   named by `devalue.UpstreamVersion` (currently 5.9.4): for supported shapes,
   `Stringify` and `Uneval` write the bytes that release writes. Equal
   value-modeled objects such as `Date` cannot express distinct JavaScript

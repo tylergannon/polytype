@@ -4,15 +4,17 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	_ "github.com/tylergannon/devalue/v5"
 	"github.com/tylergannon/polytype/internal/testutils"
 )
 
 // TestFixtureDependenciesIncludeTheRuntime pins what
 // TestGeneratedCodecsCompileAndRun tracks: its fixture runs against the
-// devalue runtime, which this test binary does not otherwise depend on.
+// standalone devalue runtime that generated codecs use. Importing it here
+// also keeps the fixture dependency in the root module after go mod tidy.
 func TestFixtureDependenciesIncludeTheRuntime(t *testing.T) {
 	t.Parallel()
-	imports, err := testutils.TrackedFixtureDependencies("testdata", "github.com/tylergannon/polytype")
+	imports, err := testutils.TrackedFixtureDependencies("testdata", "github.com/tylergannon/devalue/v5")
 	require.NoError(t, err)
-	require.Contains(t, imports, "github.com/tylergannon/polytype/devalue")
+	require.Contains(t, imports, "github.com/tylergannon/devalue/v5")
 }

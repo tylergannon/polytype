@@ -3,19 +3,20 @@
 Read this when a Go service must speak SvelteKit's devalue wire format, when
 a generator you are writing should emit `types.ts` without the CLI's schema
 files, or when you need polytype's type grammar to write a new projection.
-All are Go library packages in the `github.com/tylergannon/polytype` module;
-the CLI does not drive them.
+The backends are Go library packages in the `github.com/tylergannon/polytype`
+module; the runtime lives in `github.com/tylergannon/devalue/v5`. The CLI does
+not drive devalue generation.
 
 ## The devalue runtime — `devalue`
 
 devalue is the structured-value format SvelteKit uses for `load` data and
-remote functions. `github.com/tylergannon/polytype/devalue` ports its flat
-`stringify`/`parse` pair and expression-producing `uneval`. Each polytype
+remote functions. `github.com/tylergannon/devalue/v5` ports its flat
+`stringify`/`parse` pair and expression-producing `uneval`. Each runtime
 release is feature-equivalent to one exact devalue release, named by
 `devalue.UpstreamVersion` (currently 5.9.4).
 
 ```go
-import "github.com/tylergannon/polytype/devalue"
+import "github.com/tylergannon/devalue/v5"
 
 s, err := devalue.Stringify(devalue.NewObject("name", "Ada", "tags", []any{"a", "b"}))
 // [{"name":1,"tags":2},"Ada",[3,4],"a","b"]
@@ -30,12 +31,12 @@ js, err := devalue.Uneval(devalue.NewObject("name", "Ada"))
   `map[string]any` is accepted on encode with sorted keys), `[]any`,
   `string`, Go numeric kinds (float64 after parse), `bool`, `nil`,
   `devalue.Undefined`, `devalue.Hole`, and the tagged forms `Date`, `*Map`,
-  `*Set`, `BigInt`, `RegExp`, `ArrayBuffer`, `*Boxed`.
+  `*Set`, `BigInt`, `RegExp`, `ArrayBuffer`, `*TypedArray`, `*DataView`, `*Boxed`.
 - `StringifyWith(v, []Reducer)` and `Parse(s, revivers)` are the flat format's
   custom-type hooks, tried in order before the built-ins.
 - `Uneval` preserves shared references and cycles and additionally supports
-  typed arrays, `DataView`, `URL`, `URLSearchParams`, and `Temporal`. Those
-  values remain unsupported by the flat format.
+  `URL`, `URLSearchParams`, and `Temporal`, which remain unsupported by the
+  flat format.
 - `UnevalWith(v, replacer)` accepts a separate custom hook whose result is
   trusted JavaScript and inserted verbatim.
 - Equal value-modeled objects such as `Date` cannot express distinct

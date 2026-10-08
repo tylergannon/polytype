@@ -1,6 +1,9 @@
 package model
 
 import (
+	// Generated codecs import this runtime; retain it during go mod tidy.
+	_ "github.com/tylergannon/devalue/v5"
+
 	"bytes"
 	"encoding/json"
 	"testing"

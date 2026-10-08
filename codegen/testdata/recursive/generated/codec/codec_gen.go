@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	devalue "github.com/tylergannon/polytype/devalue"
+	devalue "github.com/tylergannon/devalue/v5"
 )
 
 // dvAt renders a JSON-pointer-style path for a diagnostic. The root value has

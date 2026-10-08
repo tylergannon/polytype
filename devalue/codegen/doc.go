@@ -1,6 +1,6 @@
 // Package codegen emits Go encoders and strict decoders that move values
 // between Go types and the devalue value model of
-// github.com/tylergannon/polytype/devalue.
+// github.com/tylergannon/devalue/v5.
 //
 // The input is a validated [github.com/tylergannon/polytype/typegrammar]
 // definition graph plus the caller's root nodes, as produced by

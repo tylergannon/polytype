@@ -21,8 +21,9 @@ into the other type systems a program speaks:
   discriminated sealed unions. No flag selects them.
 - Structural TypeScript declarations (`--typescript DIR`, or the `typescript`
   package from a Go program that already knows its roots).
-- devalue transport for SvelteKit: a Go runtime port plus generated strict
-  Go codecs (`devalue`, `devalue/codegen`), driven from a Go program.
+- devalue transport for SvelteKit: generated strict Go codecs
+  (`devalue/codegen`) using the separate `github.com/tylergannon/devalue/v5`
+  runtime, driven from a Go program.
 - A library entry point for your own backend (`grammar`, `typegrammar`).
 
 Every projection refuses a shape it cannot represent faithfully rather than

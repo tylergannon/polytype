@@ -26,6 +26,7 @@ import (
 func TestGeneratedCodecsCompileAndRun(t *testing.T) {
 	t.Parallel()
 	testutils.TrackFixtureDependencies(t, "testdata", "github.com/tylergannon/polytype")
+	testutils.TrackFixtureDependencies(t, "testdata", "github.com/tylergannon/devalue/v5")
 
 	repoRoot, err := filepath.Abs("../..")
 	if err != nil {
