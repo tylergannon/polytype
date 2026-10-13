@@ -25,7 +25,8 @@ const LoadMode = syntax.PackageLoadNeeds | packages.NeedImports
 // packages to resolve source. It never invokes a loader or the Go command; a
 // reached package without source produces an error identifying what is missing.
 // Packages used only through built-in grammar support (such as time.Time) do
-// not need source.
+// not need source. Errors are checked on each reached package; errors in an
+// unrelated dependency do not prevent lowering an otherwise valid root.
 //
 // config must describe the load that produced the snapshot and set the
 // jsonschema tag in BuildFlags or GOFLAGS (Config.Env, or the process environment
@@ -108,7 +109,7 @@ func FromPackages(config *packages.Config, root *packages.Package, additional ..
 		if len(pkg.Errors) > 0 {
 			return nil, fmt.Errorf("package %s has errors: %s", path, pkg.Errors[0])
 		}
-		if pkg.IllTyped || pkg.Types == nil || pkg.TypesInfo == nil || pkg.TypesInfo.Uses == nil || pkg.Fset == nil || len(pkg.Syntax) == 0 || len(pkg.GoFiles) == 0 {
+		if pkg.Types == nil || pkg.TypesInfo == nil || pkg.TypesInfo.Uses == nil || pkg.Fset == nil || len(pkg.Syntax) == 0 || len(pkg.GoFiles) == 0 {
 			return nil, fmt.Errorf("FromPackages: package %s needs type-checked source; load it with grammar.LoadMode (and NeedDeps for imports)", path)
 		}
 		if err := view.add(pkg); err != nil {

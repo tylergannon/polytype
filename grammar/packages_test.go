@@ -100,6 +100,39 @@ func TestFromPackagesMissingDependencyDoesNotReload(t *testing.T) {
 	require.NotContains(t, err.Error(), "unexpected-package-load")
 }
 
+func TestFromPackagesOnlyRejectsErrorsInReachedPackages(t *testing.T) {
+	dir := writeFixture(t, map[string]string{
+		"root.go":       "package fixture\nimport _ \"example.com/grammarfixture/dep\"\ntype Root struct { Text string }\n",
+		"dep/broken.go": "//go:build jsonschema\n\npackage dep\ntype Value struct { Count int }\nvar broken int = \"not an int\"\n",
+	})
+	cfg := packageConfig(dir)
+	cfg.Mode |= packages.NeedDeps
+	pkgs := loadSnapshot(t, cfg, ".")
+	require.True(t, pkgs[0].IllTyped, "go/packages propagates dependency errors to root IllTyped")
+	dep := pkgs[0].Imports["example.com/grammarfixture/dep"]
+	require.NotEmpty(t, dep.Errors)
+	ordinary, err := grammar.LoadWithConfig(cfg, ".")
+	require.NoError(t, err)
+	wantDefs, wantRoots := lowerNamed(t, ordinary, "Root")
+	forbidPackageLoads(t)
+	supplied, err := grammar.FromPackages(cfg, pkgs[0])
+	require.NoError(t, err)
+	defs, roots := lowerNamed(t, supplied, "Root")
+	require.Len(t, defs, 1)
+	root := requireDefinition(t, defs, typegrammar.Name{PackagePath: "example.com/grammarfixture", Name: "Root"})
+	fields := root.Type.(*typegrammar.Object).Fields
+	require.Len(t, fields, 1)
+	require.Equal(t, "Text", fields[0].GoName)
+	require.Equal(t, &typegrammar.Required{Type: &typegrammar.Scalar{Kind: typegrammar.String}}, fields[0].Value)
+	require.Equal(t, wantDefs, defs)
+	require.Equal(t, wantRoots, roots)
+	requireProjectionParity(t, wantDefs, defs)
+	_, _, err = supplied.Lower([]grammar.Root{{Type: dep.Types.Scope().Lookup("Value").Type()}})
+	require.ErrorContains(t, err, "package example.com/grammarfixture/dep has errors:")
+	require.ErrorContains(t, err, "not an int")
+	require.NotContains(t, err.Error(), "unexpected-package-load")
+}
+
 func TestFromPackagesKeepsCrossPackageUnionDeclaration(t *testing.T) {
 	dir := writeFixture(t, map[string]string{
 		"root.go": "package fixture\nimport \"example.com/grammarfixture/dep\"\ntype Root struct { Nested dep.Holder }\n",
