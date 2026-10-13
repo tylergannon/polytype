@@ -2,6 +2,9 @@ package grammar_test
 
 import (
 	"cmp"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"go/types"
 	"os"
 	"os/exec"
@@ -194,6 +197,47 @@ func (Circle) shape() {}
 			requireProjectionParity(t, wantDefs, defs)
 			root := requireDefinition(t, defs, typegrammar.Name{PackagePath: "example.com/grammarfixture", Name: "Root"})
 			require.Equal(t, "overlayKind", root.Type.(*typegrammar.Object).Fields[0].Value.(*typegrammar.Union).Discriminator)
+		})
+	}
+}
+
+func TestConfiguredSourcesSeparatePhysicalAndDiagnosticFilenames(t *testing.T) {
+	for _, constraint := range []string{"jsonschema", "jsonschema || custom"} {
+		t.Run(constraint, func(t *testing.T) {
+			dir := writeFixture(t, map[string]string{
+				"types.go":  "package fixture\ntype Root struct { Text string }\n",
+				"schema.go": "//go:build " + constraint + "\n\npackage fixture\nimport \"github.com/tylergannon/polytype\"\nvar _ = polytype.Declare[Root]()\n",
+			})
+			cfg := packageConfig(dir)
+			cfg.BuildFlags = []string{"-tags=jsonschema,custom"}
+			diagnosticDir := filepath.Join(t.TempDir(), "authored")
+			cfg.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
+				// Match staging parsers: keep the physical filename for package
+				// selection, but report locations in an authored/virtual file.
+				display := filepath.Join(diagnosticDir, filepath.Base(filename))
+				return parser.ParseFile(fset, filename, "//line "+display+":1\n"+string(src), parser.ParseComments)
+			}
+			pkgs := loadSnapshot(t, cfg, ".")
+			ordinary, ordinaryErr := grammar.LoadWithConfig(cfg, ".")
+			var wantDefs typegrammar.Definitions
+			if ordinaryErr == nil {
+				wantDefs, _ = lowerNamed(t, ordinary, "Root")
+			}
+			forbidPackageLoads(t)
+			supplied, suppliedErr := grammar.FromPackages(cfg, pkgs[0])
+			if constraint == "jsonschema || custom" {
+				require.ErrorContains(t, ordinaryErr, "is in a file compiled into the package")
+				require.ErrorContains(t, ordinaryErr, filepath.Join(diagnosticDir, "schema.go"))
+				require.EqualError(t, suppliedErr, ordinaryErr.Error())
+				return
+			}
+			require.NoError(t, ordinaryErr)
+			require.NoError(t, suppliedErr)
+			defs, _ := lowerNamed(t, supplied, "Root")
+			require.Equal(t, filepath.Join(diagnosticDir, "types.go"), requireDefinition(t, defs, typegrammar.Name{PackagePath: "example.com/grammarfixture", Name: "Root"}).Source.Filename)
+			require.Equal(t, wantDefs, defs)
+			requireProjectionParity(t, wantDefs, defs)
+			require.NoDirExists(t, diagnosticDir)
 		})
 	}
 }

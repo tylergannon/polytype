@@ -457,11 +457,14 @@ func (r *ScanResult) loadPackageInternal(seen seenPackages, typesToMap map[strin
 		// a generator program. Only a declaration file, compiled solely for
 		// generation, is read as declarations.
 		position := decl.CallExpr.Position()
+		// A //line directive changes diagnostic locations, not the identity or
+		// build constraints of the physical file containing the declaration.
+		filename := r.Pkg.Fset.PositionFor(decl.CallExpr.Pos(), false).Filename
 		isProduction := r.productionFile
 		if isProduction == nil {
 			isProduction = IsProductionGoFile
 		}
-		production, err := isProduction(position.Filename)
+		production, err := isProduction(filename)
 		if err != nil {
 			return err
 		}
