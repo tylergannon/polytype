@@ -66,3 +66,29 @@ func TestLoadWithConfigPreservesCallerBuildTags(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadWithConfigKeepsLegacyGOFLAGSSelection(t *testing.T) {
+	t.Setenv("GOFLAGS", "-tags=custom")
+	dir := writeFixture(t, map[string]string{
+		"types.go":  "package fixture\ntype Root struct { Text string }\n",
+		"custom.go": "//go:build custom\n\npackage fixture\ntype CustomSelected struct {}\n",
+		"schema.go": "//go:build jsonschema\n\npackage fixture\ntype GenerationSelected struct {}\n",
+	})
+	plain, err := grammar.Load(dir)
+	require.NoError(t, err)
+	for _, flags := range [][]string{nil, {"-tags=jsonschema"}} {
+		configured, err := grammar.LoadWithConfig(&packages.Config{Dir: dir, BuildFlags: flags}, ".")
+		require.NoError(t, err)
+		for _, pkg := range []*grammar.Package{plain, configured} {
+			require.Nil(t, pkg.Types().Scope().Lookup("CustomSelected"), "the injected jsonschema flag overrides GOFLAGS")
+			require.NotNil(t, pkg.Types().Scope().Lookup("GenerationSelected"))
+		}
+		want, _ := lowerNamed(t, plain, "Root")
+		got, _ := lowerNamed(t, configured, "Root")
+		requireProjectionParity(t, want, got)
+	}
+	explicit, err := grammar.LoadWithConfig(&packages.Config{Dir: dir, BuildFlags: []string{"-tags=custom"}}, ".")
+	require.NoError(t, err)
+	require.NotNil(t, explicit.Types().Scope().Lookup("CustomSelected"), "explicit caller tags remain selected alongside jsonschema")
+	require.NotNil(t, explicit.Types().Scope().Lookup("GenerationSelected"))
+}

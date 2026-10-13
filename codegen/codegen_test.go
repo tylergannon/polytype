@@ -192,9 +192,9 @@ func TestRecursiveTypesGenerateCodecsWithoutSchema(t *testing.T) {
 	})
 
 	t.Run("TypeScript compiles with strict mode", func(t *testing.T) {
-		tsc := filepath.Join(repoRoot, "node_modules", ".bin", "tsc")
+		tsc := filepath.Join(repoRoot, "node_modules", ".bin", "tsgo")
 		if _, statErr := os.Stat(tsc); statErr != nil {
-			t.Skip("tsc not installed (run npm ci at repo root)")
+			t.Skip("tsgo not installed (run npm ci at repo root)")
 		}
 		fixture := copyRecursiveFixture(t, repoRoot)
 		runFixtureCmd(t, fixture, "recursive", "generate")
@@ -230,7 +230,7 @@ func TestGenWithDeclarationFilesPresent(t *testing.T) {
 	require.NoError(t, err)
 
 	fixture := copyNamedFixture(t, repoRoot, "testdata/recursive_declarations")
-	tsc := filepath.Join(repoRoot, "node_modules", ".bin", "tsc")
+	tsc := filepath.Join(repoRoot, "node_modules", ".bin", "tsgo")
 	gen := fixtureCmd(t, "recursive_declarations", "gen")
 	run := func(t *testing.T, target, out string) (int, string) {
 		t.Helper()
@@ -262,7 +262,7 @@ func TestGenWithDeclarationFilesPresent(t *testing.T) {
 			require.Contains(t, string(types), `"kind": "leaf";`)
 			t.Run("TypeScript compiles with strict mode", func(t *testing.T) {
 				if _, statErr := os.Stat(tsc); statErr != nil {
-					t.Skip("tsc not installed (run npm ci at repo root)")
+					t.Skip("tsgo not installed (run npm ci at repo root)")
 				}
 				exit, stdout, stderr, err := testutils.RunCommand(tsc, fixture, "--strict", "--noEmit", filepath.Join(pkg, "ts", "types.ts"))
 				require.NoError(t, err)

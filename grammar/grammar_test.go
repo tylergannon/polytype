@@ -349,7 +349,7 @@ type LinkedB struct {
 	require.Equal(t, nodeName, ref.Target)
 }
 
-func writeFixture(t *testing.T, files map[string]string) string {
+func writeFixture(t testing.TB, files map[string]string) string {
 	t.Helper()
 	root, err := filepath.Abs("..")
 	require.NoError(t, err)

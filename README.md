@@ -586,6 +586,41 @@ written into the package that declares the types. See
 configuration API that selects JSON Schema, Go JSON, TypeScript, and devalue
 outputs from the same declarations.
 
+If your generator already has parsed and type-checked packages, hand that
+snapshot to `grammar.FromPackages` instead of loading it again:
+
+```go
+cfg := &packages.Config{
+    Dir: "./orders",
+    Mode: grammar.LoadMode | packages.NeedDeps,
+    BuildFlags: []string{"-tags=jsonschema"},
+}
+loaded, err := packages.Load(cfg, ".")
+if err != nil {
+    return err
+}
+if len(loaded) != 1 {
+    return fmt.Errorf("expected one package, got %d", len(loaded))
+}
+pkg, err := grammar.FromPackages(cfg, loaded[0])
+if err != nil {
+    return err
+}
+```
+
+This preserves the caller's ASTs, comments, source positions and type identity.
+Dependencies whose source is reached must also be present: use `NeedDeps`, or
+select those dependencies as explicit patterns in the same load and pass them
+as additional arguments. Missing source produces an error, never another load.
+The supplied config must describe that exact immutable snapshot, including
+overlays, `Tests: false`, and a `jsonschema` build tag in `BuildFlags` or
+`GOFLAGS`. Load a fresh snapshot after editing source. String-mode enum
+adaptation still checks on-disk production JSON methods, including files
+excluded from the tagged snapshot. See `FromPackages`'s Go documentation for
+ownership and production-tag requirements.
+For declaration checks, explicit tags other than `jsonschema` are also treated
+as your production build tags; otherwise `GOFLAGS` supplies the production tags.
+
 ### Adopt TypeScript declarations with Go JSON codecs
 
 Pin an explicit module release that contains both capabilities; the generator

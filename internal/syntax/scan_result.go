@@ -226,11 +226,12 @@ type decls struct {
 type DependencyLoader func(string) ([]*decorator.Package, error)
 
 type ScanResult struct {
-	loader      DependencyLoader
-	Pkg         *decorator.Package
-	Constants   map[string]*EnumSet
-	MarkerCalls []MarkerFunctionCall
-	Interfaces  map[string]IfaceImplementations
+	loader         DependencyLoader
+	productionFile func(string) (bool, error)
+	Pkg            *decorator.Package
+	Constants      map[string]*EnumSet
+	MarkerCalls    []MarkerFunctionCall
+	Interfaces     map[string]IfaceImplementations
 	// InterfaceDiagnostics records, per named interface type that is not a
 	// usable sealed union, why it was rejected. The builder reports the
 	// diagnostic when a generated schema reaches the interface.
@@ -283,13 +284,14 @@ func (s seenPackages) add(pkg *decorator.Package) (seenPackages, bool) {
 // Note: we pass a non-nil map to loadPackageInternal(...) so we can safely store references
 // to local types without panicking.
 func LoadPackage(pkg *decorator.Package) (res ScanResult, err error) {
-	return LoadPackageWithLoader(pkg, nil)
+	return LoadPackageWithLoader(pkg, nil, nil)
 }
 
 // LoadPackageWithLoader keeps recursive type discovery in the caller's package view.
-func LoadPackageWithLoader(pkg *decorator.Package, loader DependencyLoader) (res ScanResult, err error) {
+func LoadPackageWithLoader(pkg *decorator.Package, loader DependencyLoader, productionFile func(string) (bool, error)) (res ScanResult, err error) {
 	res = newScanResult(pkg, map[string]ScanResult{})
 	res.loader = loader
+	res.productionFile = productionFile
 	res.declarations = true
 	// Pass an empty map so we never do `typesToMap[foo] = true` on a nil map.
 	err = res.loadPackageInternal(seenPackages{}, make(map[string]bool))
@@ -455,7 +457,14 @@ func (r *ScanResult) loadPackageInternal(seen seenPackages, typesToMap map[strin
 		// a generator program. Only a declaration file, compiled solely for
 		// generation, is read as declarations.
 		position := decl.CallExpr.Position()
-		production, err := IsProductionGoFile(position.Filename)
+		// A //line directive changes diagnostic locations, not the identity or
+		// build constraints of the physical file containing the declaration.
+		filename := r.Pkg.Fset.PositionFor(decl.CallExpr.Pos(), false).Filename
+		isProduction := r.productionFile
+		if isProduction == nil {
+			isProduction = IsProductionGoFile
+		}
+		production, err := isProduction(filename)
 		if err != nil {
 			return err
 		}
@@ -745,6 +754,7 @@ func (r *ScanResult) resolveTypes() error {
 		} else {
 			remote = newScanResult(pkgs[0], r.deps)
 			remote.loader = r.loader
+			remote.productionFile = r.productionFile
 			if err = remote.loadPackageInternal(seenPackages{}, typeNames); err != nil {
 				return fmt.Errorf("resolving type at %s: %w", pkgPath, err)
 			}
