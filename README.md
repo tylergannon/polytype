@@ -604,8 +604,11 @@ Dependencies whose source is reached must also be present: use `NeedDeps`, or
 select those dependencies as explicit patterns in the same load and pass them
 as additional arguments. Missing source produces an error, never another load.
 The supplied config must describe that exact immutable snapshot, including
-overlays and an explicit `jsonschema` build tag. Load a fresh snapshot after
-editing source. See `FromPackages`'s Go documentation for ownership requirements.
+overlays, `Tests: false`, and a `jsonschema` build tag in `BuildFlags` or
+`GOFLAGS`. Load a fresh snapshot after editing source. String-mode enum
+adaptation still checks on-disk production JSON methods, including files
+excluded from the tagged snapshot. See `FromPackages`'s Go documentation for
+ownership and production-tag requirements.
 
 ### Adopt TypeScript declarations with Go JSON codecs
 

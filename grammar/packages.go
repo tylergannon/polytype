@@ -27,22 +27,39 @@ const LoadMode = syntax.PackageLoadNeeds | packages.NeedImports
 // Packages used only through built-in grammar support (such as time.Time) do
 // not need source.
 //
-// config must describe the load that produced the snapshot and explicitly set
-// the jsonschema tag in BuildFlags. Unlike LoadWithConfig, this constructor
+// config must describe the load that produced the snapshot and set the
+// jsonschema tag in BuildFlags or GOFLAGS (Config.Env, or the process environment
+// when Env is nil). Unlike LoadWithConfig, this constructor
 // cannot add a tag to an already loaded package. Call packages.Load with at
-// least LoadMode and a parser that retains comments (the default does).
+// least LoadMode, Tests: false, and a parser that retains comments (the default does).
 // All packages must belong to the same type-checking operation, with identical
 // build settings, module selection and overlays. packages.Package does not
 // retain those settings: their correspondence is the caller's responsibility.
+// Generation follows Go's flag precedence: an explicit -tags replaces GOFLAGS
+// tags rather than combining with them.
 //
 // The caller owns the snapshot and must keep its ASTs, FileSet, Types, TypesInfo,
 // source files and overlay resources alive and unchanged until all Lower calls
 // finish. FromPackages does not mutate them. Do not share a Package between
 // concurrent Lower calls, or reuse a snapshot after editing source; load a fresh
 // snapshot for the next generation. No state is retained globally.
+//
+// Production declaration admission removes jsonschema from explicit build tags;
+// if that was the only explicit tag, production falls back to GOFLAGS tags.
+// The jsonschema tag is removed from that production fallback as well.
+// String-mode enum adaptation also retains the existing on-disk inspection of
+// production JSON methods, including files excluded by jsonschema. That check
+// does not use overlays; keep the production source view available on disk.
 func FromPackages(config *packages.Config, root *packages.Package, additional ...*packages.Package) (*Package, error) {
-	if config == nil || !hasJSONSchemaTag(config.BuildFlags) {
-		return nil, fmt.Errorf("FromPackages requires a snapshot loaded with an explicit jsonschema build tag in Config.BuildFlags")
+	if config == nil {
+		return nil, fmt.Errorf("FromPackages requires the config used to load the snapshot")
+	}
+	envFlags, err := snapshotEnvFlags(config)
+	if err != nil {
+		return nil, err
+	}
+	if !hasJSONSchemaTag(append(envFlags, config.BuildFlags...)) {
+		return nil, fmt.Errorf("FromPackages requires a snapshot loaded with an explicit jsonschema build tag in Config.BuildFlags or GOFLAGS")
 	}
 	if root == nil {
 		return nil, fmt.Errorf("FromPackages: nil root package")
@@ -82,7 +99,7 @@ func FromPackages(config *packages.Config, root *packages.Package, additional ..
 	// Marker admission uses the loaded AST's build constraints, including
 	// overlay-only files, rather than reopening a different source view.
 	headers := map[string]string{}
-	production := productionContext(config)
+	production := productionContext(config, envFlags)
 	production.OpenFile = func(filename string) (io.ReadCloser, error) {
 		header, ok := headers[filename]
 		if !ok {
@@ -176,13 +193,16 @@ func snapshotTags(flags []string) []string {
 	return strings.FieldsFunc(tags, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
 }
 
-func productionContext(config *packages.Config) build.Context {
+func productionContext(config *packages.Config, envFlags []string) build.Context {
 	ctx := build.Default
-	ctx.BuildTags = nil
-	for _, tag := range snapshotTags(config.BuildFlags) {
-		if tag != syntax.BuildTag {
-			ctx.BuildTags = append(ctx.BuildTags, tag)
-		}
+	withoutGenerationTag := func(tags []string) []string {
+		return slices.DeleteFunc(tags, func(tag string) bool { return tag == syntax.BuildTag })
+	}
+	ctx.BuildTags = withoutGenerationTag(snapshotTags(config.BuildFlags))
+	if len(ctx.BuildTags) == 0 {
+		// A generation-only -tags=jsonschema switch disappears in production;
+		// GOFLAGS still applies to that production invocation.
+		ctx.BuildTags = withoutGenerationTag(snapshotTags(envFlags))
 	}
 	env := config.Env
 	if env == nil {
@@ -200,4 +220,40 @@ func productionContext(config *packages.Config) build.Context {
 		}
 	}
 	return ctx
+}
+
+func snapshotEnvFlags(config *packages.Config) ([]string, error) {
+	env := config.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	var value string
+	for _, entry := range env {
+		if flags, ok := strings.CutPrefix(entry, "GOFLAGS="); ok {
+			value = flags
+		}
+	}
+	// GOFLAGS uses Go's quoted-field convention, not shell escaping: only a
+	// quote at the beginning of a field has meaning, and contents are literal.
+	var flags []string
+	for value = strings.TrimLeft(value, " \t\r\n"); value != ""; value = strings.TrimLeft(value, " \t\r\n") {
+		end := strings.IndexAny(value, " \t\r\n")
+		if value[0] == '\'' || value[0] == '"' {
+			quote := value[0]
+			value = value[1:]
+			end = strings.IndexByte(value, quote)
+			if end < 0 {
+				return nil, fmt.Errorf("FromPackages: unterminated quote in GOFLAGS")
+			}
+			flags = append(flags, value[:end])
+			value = value[end+1:]
+			continue
+		}
+		if end < 0 {
+			end = len(value)
+		}
+		flags = append(flags, value[:end])
+		value = value[end:]
+	}
+	return flags, nil
 }

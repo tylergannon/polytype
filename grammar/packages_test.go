@@ -176,6 +176,53 @@ func (Circle) shape() {}
 	}
 }
 
+func TestFromPackagesGOFLAGSAndProductionTags(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		goFlags    string
+		buildFlags []string
+		env        bool
+		custom     bool
+		wantError  string
+	}{
+		{name: "environment_only", goFlags: "-tags=jsonschema"},
+		{name: "configured_environment", goFlags: "-tags=jsonschema", env: true},
+		{name: "quoted_environment", goFlags: `"-tags=jsonschema custom"`, custom: true, wantError: "is in a file compiled into the package"},
+		{name: "explicit_generation_override_production_fallback", goFlags: "-tags=custom", buildFlags: []string{"-tags=jsonschema"}, wantError: "is in a file compiled into the package"},
+		{name: "explicit_production_tags_override_environment", goFlags: "-tags=custom", buildFlags: []string{"-tags=jsonschema,other"}},
+		{name: "explicit_override_removes_generation_tag", goFlags: "-tags=jsonschema", buildFlags: []string{"-tags=custom"}, custom: true, wantError: "explicit jsonschema build tag"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := writeFixture(t, map[string]string{
+				"types.go":  "package fixture\ntype Root struct { Text string }\n",
+				"custom.go": "//go:build custom\n\npackage fixture\ntype CustomSelected struct {}\n",
+				"schema.go": "//go:build jsonschema || custom\n\npackage fixture\nimport \"github.com/tylergannon/polytype\"\nvar _ = polytype.Declare[Root]()\n",
+			})
+			cfg := packageConfig(dir)
+			cfg.BuildFlags = tc.buildFlags
+			if tc.env {
+				t.Setenv("GOFLAGS", "-tags=custom")
+				cfg.Env = append(os.Environ(), "GOFLAGS="+tc.goFlags)
+			} else {
+				t.Setenv("GOFLAGS", tc.goFlags)
+			}
+			pkgs := loadSnapshot(t, cfg, ".")
+			// This is actual Go-command selection, independent of the tag parser
+			// under test. Explicit -tags overrides, rather than unions, GOFLAGS.
+			require.Equal(t, tc.custom, pkgs[0].Types.Scope().Lookup("CustomSelected") != nil)
+			forbidPackageLoads(t)
+			pkg, err := grammar.FromPackages(cfg, pkgs[0])
+			if tc.wantError != "" {
+				require.ErrorContains(t, err, tc.wantError)
+				return
+			}
+			require.NoError(t, err)
+			defs, _ := lowerNamed(t, pkg, "Root")
+			require.Len(t, defs, 1)
+		})
+	}
+}
+
 func TestFromPackagesPreservesRefusalDiagnostics(t *testing.T) {
 	dir := writeFixture(t, map[string]string{"types.go": "package fixture\ntype Bad struct { Items map[string]int }\n"})
 	cfg := packageConfig(dir)
