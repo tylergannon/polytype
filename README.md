@@ -586,6 +586,27 @@ written into the package that declares the types. See
 configuration API that selects JSON Schema, Go JSON, TypeScript, and devalue
 outputs from the same declarations.
 
+If your generator already has parsed and type-checked packages, hand that
+snapshot to `grammar.FromPackages` instead of loading it again:
+
+```go
+cfg := &packages.Config{
+    Dir: "./orders",
+    Mode: grammar.LoadMode | packages.NeedDeps,
+    BuildFlags: []string{"-tags=jsonschema"},
+}
+loaded, err := packages.Load(cfg, ".")
+pkg, err := grammar.FromPackages(cfg, loaded[0])
+```
+
+This preserves the caller's ASTs, comments, source positions and type identity.
+Dependencies whose source is reached must also be present: use `NeedDeps`, or
+select those dependencies as explicit patterns in the same load and pass them
+as additional arguments. Missing source produces an error, never another load.
+The supplied config must describe that exact immutable snapshot, including
+overlays and an explicit `jsonschema` build tag. Load a fresh snapshot after
+editing source. See `FromPackages`'s Go documentation for ownership requirements.
+
 ### Adopt TypeScript declarations with Go JSON codecs
 
 Pin an explicit module release that contains both capabilities; the generator

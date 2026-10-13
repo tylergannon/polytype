@@ -6,6 +6,8 @@
 // caller-chosen root types into a validated definition graph plus one grammar
 // node per root. Callers use it to write their own code-generation backend
 // without going through the CLI or asking for a schema file.
+// FromPackages accepts an existing go/packages snapshot without loading its
+// source again.
 //
 // Roots are matched structurally and by name, so a *types.Type obtained from
 // the caller's own packages.Load works. A named root does not need a Declare
@@ -127,7 +129,7 @@ func LoadWithConfig(config *packages.Config, pattern string) (*Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	b, err := builder.NewForLoadWithLoader(pkgs[0], loader)
+	b, err := builder.NewForLoadWithLoader(pkgs[0], loader, nil)
 	if err != nil {
 		return nil, err
 	}
