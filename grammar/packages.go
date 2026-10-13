@@ -96,17 +96,7 @@ func FromPackages(config *packages.Config, root *packages.Package, additional ..
 	}
 
 	decorated := map[string]*decorator.Package{}
-	// Marker admission uses the loaded AST's build constraints, including
-	// overlay-only files, rather than reopening a different source view.
-	headers := map[string]string{}
-	production := productionContext(config, envFlags)
-	production.OpenFile = func(filename string) (io.ReadCloser, error) {
-		header, ok := headers[filename]
-		if !ok {
-			return nil, fmt.Errorf("FromPackages: source header %s is missing from the snapshot", filename)
-		}
-		return io.NopCloser(strings.NewReader(header)), nil
-	}
+	view := newSourceView(config, envFlags)
 	loader := func(path string) ([]*decorator.Package, error) {
 		if pkg := decorated[path]; pkg != nil {
 			return []*decorator.Package{pkg}, nil
@@ -121,28 +111,16 @@ func FromPackages(config *packages.Config, root *packages.Package, additional ..
 		if pkg.IllTyped || pkg.Types == nil || pkg.TypesInfo == nil || pkg.TypesInfo.Uses == nil || pkg.Fset == nil || len(pkg.Syntax) == 0 || len(pkg.GoFiles) == 0 {
 			return nil, fmt.Errorf("FromPackages: package %s needs type-checked source; load it with grammar.LoadMode (and NeedDeps for imports)", path)
 		}
+		if err := view.add(pkg); err != nil {
+			return nil, err
+		}
 		converted := &decorator.Package{Package: pkg, Decorator: decorator.NewDecoratorFromPackage(pkg)}
 		goFiles := make(map[string]bool, len(pkg.GoFiles))
 		for _, filename := range pkg.GoFiles {
 			goFiles[filename] = true
 		}
 		for _, file := range pkg.Syntax {
-			if file == nil || pkg.Fset.File(file.Pos()) == nil {
-				return nil, fmt.Errorf("FromPackages: package %s has syntax outside its FileSet", path)
-			}
 			filename := pkg.Fset.File(file.Pos()).Name()
-			var header strings.Builder
-			for _, group := range file.Comments {
-				if group.Pos() >= file.Package {
-					break
-				}
-				for _, comment := range group.List {
-					header.WriteString(comment.Text + "\n")
-				}
-				header.WriteByte('\n')
-			}
-			header.WriteString("package " + file.Name.Name + "\n")
-			headers[filename] = header.String()
 			// Match decorator.Load: preprocessed cgo files are not ordinary Go
 			// source and cannot be decorated.
 			if !goFiles[filename] {
@@ -167,13 +145,55 @@ func FromPackages(config *packages.Config, root *packages.Package, additional ..
 	if err != nil {
 		return nil, err
 	}
-	b, err := builder.NewForLoadWithLoader(pkgs[0], loader, func(filename string) (bool, error) {
-		return production.MatchFile(filepath.Dir(filename), filepath.Base(filename))
-	})
+	b, err := builder.NewForLoadWithLoader(pkgs[0], loader, view.isProduction)
 	if err != nil {
 		return nil, err
 	}
 	return &Package{builder: b}, nil
+}
+
+// sourceView gives both loading entry points the same AST-backed declaration
+// admission, including overlay-only files and the caller's production tags.
+type sourceView struct {
+	headers    map[string]string
+	production build.Context
+}
+
+func newSourceView(config *packages.Config, envFlags []string) *sourceView {
+	view := &sourceView{headers: map[string]string{}, production: productionContext(config, envFlags)}
+	view.production.OpenFile = func(filename string) (io.ReadCloser, error) {
+		header, ok := view.headers[filename]
+		if !ok {
+			return nil, fmt.Errorf("source header %s is missing from the package view", filename)
+		}
+		return io.NopCloser(strings.NewReader(header)), nil
+	}
+	return view
+}
+
+func (v *sourceView) add(pkg *packages.Package) error {
+	for _, file := range pkg.Syntax {
+		if file == nil || pkg.Fset == nil || pkg.Fset.File(file.Pos()) == nil {
+			return fmt.Errorf("package %s has syntax outside its FileSet", pkg.PkgPath)
+		}
+		var header strings.Builder
+		for _, group := range file.Comments {
+			if group.Pos() >= file.Package {
+				break
+			}
+			for _, comment := range group.List {
+				header.WriteString(comment.Text + "\n")
+			}
+			header.WriteByte('\n')
+		}
+		header.WriteString("package " + file.Name.Name + "\n")
+		v.headers[pkg.Fset.File(file.Pos()).Name()] = header.String()
+	}
+	return nil
+}
+
+func (v *sourceView) isProduction(filename string) (bool, error) {
+	return v.production.MatchFile(filepath.Dir(filename), filepath.Base(filename))
 }
 
 func hasJSONSchemaTag(flags []string) bool {

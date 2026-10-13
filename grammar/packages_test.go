@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tylergannon/polytype/grammar"
 	"github.com/tylergannon/polytype/typegrammar"
+	"github.com/tylergannon/polytype/typescript"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -47,6 +48,16 @@ func lowerNamed(t testing.TB, pkg *grammar.Package, name string) (typegrammar.De
 	defs, roots, err := pkg.Lower([]grammar.Root{{Type: obj.Type()}})
 	require.NoError(t, err)
 	return defs, roots
+}
+
+func requireProjectionParity(t *testing.T, ordinary, supplied typegrammar.Definitions) {
+	t.Helper()
+	want, err := typescript.Generate(ordinary, typescript.Options{})
+	require.NoError(t, err)
+	got, err := typescript.Generate(supplied, typescript.Options{})
+	require.NoError(t, err)
+	require.NotEmpty(t, got.Files)
+	require.Equal(t, want.Files, got.Files)
 }
 
 func TestFromPackagesReusesRootAndDependencies(t *testing.T) {
@@ -162,14 +173,25 @@ func (Circle) shape() {}
 			cfg.BuildFlags = []string{"-tags=jsonschema,custom"}
 			cfg.Overlay = map[string][]byte{filepath.Join(dir, "schema.go"): []byte("//go:build " + constraint + "\n\npackage fixture\nimport \"github.com/tylergannon/polytype\"\nvar _ = polytype.SealedUnion[Shape](\"overlayKind\")\n")}
 			pkgs := loadSnapshot(t, cfg, ".")
+			ordinary, ordinaryErr := grammar.LoadWithConfig(cfg, ".")
+			var wantDefs typegrammar.Definitions
+			var wantRoots []typegrammar.Type
+			if ordinaryErr == nil {
+				wantDefs, wantRoots = lowerNamed(t, ordinary, "Root")
+			}
 			forbidPackageLoads(t)
 			pkg, err := grammar.FromPackages(cfg, pkgs[0])
 			if constraint == "jsonschema || custom" {
 				require.ErrorContains(t, err, "is in a file compiled into the package")
+				require.EqualError(t, ordinaryErr, err.Error())
 				return
 			}
+			require.NoError(t, ordinaryErr)
 			require.NoError(t, err)
-			defs, _ := lowerNamed(t, pkg, "Root")
+			defs, roots := lowerNamed(t, pkg, "Root")
+			require.Equal(t, wantDefs, defs)
+			require.Equal(t, wantRoots, roots)
+			requireProjectionParity(t, wantDefs, defs)
 			root := requireDefinition(t, defs, typegrammar.Name{PackagePath: "example.com/grammarfixture", Name: "Root"})
 			require.Equal(t, "overlayKind", root.Type.(*typegrammar.Object).Fields[0].Value.(*typegrammar.Union).Discriminator)
 		})
@@ -210,15 +232,32 @@ func TestFromPackagesGOFLAGSAndProductionTags(t *testing.T) {
 			// This is actual Go-command selection, independent of the tag parser
 			// under test. Explicit -tags overrides, rather than unions, GOFLAGS.
 			require.Equal(t, tc.custom, pkgs[0].Types.Scope().Lookup("CustomSelected") != nil)
+			var ordinaryErr error
+			var wantDefs typegrammar.Definitions
+			var wantRoots []typegrammar.Type
+			if tc.wantError != "explicit jsonschema build tag" {
+				var ordinary *grammar.Package
+				ordinary, ordinaryErr = grammar.LoadWithConfig(cfg, ".")
+				if ordinaryErr == nil {
+					wantDefs, wantRoots = lowerNamed(t, ordinary, "Root")
+				}
+			}
 			forbidPackageLoads(t)
 			pkg, err := grammar.FromPackages(cfg, pkgs[0])
 			if tc.wantError != "" {
 				require.ErrorContains(t, err, tc.wantError)
+				if tc.wantError != "explicit jsonschema build tag" {
+					require.EqualError(t, ordinaryErr, err.Error())
+				}
 				return
 			}
+			require.NoError(t, ordinaryErr)
 			require.NoError(t, err)
-			defs, _ := lowerNamed(t, pkg, "Root")
+			defs, roots := lowerNamed(t, pkg, "Root")
 			require.Len(t, defs, 1)
+			require.Equal(t, wantDefs, defs)
+			require.Equal(t, wantRoots, roots)
+			requireProjectionParity(t, wantDefs, defs)
 		})
 	}
 }

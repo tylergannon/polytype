@@ -596,7 +596,16 @@ cfg := &packages.Config{
     BuildFlags: []string{"-tags=jsonschema"},
 }
 loaded, err := packages.Load(cfg, ".")
+if err != nil {
+    return err
+}
+if len(loaded) != 1 {
+    return fmt.Errorf("expected one package, got %d", len(loaded))
+}
 pkg, err := grammar.FromPackages(cfg, loaded[0])
+if err != nil {
+    return err
+}
 ```
 
 This preserves the caller's ASTs, comments, source positions and type identity.

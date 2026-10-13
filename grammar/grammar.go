@@ -90,6 +90,8 @@ func (p *Package) Lower(roots []Root) (typegrammar.Definitions, []typegrammar.Ty
 // caller tags and adds the load modes required by grammar. The caller must keep
 // any backing files or parser resources alive until all Lower calls finish.
 // Config and its BuildFlags are not modified.
+// Declaration admission uses the same snapshot and production-tag rules as
+// FromPackages, including for files supplied solely through Overlay.
 func LoadWithConfig(config *packages.Config, pattern string) (*Package, error) {
 	cfg := packages.Config{}
 	if config != nil {
@@ -98,7 +100,11 @@ func LoadWithConfig(config *packages.Config, pattern string) (*Package, error) {
 	cfg.Mode |= syntax.PackageLoadNeeds
 	cfg.Tests = false
 	cfg.BuildFlags = append([]string(nil), cfg.BuildFlags...)
-	tags := syntax.BuildTag
+	envFlags, err := snapshotEnvFlags(&cfg)
+	if err != nil {
+		return nil, err
+	}
+	tags := syntax.BuildTag + "," + strings.Join(snapshotTags(envFlags), ",")
 	for i := 0; i < len(cfg.BuildFlags); i++ {
 		flag := cfg.BuildFlags[i]
 		if flag == "-tags" && i+1 < len(cfg.BuildFlags) {
@@ -112,6 +118,7 @@ func LoadWithConfig(config *packages.Config, pattern string) (*Package, error) {
 		}
 	}
 	cfg.BuildFlags = append(cfg.BuildFlags, "-tags="+tags)
+	view := newSourceView(&cfg, envFlags)
 	loader := func(pattern string) ([]*decorator.Package, error) {
 		pkgs, err := decorator.Load(&cfg, pattern)
 		if err != nil {
@@ -123,13 +130,16 @@ func LoadWithConfig(config *packages.Config, pattern string) (*Package, error) {
 		if errs := pkgs[0].Errors; len(errs) > 0 {
 			return nil, fmt.Errorf("package %s has errors: %s", pkgs[0].PkgPath, errs[0])
 		}
+		if err := view.add(pkgs[0].Package); err != nil {
+			return nil, err
+		}
 		return pkgs, nil
 	}
 	pkgs, err := loader(pattern)
 	if err != nil {
 		return nil, err
 	}
-	b, err := builder.NewForLoadWithLoader(pkgs[0], loader, nil)
+	b, err := builder.NewForLoadWithLoader(pkgs[0], loader, view.isProduction)
 	if err != nil {
 		return nil, err
 	}

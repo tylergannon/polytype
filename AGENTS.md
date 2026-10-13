@@ -42,7 +42,8 @@ go test ./...
 # Run a specific test
 go test ./... -run 'TestName'
 
-# Lint (requires: modernize, staticcheck, govulncheck, golangci-lint, goimports)
+# Lint (requires: modernize, govulncheck, golangci-lint, goimports;
+# downloads pinned Staticcheck v0.8.2 on its first run)
 just lint
 
 # Build every examples/ package with a //go:build jsonschema registration
