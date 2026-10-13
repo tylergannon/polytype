@@ -618,6 +618,8 @@ overlays, `Tests: false`, and a `jsonschema` build tag in `BuildFlags` or
 adaptation still checks on-disk production JSON methods, including files
 excluded from the tagged snapshot. See `FromPackages`'s Go documentation for
 ownership and production-tag requirements.
+For declaration checks, explicit tags other than `jsonschema` are also treated
+as your production build tags; otherwise `GOFLAGS` supplies the production tags.
 
 ### Adopt TypeScript declarations with Go JSON codecs
 

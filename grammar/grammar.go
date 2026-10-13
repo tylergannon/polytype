@@ -87,7 +87,8 @@ func (p *Package) Lower(roots []Root) (typegrammar.Definitions, []typegrammar.Ty
 // LoadWithConfig loads pattern using the caller's module, environment, parser,
 // and overlay configuration. The same configuration resolves every recursively
 // discovered type dependency. It includes the jsonschema build tag alongside
-// caller tags and adds the load modes required by grammar. The caller must keep
+// explicit caller tags, overriding GOFLAGS tags as Load and the CLI do, and adds
+// the load modes required by grammar. The caller must keep
 // any backing files or parser resources alive until all Lower calls finish.
 // Config and its BuildFlags are not modified.
 // Declaration admission uses the same snapshot and production-tag rules as
@@ -104,7 +105,7 @@ func LoadWithConfig(config *packages.Config, pattern string) (*Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	tags := syntax.BuildTag + "," + strings.Join(snapshotTags(envFlags), ",")
+	tags := syntax.BuildTag
 	for i := 0; i < len(cfg.BuildFlags); i++ {
 		flag := cfg.BuildFlags[i]
 		if flag == "-tags" && i+1 < len(cfg.BuildFlags) {
