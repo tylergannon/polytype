@@ -79,6 +79,23 @@ its matching schema as generator-owned; when a registration is removed or
 renamed, the next successful generation removes that stale pair. A modified
 orphan is preserved and reported instead of being deleted.
 
+### Repeated generation
+
+The CLI and TypeScript-only `codegen.Generate` requests with an explicit target
+directory automatically cache completed projections in your user cache directory
+under `polytype`. A fresh process checks Go's compiler identities and the source
+files Polytype actually analyzed before reusing an emission. A hit restores
+missing or damaged generated files using the same publication and ownership
+rules as uncached generation.
+Each target keeps one replaceable result per producer mode (CLI or TypeScript
+configuration), so source and generator revisions do not accumulate entries.
+
+Set `POLYTYPE_CACHE=off` to bypass caching, `POLYTYPE_CACHE_DIR` to choose its
+location, or `POLYTYPE_CACHE_TRACE=1` to print hits, misses, and semantic loads.
+Cache errors fall back to generation. Caller-loaded grammar/package APIs,
+programmatic output combinations other than TypeScript alone, custom parsers,
+external overlays, cgo roots, and custom inflection callbacks are not cached.
+
 ## Releases
 
 Pull request titles follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)

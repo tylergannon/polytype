@@ -950,7 +950,7 @@ func (l *typeGrammarLowerer) registeredEnumField(owner syntax.StructType, field 
 	}
 	adapted := cfg.UseStringer && kind != typegrammar.String
 	if adapted {
-		methods, err := syntax.FindProductionJSONMethods(scan.Pkg.Dir, []string{ident.Name})
+		methods, err := scan.Source.FindProductionJSONMethods(scan.Pkg.Dir, []string{ident.Name})
 		if err != nil {
 			return nil, fmt.Errorf("field %s.%s: discovering enum JSON methods: %w", owner.Name(), name, err)
 		}

@@ -1,13 +1,13 @@
 package builder
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"go/constant"
-	"go/parser"
 	"go/token"
 	"go/types"
 	"io"
@@ -529,7 +529,7 @@ func (s SchemaBuilder) validateOwnerCodecMethods() error {
 			)
 		}
 	}
-	methods, err := syntax.FindProductionJSONMethods(s.Scan.Pkg.Dir, nil)
+	methods, err := s.Scan.Source.FindProductionJSONMethods(s.Scan.Pkg.Dir, nil)
 	if err != nil {
 		return fmt.Errorf("discovering production JSON methods: %w", err)
 	}
@@ -556,7 +556,7 @@ func (s SchemaBuilder) validateOwnerCodecMethods() error {
 				continue
 			}
 			position := s.Scan.Pkg.Fset.Position(selection.Obj().Pos())
-			active, err := syntax.IsProductionGoFile(position.Filename)
+			active, err := s.Scan.Source.IsProductionGoFile(position.Filename)
 			if err != nil {
 				return fmt.Errorf("checking production build constraint for %s: %w", position, err)
 			}
@@ -584,7 +584,7 @@ func (s *SchemaBuilder) validateEnumCodecMethods() error {
 	if len(receivers) == 0 {
 		return nil
 	}
-	methods, err := syntax.FindProductionJSONMethods(s.Scan.Pkg.Dir, receivers)
+	methods, err := s.Scan.Source.FindProductionJSONMethods(s.Scan.Pkg.Dir, receivers)
 	if err != nil {
 		return fmt.Errorf("discovering production JSON methods: %w", err)
 	}
@@ -628,7 +628,7 @@ func (s SchemaBuilder) findForeignEmbeddedGeneratedCodecIn(current syntax.Struct
 			return "", err
 		}
 		if embedded.Pkg().PkgPath != s.Scan.Pkg.PkgPath {
-			methods, err := syntax.FindGeneratedJSONMethods(embedded.Pkg().Dir, []string{embedded.Name()})
+			methods, err := s.Scan.Source.FindGeneratedJSONMethods(embedded.Pkg().Dir, []string{embedded.Name()})
 			if err != nil {
 				return "", fmt.Errorf("discovering generated JSON methods for embedded type %s.%s: %w", embedded.Pkg().Name, embedded.Name(), err)
 			}
@@ -863,9 +863,53 @@ func (s SchemaBuilder) schemaArtifactName(t syntax.TypeID) string {
 	return fmt.Sprintf("%s.json", t.TypeName)
 }
 
+// schemaBytes is the publication-independent schema emission boundary.
+func (s SchemaBuilder) schemaBytes(t syntax.TypeID) ([]byte, error) {
+	var err error
+	rootSchema, ok := s.schemas[t.TypeName]
+	if !ok {
+		return nil, fmt.Errorf("unknown type %s", t)
+	}
+
+	var writer bytes.Buffer
+	_, templated := s.TypeProvidersMap[t.TypeName]
+	// Templates cannot use the standard pretty encoder because their holes are
+	// not valid JSON. Preserve the existing raw output when pretty is requested.
+	if templated && s.Pretty {
+		var b []byte
+		if b, err = rootSchema.MarshalJSON(); err != nil {
+			return nil, fmt.Errorf("could not marshal template schema: %w", err)
+		}
+		if _, err = writer.Write(b); err != nil {
+			return nil, fmt.Errorf("could not write template schema: %w", err)
+		}
+		if _, err = writer.Write([]byte("\n")); err != nil {
+			return nil, fmt.Errorf("could not write newline: %w", err)
+		}
+	} else if s.Pretty {
+		encoder := json.NewEncoder(&writer)
+		encoder.SetIndent("", "  ")
+		if err = encoder.Encode(rootSchema); err != nil {
+			return nil, fmt.Errorf("could not encode schema: %w", err)
+		}
+	} else {
+		var b []byte
+		if b, err = schema.MarshalHardlines(rootSchema); err != nil {
+			return nil, fmt.Errorf("could not format schema: %w", err)
+		}
+		if _, err = writer.Write(b); err != nil {
+			return nil, fmt.Errorf("could not write schema: %w", err)
+		}
+		if _, err = writer.Write([]byte("\n")); err != nil {
+			return nil, fmt.Errorf("could not write newline: %w", err)
+		}
+	}
+
+	return writer.Bytes(), nil
+}
+
 func (s SchemaBuilder) writeSchema(t syntax.TypeID, targetDir string, noChanges bool) (wroteNew bool, err error) {
 	var (
-		ok       bool
 		filePath string
 		sumPath  string
 		tmpFile  *os.File
@@ -896,44 +940,13 @@ func (s SchemaBuilder) writeSchema(t syntax.TypeID, targetDir string, noChanges 
 		}
 	}()
 
-	rootSchema, ok := s.schemas[t.TypeName]
-	if !ok {
-		return false, fmt.Errorf("unknown type %s", t)
+	content, renderErr := s.schemaBytes(t)
+	if renderErr != nil {
+		return false, renderErr
 	}
-
 	hash := fnv.New64a()
-	writer := io.MultiWriter(tmpFile, hash)
-	_, templated := s.TypeProvidersMap[t.TypeName]
-	// Templates cannot use the standard pretty encoder because their holes are
-	// not valid JSON. Preserve the existing raw output when pretty is requested.
-	if templated && s.Pretty {
-		var b []byte
-		if b, err = rootSchema.MarshalJSON(); err != nil {
-			return false, fmt.Errorf("could not marshal template schema: %w", err)
-		}
-		if _, err = writer.Write(b); err != nil {
-			return false, fmt.Errorf("could not write template schema: %w", err)
-		}
-		if _, err = writer.Write([]byte("\n")); err != nil {
-			return false, fmt.Errorf("could not write newline: %w", err)
-		}
-	} else if s.Pretty {
-		encoder := json.NewEncoder(writer)
-		encoder.SetIndent("", "  ")
-		if err = encoder.Encode(rootSchema); err != nil {
-			return false, fmt.Errorf("could not encode schema: %w", err)
-		}
-	} else {
-		var b []byte
-		if b, err = schema.MarshalHardlines(rootSchema); err != nil {
-			return false, fmt.Errorf("could not format schema: %w", err)
-		}
-		if _, err = writer.Write(b); err != nil {
-			return false, fmt.Errorf("could not write schema: %w", err)
-		}
-		if _, err = writer.Write([]byte("\n")); err != nil {
-			return false, fmt.Errorf("could not write newline: %w", err)
-		}
+	if _, err = io.MultiWriter(tmpFile, hash).Write(content); err != nil {
+		return false, err
 	}
 
 	newChecksum := hex.EncodeToString(hash.Sum(nil))
@@ -1208,24 +1221,14 @@ const generatedGoHeader = "// Code generated by polytype. DO NOT EDIT."
 // A handwritten file, or another tool's generated file, of the same name is
 // not polytype's to remove.
 func ownedGeneratedFile(path string) (bool, error) {
-	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.PackageClauseOnly|parser.ParseComments)
+	content, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
 	if err != nil {
 		return false, fmt.Errorf("inspect stale generated file: %w", err)
 	}
-	for _, group := range file.Comments {
-		if group.Pos() > file.Package {
-			break
-		}
-		for _, comment := range group.List {
-			if comment.Text == generatedGoHeader {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
+	return hasGeneratedGoHeader(content), nil
 }
 
 func (s SchemaBuilder) RenderSchemas(noChanges, force bool) (changedSchemas map[string]bool, orphaned []string, err error) {

@@ -147,6 +147,11 @@ func Generate(config polytype.Configuration, opts Options) error {
 		}
 	}
 
+	if opts.TypeScript != nil && opts.Devalue == nil && !opts.JSONSchema && !opts.GoCode && !opts.Validate {
+		if handled, err := builder.RunCachedTypeScript(opts.TargetDir, configured, opts.TypeScript.Dir, opts.TypeScript.Barrel, opts.Force); handled {
+			return err
+		}
+	}
 	b, err := builder.LoadProgrammatic(opts.TargetDir, configured, opts.GoCode, opts.JSONSchema)
 	if err != nil {
 		return err
