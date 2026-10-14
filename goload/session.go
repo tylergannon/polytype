@@ -24,17 +24,19 @@ import (
 // Stats counts session work. MetadataLoads includes Go's package discovery and
 // export acquisition; FileReads counts only this process's Go source reads.
 // FallbackLoads are ordinary packages.Load calls, outside the shared universe.
-type Stats struct{ MetadataLoads, PackageChecks, PackageHits, FileReads, FileParses, ExportImports, FallbackLoads uint64 }
+type Stats struct{ MetadataLoads, PackageChecks, PackageHits, FileReads, FileParses, ExportImports, FallbackLoads, UniverseEvictions uint64 }
 
 // Session owns immutable analysis results for one invocation or test group.
 // Its zero value is ready to use. Shared analysis is serialized and never changes
 // process environment. Fallback callbacks may run concurrently. Returned data
 // must not be mutated.
-// A Session retains its graphs until it becomes unreachable.
+// By default a Session retains its graphs until it becomes unreachable. A
+// longer-lived owner can bound retained graphs with SetMaxUniverses.
 type Session struct {
-	mu        sync.Mutex
-	stats     Stats
-	universes []*universe
+	mu           sync.Mutex
+	stats        Stats
+	universes    []*universe
+	maxUniverses int
 }
 type universe struct {
 	context    string
@@ -47,6 +49,28 @@ type universe struct {
 
 // Stats returns a consistent snapshot of the work performed so far.
 func (s *Session) Stats() Stats { s.mu.Lock(); defer s.mu.Unlock(); return s.stats }
+
+// SetMaxUniverses bounds the number of compatible type universes retained for
+// reuse. A positive limit evicts the least recently used whole universe; zero
+// or a negative limit keeps the invocation default of unlimited retention.
+// Previously returned packages remain valid after eviction. This bounds retained
+// graph versions, not bytes: individual package graphs may vary greatly in size.
+// Eviction never changes source invalidation or combines independent type graphs.
+func (s *Session) SetMaxUniverses(limit int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxUniverses = limit
+	s.trimUniverses()
+}
+
+func (s *Session) trimUniverses() {
+	if s.maxUniverses > 0 && len(s.universes) > s.maxUniverses {
+		drop := len(s.universes) - s.maxUniverses
+		s.stats.UniverseEvictions += uint64(drop)
+		clear(s.universes[:drop])
+		s.universes = slices.Clone(s.universes[drop:])
+	}
+}
 
 // Load is like packages.Load, sharing compatible source roots and imported
 // types across calls. Overlay bytes are parsed directly, without rereading the
@@ -186,7 +210,7 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 	}
 	context := contextKey(&cfg, roots)
 	var u *universe
-	for _, candidate := range s.universes {
+	for i, candidate := range s.universes {
 		if candidate.context != context {
 			continue
 		}
@@ -209,12 +233,15 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 		}
 		if compatible {
 			u = candidate
+			copy(s.universes[i:], s.universes[i+1:])
+			s.universes[len(s.universes)-1] = candidate
 			break
 		}
 	}
 	if u == nil {
 		u = &universe{context: context, fset: token.NewFileSet(), signatures: map[string]string{}, types: map[string]*types.Package{"unsafe": types.Unsafe}, roots: map[string]*packages.Package{}, sources: map[string]string{}}
 		s.universes = append(s.universes, u)
+		s.trimUniverses()
 	}
 	for path, key := range signatures {
 		u.signatures[path] = key

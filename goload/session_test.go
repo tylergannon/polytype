@@ -277,3 +277,39 @@ func TestRequestedFieldsDoNotMutateSharedAnalysis(t *testing.T) {
 		t.Fatalf("pruning damaged cached full analysis: %+v", s.Stats())
 	}
 }
+
+func TestUniverseLimitEvictsLeastRecentWithoutChangingReturnedGraphs(t *testing.T) {
+	dir := fixture(t)
+	var s goload.Session
+	s.SetMaxUniverses(2)
+	path := filepath.Join(dir, "a/root.go")
+	config := func(n string) *packages.Config {
+		return &packages.Config{Dir: dir, Mode: mode, Overlay: map[string][]byte{path: []byte("package a\nconst Value = " + n + "\n")}}
+	}
+	one := load(t, &s, config("1"), "./a")
+	two := load(t, &s, config("2"), "./a")
+	if again := load(t, &s, config("1"), "./a"); again.Types != one.Types {
+		t.Fatal("recent compatible graph missed")
+	}
+	three := load(t, &s, config("3"), "./a")
+	if s.Stats().UniverseEvictions != 1 {
+		t.Fatalf("unbounded universes: %+v", s.Stats())
+	}
+	if again := load(t, &s, config("1"), "./a"); again.Types != one.Types {
+		t.Fatal("recent graph evicted instead of least recent")
+	}
+	againTwo := load(t, &s, config("2"), "./a")
+	if againTwo.Types == two.Types || s.Stats().PackageChecks != 4 || s.Stats().UniverseEvictions != 2 {
+		t.Fatalf("old universe did not reload: %+v", s.Stats())
+	}
+	if value(one) != 1 || value(two) != 2 || value(three) != 3 || value(againTwo) != 2 {
+		t.Fatal("eviction changed previously returned types")
+	}
+	s.SetMaxUniverses(1)
+	if s.Stats().UniverseEvictions != 3 {
+		t.Fatalf("smaller bound did not immediately evict: %+v", s.Stats())
+	}
+	if again := load(t, &s, config("2"), "./a"); again.Types != againTwo.Types {
+		t.Fatal("bound change evicted most recent graph")
+	}
+}
