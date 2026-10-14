@@ -3,6 +3,8 @@ package polytype
 import (
 	"errors"
 	"fmt"
+	"go/token"
+
 	"reflect"
 	"runtime"
 	"strings"
@@ -32,6 +34,22 @@ type TypeSpec struct {
 	PackagePath string
 	Name        string
 	Pointer     bool
+}
+
+// DeclareType selects a named type by source identity without importing its
+// application package into the generator binary. The generator resolves the
+// name against current source and reports missing or unsupported types there.
+// It has no schema entrypoint or field/provider rules; select outputs explicitly.
+func DeclareType(typ TypeSpec) Configuration {
+	var err error
+	if typ.PackagePath == "" {
+		err = fmt.Errorf("polytype.DeclareType: package path is required")
+	} else if !token.IsIdentifier(typ.Name) || typ.Name == "_" {
+		err = fmt.Errorf("polytype.DeclareType: %q is not a named Go type", typ.Name)
+	}
+	return configurationGroup{spec: ConfigurationSpec{
+		Declarations: []DeclarationSpec{{Type: typ}}, err: err,
+	}}
 }
 
 // FieldSpec identifies a field by owner and Go field name.
