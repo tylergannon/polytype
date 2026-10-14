@@ -12,9 +12,17 @@ import (
 // its underlying immutable Go analysis. Decoration itself is consumer-owned.
 func LoadWithSession(cfg *packages.Config, session *goload.Session, patterns ...string) ([]*decorator.Package, error) {
 	if session == nil {
+		return LoadWithLoader(cfg, nil, patterns...)
+	}
+	return LoadWithLoader(cfg, session.Load, patterns...)
+}
+
+// LoadWithLoader decorates results from a caller-owned package loader.
+func LoadWithLoader(cfg *packages.Config, loader goload.LoadFunc, patterns ...string) ([]*decorator.Package, error) {
+	if loader == nil {
 		return decorator.Load(cfg, patterns...)
 	}
-	pkgs, err := session.Load(cfg, patterns...)
+	pkgs, err := loader(cfg, patterns...)
 	if err != nil {
 		return nil, err
 	}

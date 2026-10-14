@@ -232,3 +232,31 @@ func TestInvalidSourceKeepsOrdinaryDiagnostics(t *testing.T) {
 		t.Fatalf("error path did not use ordinary diagnostics: %+v", s.Stats())
 	}
 }
+
+func TestFallbackUsesConsumerLoaderWithoutHoldingSessionLock(t *testing.T) {
+	dir := fixture(t)
+	write(t, dir, "common/common.go", "package common\ntype Item Missing; const Value = 7\n")
+	path := filepath.Join(dir, "a/root.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &packages.Config{Dir: dir, Mode: mode, Overlay: map[string][]byte{path: content}}
+	var s goload.Session
+	called := false
+	got, err := s.LoadWithFallback(cfg, func(original *packages.Config, patterns ...string) ([]*packages.Package, error) {
+		called = true
+		if original != cfg || string(original.Overlay[path]) != string(content) || len(patterns) != 1 || patterns[0] != "./a" {
+			t.Fatal("fallback configuration changed")
+		}
+		// Reentering the same session would deadlock if the callback retained its lock.
+		// Metadata-only loading also proves the raw typed overlay loader was avoided.
+		return s.Load(&packages.Config{Dir: dir, Mode: packages.NeedName | packages.NeedFiles}, patterns...)
+	}, "./a")
+	if err != nil || !called || len(got) != 1 || got[0].Name != "a" || len(got[0].Errors) != 0 {
+		t.Fatalf("consumer fallback not used: called=%v err=%v packages=%+v", called, err, got)
+	}
+	if st := s.Stats(); st.FallbackLoads != 1 || st.PackageChecks != 0 || st.FileParses != 0 {
+		t.Fatalf("raw loader escaped callback: %+v", st)
+	}
+}

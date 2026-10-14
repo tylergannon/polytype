@@ -2,8 +2,12 @@ package builder
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
 	"unicode/utf8"
+
+	"golang.org/x/tools/go/packages"
 
 	"github.com/tylergannon/polytype/goload"
 
@@ -63,12 +67,32 @@ func LoadProgrammatic(target string, config ProgrammaticConfig, discoverCodecs, 
 		}
 		cfg := *syntax.DefaultPackageCfg
 		cfg.Dir = dir
-		cfg.Overlay, err = generatedSourceOverlay(dir)
+		generated, err := generatedSourceOverlay(dir)
 		if err != nil {
 			return SchemaBuilder{}, err
 		}
+		ordinary := cfg
+		cfg.Overlay = maps.Clone(cfg.Overlay)
+		if cfg.Overlay == nil {
+			cfg.Overlay = map[string][]byte{}
+		}
+		maps.Copy(cfg.Overlay, generated)
+		shared := func(request *packages.Config, patterns ...string) ([]*packages.Package, error) {
+			return session.LoadWithFallback(request, func(_ *packages.Config, patterns ...string) ([]*packages.Package, error) {
+				fallback := ordinary
+				flag, cleanup, err := generatedOverlayFlag(generated)
+				if err != nil {
+					return nil, err
+				}
+				defer cleanup()
+				if flag != "" {
+					fallback.BuildFlags = append(slices.Clone(fallback.BuildFlags), flag)
+				}
+				return packages.Load(&fallback, patterns...)
+			}, patterns...)
+		}
 		loader := func(pattern string) ([]*decorator.Package, error) {
-			return syntax.LoadWithSession(&cfg, session, pattern)
+			return syntax.LoadWithLoader(&cfg, shared, pattern)
 		}
 		pkgs, err := loader(".")
 		if err != nil {

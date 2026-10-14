@@ -653,6 +653,9 @@ type universe. Custom parsers/file sets, external drivers, tests, cgo roots and
 recursive dependency-syntax requests use ordinary loading. `session.Stats()`
 reports actual checks, parses, reuse and fallbacks. Keep returned analysis
 immutable, and release the session when the invocation or test group ends.
+Consumers with their own overlay/staging strategy can use
+`session.LoadWithFallback` and `grammar.LoadWithLoader` to retain that strategy
+for unsupported requests, including lazily reached dependencies.
 
 ### Adopt TypeScript declarations with Go JSON codecs
 

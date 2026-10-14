@@ -27,8 +27,9 @@ import (
 type Stats struct{ MetadataLoads, PackageChecks, PackageHits, FileReads, FileParses, ExportImports, FallbackLoads uint64 }
 
 // Session owns immutable analysis results for one invocation or test group.
-// Its zero value is ready to use. Calls are serialized, including concurrent
-// calls, and never change process environment. Returned data must not be mutated.
+// Its zero value is ready to use. Shared analysis is serialized and never changes
+// process environment. Fallback callbacks may run concurrently. Returned data
+// must not be mutated.
 // A Session retains its graphs until it becomes unreachable.
 type Session struct {
 	mu        sync.Mutex
@@ -58,15 +59,37 @@ func (s *Session) Stats() Stats { s.mu.Lock(); defer s.mu.Unlock(); return s.sta
 // starts a separate universe: go/types cannot safely promote an imported package
 // into a source-checked package in place.
 func (s *Session) Load(config *packages.Config, patterns ...string) ([]*packages.Package, error) {
+	return s.LoadWithFallback(config, packages.Load, patterns...)
+}
+
+// LoadFunc is a package loader with the standard go/packages signature.
+type LoadFunc func(*packages.Config, ...string) ([]*packages.Package, error)
+
+// LoadWithFallback shares supported requests like Load, but delegates requests
+// it cannot serve to fallback using the original, unmodified configuration.
+// This preserves a consumer's existing overlay/staging or driver strategy.
+// The callback runs without the session lock and may make other session calls.
+// A nil fallback means packages.Load.
+func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, patterns ...string) ([]*packages.Package, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	locked := true
+	defer func() {
+		if locked {
+			s.mu.Unlock()
+		}
+	}()
+	if ordinary == nil {
+		ordinary = packages.Load
+	}
 	cfg := packages.Config{}
 	if config != nil {
 		cfg = *config
 	}
 	fallback := func() ([]*packages.Package, error) {
 		s.stats.FallbackLoads++
-		return packages.Load(config, patterns...)
+		locked = false
+		s.mu.Unlock()
+		return ordinary(config, patterns...)
 	}
 	if cfg.Mode&(packages.NeedTypes|packages.NeedSyntax|packages.NeedTypesInfo) == 0 {
 		s.stats.MetadataLoads++
@@ -155,6 +178,9 @@ func (s *Session) Load(config *packages.Config, patterns ...string) ([]*packages
 	for path, p := range byPath {
 		signatures[path] = signature(p)
 		if _, root := rootSet[path]; !root && path != "unsafe" && (p.ExportFile == "" || len(p.Errors) > 0) {
+			if cfg.Logf != nil {
+				cfg.Logf("goload: ordinary fallback for dependency %s (export=%q, errors=%v)", path, p.ExportFile, p.Errors)
+			}
 			return fallback()
 		}
 	}

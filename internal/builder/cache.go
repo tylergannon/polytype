@@ -264,7 +264,23 @@ func (c *cacheInputs) load(pattern string) ([]*decorator.Package, error) {
 		}
 		return parser.ParseFile(fset, path, content, parser.ParseComments)
 	}
+	var load goload.LoadFunc
 	if c.session != nil {
+		ordinary := cfg // retain the established captured parser for fallback
+		load = func(request *packages.Config, patterns ...string) ([]*packages.Package, error) {
+			return c.session.LoadWithFallback(request, func(_ *packages.Config, patterns ...string) ([]*packages.Package, error) {
+				fallback := ordinary
+				flag, cleanup, err := generatedOverlayFlag(c.overlay)
+				if err != nil {
+					return nil, err
+				}
+				defer cleanup()
+				if flag != "" {
+					fallback.BuildFlags = append(slices.Clone(fallback.BuildFlags), flag)
+				}
+				return packages.Load(&fallback, patterns...)
+			}, patterns...)
+		}
 		cfg.ParseFile = nil
 		cfg.Overlay = make(map[string][]byte, len(c.source)+len(c.overlay))
 		for path, content := range c.source {
@@ -274,7 +290,7 @@ func (c *cacheInputs) load(pattern string) ([]*decorator.Package, error) {
 			cfg.Overlay[path] = content
 		}
 	}
-	pkgs, err := syntax.LoadWithSession(&cfg, c.session, pattern)
+	pkgs, err := syntax.LoadWithLoader(&cfg, load, pattern)
 	for _, p := range pkgs {
 		expected, ok := c.packages[p.PkgPath]
 		files := make([]string, len(expected.CompiledGoFiles))
