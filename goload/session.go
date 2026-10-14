@@ -10,7 +10,6 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,7 +24,7 @@ import (
 // Stats counts session work. MetadataLoads includes Go's package discovery and
 // export acquisition; FileReads counts only this process's Go source reads.
 // FallbackLoads count consumer fallback calls, outside the shared universe.
-type Stats struct{ MetadataLoads, PackageChecks, PackageHits, FileReads, FileParses, ExportImports, FallbackLoads, UniverseEvictions uint64 }
+type Stats struct{ MetadataLoads, PackageChecks, PackageHits, FileReads, FileParses, ExportImports, FallbackLoads, UniverseEvictions, MetadataHits uint64 }
 
 // Session owns immutable analysis results for one invocation or test group.
 // Its zero value is ready to use. Shared analysis is serialized and never changes
@@ -40,12 +39,13 @@ type Session struct {
 	maxUniverses int
 }
 type universe struct {
-	context    string
-	fset       *token.FileSet
-	signatures map[string]string
-	types      map[string]*types.Package
-	roots      map[string]*packages.Package
-	sources    map[string]string
+	context      string
+	fset         *token.FileSet
+	signatures   map[string]string
+	types        map[string]*types.Package
+	roots        map[string]*packages.Package
+	sources      map[string]string
+	dependencies map[string][]string
 }
 
 // Stats returns a consistent snapshot of the work performed so far.
@@ -98,6 +98,12 @@ type LoadFunc func(*packages.Config, ...string) ([]*packages.Package, error)
 // The callback runs without the session lock and may make other session calls.
 // A nil fallback means packages.Load.
 func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, patterns ...string) ([]*packages.Package, error) {
+	return s.load(config, ordinary, nil, nil, patterns...)
+}
+
+type discoveryFunc func(*packages.Config, ...string) ([]*packages.Package, bool, error)
+
+func (s *Session) load(config *packages.Config, ordinary LoadFunc, discover discoveryFunc, sourceOverride func() map[string]bool, patterns ...string) ([]*packages.Package, error) {
 	s.mu.Lock()
 	locked := true
 	defer func() {
@@ -112,6 +118,19 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 	if config != nil {
 		cfg = *config
 	}
+	metadataLoad := func(c *packages.Config, query ...string) ([]*packages.Package, error) {
+		if discover == nil {
+			s.stats.MetadataLoads++
+			return packages.Load(c, query...)
+		}
+		p, hit, err := discover(c, query...)
+		if hit {
+			s.stats.MetadataHits++
+		} else {
+			s.stats.MetadataLoads++
+		}
+		return p, err
+	}
 	fallback := func() ([]*packages.Package, error) {
 		s.stats.FallbackLoads++
 		locked = false
@@ -119,8 +138,15 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 		return ordinary(config, patterns...)
 	}
 	if cfg.Mode&(packages.NeedTypes|packages.NeedSyntax|packages.NeedTypesInfo) == 0 {
-		s.stats.MetadataLoads++
-		return packages.Load(config, patterns...)
+		p, err := metadataLoad(config, patterns...)
+		if discover != nil && err == nil {
+			mode := cfg.Mode
+			if mode == 0 {
+				mode = packages.LoadFiles
+			}
+			p = requestedFields(p, mode)
+		}
+		return p, err
 	}
 	if !supported(&cfg) {
 		return fallback()
@@ -129,16 +155,16 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 	metadata := func() ([]*packages.Package, error) {
 		c := cfg
 		c.Mode = cfg.Mode&^(packages.NeedTypes|packages.NeedTypesInfo|packages.NeedSyntax) | packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedImports | packages.NeedDeps | packages.NeedModule | packages.NeedExportFile | packages.NeedTypesSizes
-		s.stats.MetadataLoads++
-		return packages.Load(&c, patterns...)
+		return metadataLoad(&c, patterns...)
 	}
 	roots, err := metadata()
 	if err != nil {
 		return nil, err
 	}
-	// Captured overlays are consumed exactly as supplied. Ordinary disk requests
-	// retain go/packages' read-after-discovery behavior instead of imposing an
-	// additional compiler pass. Owners requiring captured bytes supply Overlay.
+	// Captured overlays are consumed exactly as supplied. For an ordinary disk
+	// request, retain go/packages' standard read-after-discovery behavior instead
+	// of imposing an additional compiler discovery pass. Owners needing an exact
+	// private snapshot supply captures or use PrepareView.
 	for _, p := range roots {
 		for _, name := range p.CompiledGoFiles {
 			if _, ok := cfg.Overlay[name]; !ok {
@@ -187,9 +213,37 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 		}
 		sourceKeys[p.PkgPath] = fmt.Sprintf("%x", h.Sum(nil))
 	}
+	var changedSources map[string]bool
+	if sourceOverride != nil {
+		changedSources = sourceOverride()
+	}
+	for path := range changedSources {
+		p := byPath[path]
+		if p == nil {
+			continue
+		}
+		if len(p.CompiledGoFiles) == 0 {
+			return fallback()
+		}
+		h := sha256.New()
+		for _, name := range p.CompiledGoFiles {
+			b, ok := cfg.Overlay[name]
+			if !ok || !slices.Contains(p.GoFiles, name) {
+				return fallback()
+			}
+			_, _ = fmt.Fprintf(h, "%q:%d\x00", name, len(b))
+			h.Write(b)
+		}
+		rootSet[path] = p
+		sourceKeys[path] = fmt.Sprintf("%x", h.Sum(nil))
+		p.ExportFile = "" // No compiler artifact exists for this source-checked revision.
+	}
 	signatures := map[string]string{}
 	for path, p := range byPath {
 		signatures[path] = signature(p)
+		if changedSources[path] {
+			signatures[path] += ":source:" + sourceKeys[path]
+		}
 		if _, root := rootSet[path]; !root && path != "unsafe" && (p.ExportFile == "" || len(p.Errors) > 0) {
 			if cfg.Logf != nil {
 				cfg.Logf("goload: ordinary fallback for dependency %s (export=%q, errors=%v)", path, p.ExportFile, p.Errors)
@@ -227,18 +281,38 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 			break
 		}
 	}
-	if u == nil {
-		u = &universe{context: context, fset: token.NewFileSet(), signatures: map[string]string{}, types: map[string]*types.Package{"unsafe": types.Unsafe}, roots: map[string]*packages.Package{}, sources: map[string]string{}}
+	if u == nil && len(changedSources) > 0 {
+		for _, candidate := range slices.Backward(s.universes) {
+
+			if candidate.context == context {
+				u = deriveUniverse(candidate, signatures, sourceKeys)
+				break
+			}
+		}
+	}
+	if u != nil && !slices.Contains(s.universes, u) {
 		s.universes = append(s.universes, u)
 		s.trimUniverses()
 	}
-	maps.Copy(u.signatures, signatures)
+	if u == nil {
+		u = &universe{context: context, fset: token.NewFileSet(), signatures: map[string]string{}, types: map[string]*types.Package{"unsafe": types.Unsafe}, roots: map[string]*packages.Package{}, sources: map[string]string{}, dependencies: map[string][]string{}}
+		s.universes = append(s.universes, u)
+		s.trimUniverses()
+	}
+	for path, key := range signatures {
+		u.signatures[path] = key
+		u.dependencies[path] = nil
+		for _, dep := range byPath[path].Imports {
+			u.dependencies[path] = append(u.dependencies[path], dep.PkgPath)
+		}
+	}
 	loading := map[string]bool{}
 	var check func(*packages.Package) (*packages.Package, error)
 	check = func(p *packages.Package) (*packages.Package, error) {
 		if old := u.roots[p.PkgPath]; old != nil {
 			s.stats.PackageHits++
 			p.Types, p.TypesInfo, p.Syntax, p.Fset = old.Types, old.TypesInfo, old.Syntax, old.Fset
+			p.Errors, p.IllTyped = slices.Clone(old.Errors), old.IllTyped
 			return p, nil
 		}
 		if loading[p.PkgPath] {
@@ -249,13 +323,27 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 		p.Fset = u.fset
 		p.Types = types.NewPackage(p.PkgPath, p.Name)
 		p.TypesInfo = newTypesInfo()
+		failed := func(err error, kind packages.ErrorKind) (*packages.Package, error) {
+			if discover == nil {
+				return nil, err
+			}
+			// The captured view already owns discovery. A bad ordinary edit is a
+			// fresh source diagnostic, not a reason to invoke another compiler.
+			p.Errors = append(p.Errors, packages.Error{Msg: err.Error(), Kind: kind})
+			p.IllTyped = true
+			u.roots[p.PkgPath] = p
+			u.sources[p.PkgPath] = sourceKeys[p.PkgPath]
+			return p, nil
+		}
 		for _, name := range p.CompiledGoFiles {
 			f, e := parser.ParseFile(u.fset, name, cfg.Overlay[name], parser.ParseComments|parser.AllErrors)
 			s.stats.FileParses++
-			if e != nil {
-				return nil, e
+			if f != nil {
+				p.Syntax = append(p.Syntax, f)
 			}
-			p.Syntax = append(p.Syntax, f)
+			if e != nil {
+				return failed(e, packages.ParseError)
+			}
 		}
 		importer := importFunc(func(path string) (*types.Package, error) {
 			if path == "unsafe" {
@@ -270,6 +358,9 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 				if e != nil {
 					return nil, e
 				}
+				if got.IllTyped {
+					return nil, fmt.Errorf("package %s has invalid source: %v", path, got.Errors)
+				}
 				return got.Types, nil
 			}
 			return s.importExport(u, dep)
@@ -280,7 +371,7 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 		}
 		s.stats.PackageChecks++
 		if e := types.NewChecker(&tc, u.fset, p.Types, p.TypesInfo).Files(p.Syntax); e != nil {
-			return nil, e
+			return failed(e, packages.TypeError)
 		}
 		u.types[p.PkgPath] = p.Types
 		u.roots[p.PkgPath] = p
@@ -300,6 +391,9 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 			if path == "unsafe" {
 				u.types[path] = types.Unsafe
 				continue
+			}
+			if source := rootSet[path]; source != nil && source.IllTyped {
+				continue // Retain current source diagnostics, never reload stale exports.
 			}
 			if _, err := s.importExport(u, p); err != nil {
 				return fallback()
@@ -465,7 +559,7 @@ func contextKey(c *packages.Config, roots []*packages.Package) string {
 		env = os.Environ()
 	}
 	var selected []string
-	for _, entry := range env {
+	for _, entry := range effectiveEnvironment(env) {
 		key, _, _ := strings.Cut(entry, "=")
 		if strings.HasPrefix(key, "GO") || strings.HasPrefix(key, "CGO") || key == "CC" || key == "CXX" || key == "PATH" {
 			selected = append(selected, entry)
@@ -482,4 +576,100 @@ func contextKey(c *packages.Config, roots []*packages.Package) string {
 	sizes = slices.Compact(sizes)
 	b, _ := json.Marshal([]any{c.BuildFlags, selected, sizes})
 	return string(b)
+}
+
+// Derive a coherent graph by retaining only objects whose entire dependency
+// closure is unchanged. Old packages remain immutable and keep their old graph.
+func deriveUniverse(old *universe, signatures, sources map[string]string) *universe {
+	invalid := map[string]bool{}
+	for path, key := range signatures {
+		if before, ok := old.signatures[path]; ok && before != key {
+			invalid[path] = true
+		}
+	}
+	for path, key := range sources {
+		if before, ok := old.sources[path]; ok && before != key {
+			invalid[path] = true
+		}
+		if old.types[path] != nil && old.roots[path] == nil {
+			invalid[path] = true
+		}
+	}
+	for more := true; more; {
+		more = false
+		for path, deps := range old.dependencies {
+			if invalid[path] {
+				continue
+			}
+			for _, dep := range deps {
+				if invalid[dep] {
+					invalid[path] = true
+					more = true
+					break
+				}
+			}
+		}
+	}
+	// Retain positions for unchanged objects without retaining every historical
+	// edited file in a shared FileSet. Fresh wrappers below refer only to this set.
+	removed := map[*token.File]bool{}
+	for path, p := range old.roots {
+		if invalid[path] {
+			for _, f := range p.Syntax {
+				removed[old.fset.File(f.Pos())] = true
+			}
+		}
+	}
+	fset := token.NewFileSet()
+	old.fset.Iterate(func(f *token.File) bool {
+		if !removed[f] {
+			fset.AddExistingFiles(f)
+		}
+		return true
+	})
+	u := &universe{context: old.context, fset: fset, signatures: map[string]string{}, types: map[string]*types.Package{}, roots: map[string]*packages.Package{}, sources: map[string]string{}, dependencies: map[string][]string{}}
+	for p, v := range old.signatures {
+		if !invalid[p] {
+			u.signatures[p] = v
+		}
+	}
+	for p, v := range old.types {
+		if !invalid[p] {
+			u.types[p] = v
+		}
+	}
+	for p, v := range old.roots {
+		if !invalid[p] {
+			copy := *v
+			copy.Fset = fset
+			u.roots[p] = &copy
+		}
+	}
+	for p, v := range old.sources {
+		if !invalid[p] {
+			u.sources[p] = v
+		}
+	}
+	for p, v := range old.dependencies {
+		if !invalid[p] {
+			u.dependencies[p] = v
+		}
+	}
+	return u
+}
+
+func effectiveEnvironment(env []string) []string {
+	values := map[string]string{}
+	for _, entry := range env {
+		key, value, ok := strings.Cut(entry, "=")
+		if ok {
+			values[key] = value
+		}
+	}
+	out := make([]string, 0, len(values))
+	for key, value := range values {
+		out = append(out, key+"="+value)
+	}
+	slices.Sort(out)
+	return out
 }
