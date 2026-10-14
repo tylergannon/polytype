@@ -177,10 +177,12 @@ func acquireCacheFor(args BuilderArgs, identity any) (*cacheInputs, error) {
 
 	// Publication flags are intentionally not semantic inputs. The same result
 	// may be checked, forced, or restored into another declaration directory.
-	_ = enc.Encode(struct {
+	request := struct {
 		Dir                              string
+		Identity                         any
 		Pretty, Validate, TS, Barrel, JS bool
-	}{dir, args.Pretty, args.Validate, args.TypeScriptDir != "", args.TypeScriptBarrel, args.JavaScriptDir != ""})
+	}{dir, identity, args.Pretty, args.Validate, args.TypeScriptDir != "", args.TypeScriptBarrel, args.JavaScriptDir != ""}
+	_ = enc.Encode(request)
 	slices.SortFunc(graph, func(a, b cachePackage) int { return strings.Compare(a.ImportPath, b.ImportPath) })
 	for _, p := range graph {
 		_ = enc.Encode(p)
@@ -197,14 +199,11 @@ func acquireCacheFor(args BuilderArgs, identity any) (*cacheInputs, error) {
 		}
 		base = filepath.Join(base, "polytype")
 	}
-	// Keep only the latest result for each target and producer mode. Source,
-	// executable, and option edits replace this slot atomically instead of
-	// accumulating entries. The full key remains mandatory inside the envelope;
-	// concurrent variants can evict each other but cannot reuse each other's IR.
-	slot, _ := json.Marshal(struct {
-		Dir        string
-		Configured bool
-	}{dir, identity != nil})
+	// Keep only the latest result for each target and semantic request. Source
+	// and executable revisions replace this slot atomically; independent
+	// configurations coexist. Output destinations remain publication parameters.
+	// The full key remains mandatory inside the envelope.
+	slot, _ := json.Marshal(request)
 	slotHash := sha256.Sum256(slot)
 	inputs.path = filepath.Join(base, emissionCacheVersion, hex.EncodeToString(slotHash[:])+".json")
 	return inputs, nil

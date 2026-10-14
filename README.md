@@ -87,8 +87,8 @@ under `polytype`. A fresh process checks Go's compiler identities and the source
 files Polytype actually analyzed before reusing an emission. A hit restores
 missing or damaged generated files using the same publication and ownership
 rules as uncached generation.
-Each target keeps one replaceable result per producer mode (CLI or TypeScript
-configuration), so source and generator revisions do not accumulate entries.
+Each target keeps one replaceable result per semantic request, so independent
+configurations coexist while source and generator revisions replace old entries.
 
 Set `POLYTYPE_CACHE=off` to bypass caching, `POLYTYPE_CACHE_DIR` to choose its
 location, or `POLYTYPE_CACHE_TRACE=1` to print hits, misses, and semantic loads.

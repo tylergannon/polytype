@@ -26,6 +26,11 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	cli = filepath.Join(dir, "polytype")
+	if err := os.Setenv("POLYTYPE_CACHE_DIR", filepath.Join(dir, "cache")); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		_ = os.RemoveAll(dir)
+		os.Exit(1)
+	}
 	if output, err := exec.Command("go", "build", "-o", cli, ".").CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "building the polytype CLI: %v\n%s", err, output)
 		os.Exit(1)

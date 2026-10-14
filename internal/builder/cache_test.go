@@ -1,12 +1,29 @@
 package builder
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 )
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "polytype-builder-cache")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := os.Setenv("POLYTYPE_CACHE_DIR", dir); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		_ = os.RemoveAll(dir)
+		os.Exit(1)
+	}
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
 
 func TestCacheBindsCapturedSourceAndActualCompilerIdentity(t *testing.T) {
 	dir := t.TempDir()
