@@ -652,6 +652,10 @@ inputs replay the emitted files, including restoring damaged output. A failed
 edit leaves the last successful output intact. Call `Close` when the process
 releases the worker. Workspaces, mutable native/embed dependencies, other output
 modes, and custom loader configurations keep the ordinary `Generate` path.
+The first analysis checks the selected local source closure together. Its owned
+session retains at most four graph versions. When supplying `Options.Session`,
+the development owner must set a positive `session.SetMaxUniverses(n)` limit;
+the worker does not change a shared session's retention policy.
 
 A tool that already owns a complete private capture can use
 `session.PrepareView(files)` directly. `View.Update(files)` replaces the complete
@@ -683,11 +687,14 @@ Consumers with their own overlay/staging strategy can use
 `session.LoadWithFallback` and `grammar.LoadWithLoader` to retain that strategy
 for unsupported requests, including lazily reached dependencies.
 
-A development owner can call `session.SetMaxUniverses(n)` to retain at most `n`
+A development owner must call `session.SetMaxUniverses(n)` with a positive limit
+when retaining a caller-owned session across edits, to retain at most `n`
 complete type universes. This bounds graph versions, not bytes. A small limit
 may evict earlier roots when lowering requests source for imported dependencies.
-Every request still asks Go to verify package selection and compiler artifacts;
-this is an invocation reuse API, not an incremental development server.
+Ordinary `Session.Load` requests still ask Go to verify selection and compiler
+artifacts. `PrepareView` skips that work only under the complete private-capture
+ownership contract above. Closing a view releases its captures; the session
+retains graphs according to this limit until the session becomes unreachable.
 
 ### Adopt TypeScript declarations with Go JSON codecs
 

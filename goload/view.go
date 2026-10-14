@@ -47,7 +47,9 @@ type metadataGroup struct {
 }
 
 // PrepareView creates a lazy view without running Go or reading source files.
-// The source map is copied. The owner must call Close when finished.
+// The source map is copied. The owner must call Close when finished and set a
+// positive Session.SetMaxUniverses limit for sustained edits. Close releases
+// this view's captures; the session owns retained type graphs.
 func (s *Session) PrepareView(files map[string][]byte) *View {
 	files = cloneOverlay(files)
 	return &View{session: s, files: files, headers: sourceHeaders(files), groups: map[string]*metadataGroup{}}

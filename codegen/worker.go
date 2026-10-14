@@ -12,6 +12,11 @@ import (
 // separate workers for independent targets. Close releases private source files.
 //
 // Callback-free TypeScript requests reuse captured local source and type analysis.
+// The first analysis checks the selected local source closure together so later
+// edits retain a coherent graph. The owned session retains at most four graph
+// versions. If Options.Session is supplied, its owner must call SetMaxUniverses
+// with a positive limit for sustained edits; Worker does not change a shared
+// session's retention policy. This bounds graph versions, not bytes.
 // Other output modes, workspaces, mutable native/embed dependencies and custom
 // loader configurations keep Generate's behavior.
 // Versioned module-cache files and the Go toolchain must remain immutable during

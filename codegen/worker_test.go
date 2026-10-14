@@ -244,6 +244,7 @@ func TestWorkerKeepsWholeLocalGraphAcrossLeafEdits(t *testing.T) {
 		write(fmt.Sprintf("p%d/types.go", i), src)
 	}
 	var session goload.Session
+	session.SetMaxUniverses(4)
 	var worker codegen.Worker
 	defer func() { _ = worker.Close() }()
 	cfg := polytype.DeclareType(polytype.TypeSpec{PackagePath: "example.test/chain/p0", Name: "Row"})
@@ -258,7 +259,7 @@ func TestWorkerKeepsWholeLocalGraphAcrossLeafEdits(t *testing.T) {
 	if got := session.Stats().PackageChecks; got != 8 {
 		t.Fatalf("initial graph checks=%d, want8", got)
 	}
-	for i := range 4 {
+	for i := range 60 {
 		before := session.Stats()
 		write("p0/types.go", fmt.Sprintf("package p0\nimport \"example.test/chain/p1\"\ntype Row struct { Next p1.Row }\nfunc body() int {return %d}\n", 41+i))
 		run()
@@ -266,6 +267,9 @@ func TestWorkerKeepsWholeLocalGraphAcrossLeafEdits(t *testing.T) {
 		if after.PackageChecks-before.PackageChecks != 1 || after.MetadataLoads != before.MetadataLoads {
 			t.Fatalf("edit%d should recheck only root without metadata: before=%+v after=%+v", i, before, after)
 		}
+	}
+	if got := session.Stats().UniverseEvictions; got != 57 {
+		t.Fatalf("60 edits should evict57 superseded graph versions at limit4, got%d", got)
 	}
 	before := session.Stats()
 	write("p0/types.go", "package p0\nimport (\"example.test/chain/p1\"; \"example.test/chain/p2\")\ntype Row struct { Next p1.Row; Extra p2.Row }\n")
@@ -278,7 +282,7 @@ func TestWorkerKeepsWholeLocalGraphAcrossLeafEdits(t *testing.T) {
 	if err != nil || !bytes.Contains(b, []byte(`"Name": string`)) || !bytes.Contains(b, []byte(`"Extra":`)) {
 		t.Fatalf("fresh literal types: %v %s", err, b)
 	}
-	if got := worker.Stats(); got != (codegen.WorkerStats{Analyses: 6, Emissions: 6}) {
+	if got := worker.Stats(); got != (codegen.WorkerStats{Analyses: 62, Emissions: 62}) {
 		t.Fatalf("worker stats: %+v", got)
 	}
 }
