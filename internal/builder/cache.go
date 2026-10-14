@@ -99,16 +99,36 @@ func acquireCacheFor(args BuilderArgs, identity any) (*cacheInputs, error) {
 	commandArgs = append(commandArgs, ".")
 	command := exec.Command("go", commandArgs...)
 	command.Dir = dir
+	cacheCommand := exec.Command("go", "env", "-json", "GOCACHE", "GOOS", "GOARCH", "CGO_ENABLED", "GOFLAGS", "GOEXPERIMENT", "GOROOT", "GOVERSION", "GOTOOLDIR", "GOMOD", "GOWORK", "GOTOOLCHAIN", "GOPATH", "GOMODCACHE", "GO111MODULE", "GO386", "GOAMD64", "GOARM", "GOARM64", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64", "GOWASM")
+	cacheCommand.Dir = dir
+	// All three inputs are independent. Join the background work before any
+	// return, while preserving the serial path's error precedence below.
+	var compilerEnvironment []byte
+	var environmentErr, binaryErr error
+	var binaryDigest [sha256.Size]byte
+	var acquisition sync.WaitGroup
+	acquisition.Go(func() {
+		compilerEnvironment, environmentErr = cacheCommand.Output()
+	})
+	acquisition.Go(func() {
+		var executable string
+		executable, binaryErr = os.Executable()
+		if binaryErr != nil {
+			return
+		}
+		var binary []byte
+		binary, binaryErr = os.ReadFile(executable)
+		if binaryErr == nil {
+			binaryDigest = sha256.Sum256(binary)
+		}
+	})
 	out, err := command.Output()
+	acquisition.Wait()
 	if err != nil {
 		return nil, err
 	}
-
-	cacheCommand := exec.Command("go", "env", "-json", "GOCACHE", "GOOS", "GOARCH", "CGO_ENABLED", "GOFLAGS", "GOEXPERIMENT", "GOROOT", "GOVERSION", "GOTOOLDIR", "GOMOD", "GOWORK", "GOTOOLCHAIN", "GOPATH", "GOMODCACHE", "GO111MODULE", "GO386", "GOAMD64", "GOARM", "GOARM64", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64", "GOWASM")
-	cacheCommand.Dir = dir
-	compilerEnvironment, err := cacheCommand.Output()
-	if err != nil {
-		return nil, err
+	if environmentErr != nil {
+		return nil, environmentErr
 	}
 	var effective map[string]string
 	if err = json.Unmarshal(compilerEnvironment, &effective); err != nil {
@@ -156,15 +176,10 @@ func acquireCacheFor(args BuilderArgs, identity any) (*cacheInputs, error) {
 	_ = enc.Encode(emissionCacheVersion)
 	_ = enc.Encode(identity)
 	_ = enc.Encode(runtime.Version())
-	executable, err := os.Executable()
-	if err != nil {
-		return nil, err
+	if binaryErr != nil {
+		return nil, binaryErr
 	}
-	binary, err := os.ReadFile(executable)
-	if err != nil {
-		return nil, err
-	}
-	_ = enc.Encode(sha256.Sum256(binary))
+	_ = enc.Encode(binaryDigest)
 
 	_ = enc.Encode(effective)
 	// Production-file selection intentionally follows this process's build
