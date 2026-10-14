@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/dave/dst/decorator"
 	"github.com/tylergannon/polytype/internal/syntax"
@@ -69,8 +68,25 @@ func Run(args BuilderArgs) (err error) {
 	if err = validateDeclarationOutputArgs(args); err != nil {
 		return err
 	}
-	var pkgs []*decorator.Package
-	if pkgs, err = syntax.Load(args.TargetDir); err != nil {
+	if cache, cacheErr := acquireCache(args); cacheErr == nil {
+		if plan, hit := cache.read(); hit {
+			cacheTrace("hit")
+			return plan.apply(args)
+		}
+		cacheTrace("miss")
+		pkgs, loadErr := cache.load(".")
+		if loadErr != nil {
+			return loadErr
+		}
+		if len(pkgs) == 0 {
+			return fmt.Errorf("no packages found in %s", args.TargetDir)
+		}
+		return runLoaded(pkgs[0], args, cache.construct, cache.save)
+	} else {
+		cacheTrace("bypass: " + cacheErr.Error())
+	}
+	pkgs, err := loadTarget(args.TargetDir)
+	if err != nil {
 		return err
 	}
 	if len(pkgs) == 0 {
@@ -87,12 +103,16 @@ func Run(args BuilderArgs) (err error) {
 // The caller keeps ownership of pkg. Generation writes files to disk but does
 // not mutate the loaded graph, so one loaded package graph may back several
 // concurrent RunLoaded calls for different packages in it.
-func RunLoaded(pkg *decorator.Package, args BuilderArgs) (err error) {
+func RunLoaded(pkg *decorator.Package, args BuilderArgs) error {
+	return runLoaded(pkg, args, New, nil)
+}
+
+func runLoaded(pkg *decorator.Package, args BuilderArgs, construct func(*decorator.Package) (SchemaBuilder, error), save func(emissionPlan)) (err error) {
 	if err = validateDeclarationOutputArgs(args); err != nil {
 		return err
 	}
 	var builder SchemaBuilder
-	if builder, err = New(pkg); err != nil {
+	if builder, err = construct(pkg); err != nil {
 		return err
 	}
 	if err = guardValidationMethodRemoval(builder.Scan.Pkg.Dir, args); err != nil {
@@ -144,8 +164,8 @@ func RunLoaded(pkg *decorator.Package, args BuilderArgs) (err error) {
 	// Lower, render, and preflight all declaration outputs before any output
 	// is mutated. In particular, an unsupported source shape or an unowned
 	// output collision must leave ordinary generated artifacts untouched.
-	var typeScriptPlan *outputPlan
-	var javaScriptPlan *outputPlan
+	plan := emissionPlan{Dir: builder.Scan.Pkg.Dir, SchemaDir: builder.Subdir, GenerateSchemas: builder.GenerateSchemas}
+
 	if args.TypeScriptDir != "" || args.JavaScriptDir != "" {
 		definitions, definitionsErr := (&builder).TypeDefinitions()
 		if definitionsErr != nil {
@@ -156,7 +176,8 @@ func RunLoaded(pkg *decorator.Package, args BuilderArgs) (err error) {
 			if generateErr != nil {
 				return fmt.Errorf("generate TypeScript output: %w", generateErr)
 			}
-			typeScriptPlan, err = prepareTypeScriptOutput(args.TypeScriptDir, result.Files, args.TypeScriptBarrel)
+			plan.TypeScript = result.Files
+			_, err = prepareTypeScriptOutput(args.TypeScriptDir, result.Files, args.TypeScriptBarrel)
 			if err != nil {
 				return err
 			}
@@ -166,58 +187,49 @@ func RunLoaded(pkg *decorator.Package, args BuilderArgs) (err error) {
 			if generateErr != nil {
 				return fmt.Errorf("generate JavaScript output: %w", generateErr)
 			}
-			javaScriptPlan, err = prepareJavaScriptOutput(args.JavaScriptDir, result.Files)
+			plan.JavaScript = result.Files
+			_, err = prepareJavaScriptOutput(args.JavaScriptDir, result.Files)
 			if err != nil {
 				return err
 			}
 		}
 	}
 
-	var changedSchemas map[string]bool
-	var orphanedSchemas []string
-	if changedSchemas, orphanedSchemas, err = builder.RenderSchemas(args.NoChanges, args.Force); err != nil {
+	for _, root := range builder.roots() {
+		if !builder.hasSchema(root) {
+			continue
+		}
+		content, renderErr := builder.schemaBytes(root.Receiver)
+		if renderErr != nil {
+			return renderErr
+		}
+		plan.Schemas = append(plan.Schemas, schemaEmission{Type: root.Receiver.TypeName, Name: builder.schemaArtifactName(root.Receiver), Content: content})
+	}
+	plan.Go, err = renderGoCode(builder.templateData())
+	if err != nil {
 		return err
 	}
+	if save != nil {
+		save(plan)
+	}
+	return plan.apply(args)
+}
 
-	// If NoChanges is set, fail if any schemas changed
-	if args.NoChanges {
-		var changedTypes []string
-		for typeName, changed := range changedSchemas {
-			if changed {
-				changedTypes = append(changedTypes, typeName)
-			}
+func loadTarget(target string) (pkgs []*decorator.Package, err error) {
+	dir, dirErr := filepath.Abs(target)
+	overlay, overlayErr := generatedSourceOverlay(dir)
+	if dirErr == nil && overlayErr == nil && len(overlay) > 0 {
+		cfg := *syntax.DefaultPackageCfg
+		cfg.Dir = dir
+		flag, cleanup, overlayErr := generatedOverlayFlag(overlay)
+		if overlayErr != nil {
+			return nil, overlayErr
 		}
-		if len(changedTypes) > 0 {
-			slices.Sort(changedTypes)
-			orphanedMessage := ""
-			if len(orphanedSchemas) > 0 {
-				orphanedMessage = fmt.Sprintf("; orphaned generated artifacts: %s", strings.Join(orphanedSchemas, ", "))
-			}
-			return fmt.Errorf("schema changes detected for types: %s%s (and --no-changes or JSONSCHEMA_NO_CHANGES was set)", strings.Join(changedTypes, ", "), orphanedMessage)
-		}
-		if len(orphanedSchemas) > 0 {
-			return fmt.Errorf("orphaned generated schema artifacts detected: %s (and --no-changes or JSONSCHEMA_NO_CHANGES was set)", strings.Join(orphanedSchemas, ", "))
-		}
-		if typeScriptPlan != nil && typeScriptPlan.changed() {
-			return fmt.Errorf("TypeScript output changes detected for paths: %s (and --no-changes or JSONSCHEMA_NO_CHANGES was set)", strings.Join(typeScriptPlan.changedPaths(), ", "))
-		}
-		if javaScriptPlan != nil && javaScriptPlan.changed() {
-			return fmt.Errorf("JavaScript output changes detected for paths: %s (and --no-changes or JSONSCHEMA_NO_CHANGES was set)", strings.Join(javaScriptPlan.changedPaths(), ", "))
-		}
+		defer cleanup()
+		cfg.BuildFlags = append(slices.Clone(cfg.BuildFlags), flag)
+		pkgs, err = decorator.Load(&cfg, ".")
+	} else {
+		pkgs, err = syntax.Load(target)
 	}
-
-	if err = builder.RenderGoCode(); err != nil {
-		return err
-	}
-	if typeScriptPlan != nil {
-		if err = typeScriptPlan.apply(args.Force); err != nil {
-			return err
-		}
-	}
-	if javaScriptPlan != nil {
-		if err = javaScriptPlan.apply(args.Force); err != nil {
-			return err
-		}
-	}
-	return nil
+	return pkgs, err
 }

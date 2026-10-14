@@ -226,6 +226,7 @@ type decls struct {
 type DependencyLoader func(string) ([]*decorator.Package, error)
 
 type ScanResult struct {
+	Source         SourceFiles
 	loader         DependencyLoader
 	productionFile func(string) (bool, error)
 	Pkg            *decorator.Package
@@ -289,7 +290,12 @@ func LoadPackage(pkg *decorator.Package) (res ScanResult, err error) {
 
 // LoadPackageWithLoader keeps recursive type discovery in the caller's package view.
 func LoadPackageWithLoader(pkg *decorator.Package, loader DependencyLoader, productionFile func(string) (bool, error)) (res ScanResult, err error) {
+	return LoadPackageWithSource(pkg, loader, productionFile, nil)
+}
+
+func LoadPackageWithSource(pkg *decorator.Package, loader DependencyLoader, productionFile func(string) (bool, error), source SourceFiles) (res ScanResult, err error) {
 	res = newScanResult(pkg, map[string]ScanResult{})
+	res.Source = source
 	res.loader = loader
 	res.productionFile = productionFile
 	res.declarations = true
@@ -303,7 +309,16 @@ func LoadPackageWithLoader(pkg *decorator.Package, loader DependencyLoader, prod
 // in the package's source are not read and cannot fail the scan; SealedUnion
 // markers still apply.
 func LoadConfiguredPackage(pkg *decorator.Package) (res ScanResult, err error) {
+	return LoadConfiguredPackageWithSource(pkg, nil, nil)
+}
+
+func LoadConfiguredPackageWithSource(pkg *decorator.Package, loader DependencyLoader, source SourceFiles) (res ScanResult, err error) {
 	res = newScanResult(pkg, map[string]ScanResult{})
+	res.loader = loader
+	res.Source = source
+	if source != nil {
+		res.productionFile = source.IsProductionGoFile
+	}
 	err = res.loadPackageInternal(seenPackages{}, make(map[string]bool))
 	return
 }
@@ -753,6 +768,7 @@ func (r *ScanResult) resolveTypes() error {
 			return err
 		} else {
 			remote = newScanResult(pkgs[0], r.deps)
+			remote.Source = r.Source
 			remote.loader = r.loader
 			remote.productionFile = r.productionFile
 			if err = remote.loadPackageInternal(seenPackages{}, typeNames); err != nil {

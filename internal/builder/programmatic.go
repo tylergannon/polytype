@@ -49,7 +49,7 @@ type ProgrammaticConfig struct {
 // enum and sealed-union codec metadata needed by GoJSON. mapSchemas builds
 // JSON Schema nodes; it implies discoverCodecs.
 func LoadProgrammatic(target string, config ProgrammaticConfig, discoverCodecs, mapSchemas bool) (SchemaBuilder, error) {
-	pkgs, err := syntax.Load(target)
+	pkgs, err := loadTarget(target)
 	if err != nil {
 		return SchemaBuilder{}, err
 	}
@@ -69,6 +69,10 @@ func NewProgrammatic(pkg *decorator.Package, config ProgrammaticConfig, discover
 	if err != nil {
 		return SchemaBuilder{}, err
 	}
+
+	return newProgrammaticFromScan(data, config, discoverCodecs, mapSchemas)
+}
+func newProgrammaticFromScan(data syntax.ScanResult, config ProgrammaticConfig, discoverCodecs, mapSchemas bool) (SchemaBuilder, error) {
 
 	for _, union := range config.SealedUnions {
 		if union.PackagePath != data.Pkg.PkgPath {

@@ -31,6 +31,9 @@ func guardValidationMethodRemoval(targetDir string, args BuilderArgs) error {
 
 	file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ParseComments)
 	if err != nil {
+		if hasGeneratedGoHeader(source) {
+			return nil
+		}
 		return fmt.Errorf("inspect existing generated code for validation methods: %w", err)
 	}
 	if !ast.IsGenerated(file) {

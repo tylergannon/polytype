@@ -1,10 +1,13 @@
 package syntax
 
 import (
+	"bytes"
+	"fmt"
 	"go/ast"
 	"go/build"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,30 +33,34 @@ type JSONMethod struct {
 // FindProductionJSONMethods finds active production MarshalJSON and
 // UnmarshalJSON declarations for the requested local receiver types.
 func FindProductionJSONMethods(dir string, receivers []string) ([]JSONMethod, error) {
+	return SourceFiles(nil).FindProductionJSONMethods(dir, receivers)
+}
+
+func (source SourceFiles) FindProductionJSONMethods(dir string, receivers []string) ([]JSONMethod, error) {
 	wanted := make(map[string]bool, len(receivers))
 	for _, receiver := range receivers {
 		wanted[receiver] = true
 	}
 
-	entries, err := os.ReadDir(dir)
+	entries, err := source.names(dir)
 	if err != nil {
 		return nil, err
 	}
 	fset := token.NewFileSet()
 	var methods []JSONMethod
 	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || name == GeneratedSchemaFile || name == GeneratedCodecFile {
+		name := entry
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || name == GeneratedSchemaFile || name == GeneratedCodecFile {
 			continue
 		}
-		matches, err := IsProductionGoFile(filepath.Join(dir, name))
+		matches, err := source.IsProductionGoFile(filepath.Join(dir, name))
 		if err != nil {
 			return nil, err
 		}
 		if !matches {
 			continue
 		}
-		fileMethods, err := findJSONMethodsInFile(fset, filepath.Join(dir, name), wanted)
+		fileMethods, err := source.findJSONMethodsInFile(fset, filepath.Join(dir, name), wanted)
 		if err != nil {
 			return nil, err
 		}
@@ -67,6 +74,10 @@ func FindProductionJSONMethods(dir string, receivers []string) ([]JSONMethod, er
 // inspected directly because it is excluded while the package is loaded with
 // the reserved jsonschema build tag.
 func FindGeneratedJSONMethods(dir string, receivers []string) ([]JSONMethod, error) {
+	return SourceFiles(nil).FindGeneratedJSONMethods(dir, receivers)
+}
+
+func (source SourceFiles) FindGeneratedJSONMethods(dir string, receivers []string) ([]JSONMethod, error) {
 	wanted := make(map[string]bool, len(receivers))
 	for _, receiver := range receivers {
 		wanted[receiver] = true
@@ -74,13 +85,13 @@ func FindGeneratedJSONMethods(dir string, receivers []string) ([]JSONMethod, err
 	var methods []JSONMethod
 	for _, name := range []string{GeneratedSchemaFile, GeneratedCodecFile} {
 		filename := filepath.Join(dir, name)
-		if _, err := os.Stat(filename); err != nil {
+		if _, err := source.read(filename); err != nil {
 			if os.IsNotExist(err) {
 				continue
 			}
 			return nil, err
 		}
-		fileMethods, err := findJSONMethodsInFile(token.NewFileSet(), filename, wanted)
+		fileMethods, err := source.findJSONMethodsInFile(token.NewFileSet(), filename, wanted)
 		if err != nil {
 			return nil, err
 		}
@@ -89,8 +100,12 @@ func FindGeneratedJSONMethods(dir string, receivers []string) ([]JSONMethod, err
 	return methods, nil
 }
 
-func findJSONMethodsInFile(fset *token.FileSet, filename string, wanted map[string]bool) ([]JSONMethod, error) {
-	file, err := parser.ParseFile(fset, filename, nil, 0)
+func (source SourceFiles) findJSONMethodsInFile(fset *token.FileSet, filename string, wanted map[string]bool) ([]JSONMethod, error) {
+	content, err := source.read(filename)
+	if err != nil {
+		return nil, err
+	}
+	file, err := parser.ParseFile(fset, filename, content, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -119,6 +134,10 @@ func findJSONMethodsInFile(fset *token.FileSet, filename string, wanted map[stri
 // except the generation tag itself: a production build never sets it, even
 // when GOFLAGS does for an editor or for generation.
 func IsProductionGoFile(filename string) (bool, error) {
+	return SourceFiles(nil).IsProductionGoFile(filename)
+}
+
+func (source SourceFiles) IsProductionGoFile(filename string) (bool, error) {
 	context := build.Default
 	fields := strings.Fields(os.Getenv("GOFLAGS"))
 	for i := 0; i < len(fields); i++ {
@@ -139,6 +158,12 @@ func IsProductionGoFile(filename string) (bool, error) {
 			}
 		}
 	}
+	if source != nil {
+		context.OpenFile = func(path string) (io.ReadCloser, error) {
+			b, e := source.read(path)
+			return io.NopCloser(bytes.NewReader(b)), e
+		}
+	}
 	return context.MatchFile(filepath.Dir(filename), filepath.Base(filename))
 }
 
@@ -157,4 +182,44 @@ func receiverTypeName(expr ast.Expr) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+// SourceFiles is an immutable package-directory source view used by cached
+// generation. A nil view keeps the ordinary filesystem behavior.
+type SourceFiles map[string][]byte
+
+func (s SourceFiles) read(path string) ([]byte, error) {
+	if s == nil {
+		return os.ReadFile(path)
+	}
+	b, ok := s[filepath.Clean(path)]
+	if !ok {
+		return nil, &os.PathError{Op: "read", Path: path, Err: os.ErrNotExist}
+	}
+	return b, nil
+}
+func (s SourceFiles) names(dir string) ([]string, error) {
+	var names []string
+	if s == nil {
+		entries, e := os.ReadDir(dir)
+		if e != nil {
+			return nil, e
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				names = append(names, entry.Name())
+			}
+		}
+		return names, nil
+	}
+	for path := range s {
+		if filepath.Dir(path) == filepath.Clean(dir) {
+			names = append(names, filepath.Base(path))
+		}
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no captured source directory %s", dir)
+	}
+	slices.Sort(names)
+	return names, nil
 }

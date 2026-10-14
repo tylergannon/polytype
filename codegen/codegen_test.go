@@ -70,12 +70,21 @@ var buildFixtureCommands = func() map[string]func() (string, error) {
 }()
 
 func TestMain(m *testing.M) {
+	// Fresh-process probes share their parent's explicit fixture cache.
+	if os.Getenv("POLYTYPE_CACHE_PROGRAMMATIC_CHILD") == "1" {
+		os.Exit(m.Run())
+	}
 	dir, err := os.MkdirTemp("", "codegen-fixture-cmds")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	fixtureCommandDir = dir
+	if err := os.Setenv("POLYTYPE_CACHE_DIR", filepath.Join(dir, "cache")); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		_ = os.RemoveAll(dir)
+		os.Exit(1)
+	}
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
