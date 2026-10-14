@@ -12,6 +12,7 @@ import (
 
 	"github.com/tylergannon/polytype"
 	devaluegen "github.com/tylergannon/polytype/devalue/codegen"
+	"github.com/tylergannon/polytype/goload"
 	"github.com/tylergannon/polytype/internal/builder"
 	"github.com/tylergannon/polytype/typescript"
 )
@@ -19,6 +20,10 @@ import (
 // Options selects outputs for Generate. JSON Schema is optional: TypeScript,
 // devalue, and generated Go JSON codecs can be requested independently.
 type Options struct {
+	// Session shares Go analysis on persistent-cache misses. It does not affect
+	// cache identity, and a persistent hit performs no session work.
+	Session *goload.Session
+
 	TargetDir string
 	Pretty    bool
 	Force     bool
@@ -46,6 +51,9 @@ type DevalueOptions struct {
 
 // Option modifies the convenience Gen request.
 type Option func(*Options)
+
+// WithSession shares compatible Go package analysis within an invocation.
+func WithSession(session *goload.Session) Option { return func(o *Options) { o.Session = session } }
 
 // Target loads and writes the configured package at dir.
 func Target(dir string) Option { return func(o *Options) { o.TargetDir = dir } }
@@ -148,11 +156,11 @@ func Generate(config polytype.Configuration, opts Options) error {
 	}
 
 	if opts.TypeScript != nil && opts.Devalue == nil && !opts.JSONSchema && !opts.GoCode && !opts.Validate {
-		if handled, err := builder.RunCachedTypeScript(opts.TargetDir, configured, opts.TypeScript.Dir, opts.TypeScript.Barrel, opts.Force); handled {
+		if handled, err := builder.RunCachedTypeScript(opts.TargetDir, configured, opts.TypeScript.Dir, opts.TypeScript.Barrel, opts.Force, opts.Session); handled {
 			return err
 		}
 	}
-	b, err := builder.LoadProgrammatic(opts.TargetDir, configured, opts.GoCode, opts.JSONSchema)
+	b, err := builder.LoadProgrammatic(opts.TargetDir, configured, opts.GoCode, opts.JSONSchema, opts.Session)
 	if err != nil {
 		return err
 	}

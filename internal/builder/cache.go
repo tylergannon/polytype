@@ -11,6 +11,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/dave/dst/decorator"
+	"github.com/tylergannon/polytype/goload"
 	"github.com/tylergannon/polytype/internal/syntax"
 	"golang.org/x/tools/go/packages"
 )
@@ -37,6 +39,7 @@ type cachePackage struct {
 	Error                                       *struct{ Err string }
 }
 type cacheInputs struct {
+	session        *goload.Session
 	overlay        map[string][]byte
 	key, path, dir string
 	source         syntax.SourceFiles
@@ -228,7 +231,11 @@ func (c *cacheInputs) load(pattern string) ([]*decorator.Package, error) {
 	cacheTrace("load " + pattern)
 	cfg := *syntax.DefaultPackageCfg
 	cfg.Dir = c.dir
-	flag, cleanup, err := generatedOverlayFlag(c.overlay)
+	overlay := c.overlay
+	if c.session != nil {
+		overlay = nil
+	}
+	flag, cleanup, err := generatedOverlayFlag(overlay)
 	if err != nil {
 		return nil, err
 	}
@@ -258,8 +265,37 @@ func (c *cacheInputs) load(pattern string) ([]*decorator.Package, error) {
 		}
 		return parser.ParseFile(fset, path, content, parser.ParseComments)
 	}
-	pkgs, err := decorator.Load(&cfg, pattern)
+	var load goload.LoadFunc
+	if c.session != nil {
+		ordinary := cfg // retain the established captured parser for fallback
+		load = func(request *packages.Config, patterns ...string) ([]*packages.Package, error) {
+			return c.session.LoadWithFallback(request, func(_ *packages.Config, patterns ...string) ([]*packages.Package, error) {
+				fallback := ordinary
+				flag, cleanup, err := generatedOverlayFlag(c.overlay)
+				if err != nil {
+					return nil, err
+				}
+				defer cleanup()
+				if flag != "" {
+					fallback.BuildFlags = append(slices.Clone(fallback.BuildFlags), flag)
+				}
+				return packages.Load(&fallback, patterns...)
+			}, patterns...)
+		}
+		cfg.ParseFile = nil
+		cfg.Overlay = make(map[string][]byte, len(c.source)+len(c.overlay))
+		maps.Copy(cfg.Overlay, c.source)
+		maps.Copy(cfg.Overlay, c.overlay)
+	}
+	pkgs, err := syntax.LoadWithLoader(&cfg, load, pattern)
 	for _, p := range pkgs {
+		if c.session != nil {
+			for _, path := range p.CompiledGoFiles {
+				if _, ok := cfg.Overlay[filepath.Clean(path)]; !ok {
+					c.valid = false
+				}
+			}
+		}
 		expected, ok := c.packages[p.PkgPath]
 		files := make([]string, len(expected.CompiledGoFiles))
 		for i, path := range expected.CompiledGoFiles {

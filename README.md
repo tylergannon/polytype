@@ -638,6 +638,31 @@ ownership and production-tag requirements.
 For declaration checks, explicit tags other than `jsonschema` are also treated
 as your production build tags; otherwise `GOFLAGS` supplies the production tags.
 
+Generators that load several packages lazily can share an invocation-owned
+`goload.Session`. Its zero value performs no work. Pass it to
+`grammar.LoadWithSession(cfg, &session, pattern)` or set
+`codegen.Options.Session = &session`; TypeScript emission-cache hits do not
+consult it. `session.Load` also accepts ordinary `packages.Config` requests,
+including captured source bytes in `Overlay`.
+
+Compatible requests reuse parsed syntax and checked types, including common
+dependency type identity across separate root requests. Changed source,
+compiler artifacts, tags, or overlays isolate incompatible views. Requesting
+source for a dependency previously imported from compiler exports starts a new
+type universe. Custom parsers/file sets, external drivers, tests, cgo roots and
+recursive dependency-syntax requests use ordinary loading. `session.Stats()`
+reports actual checks, parses, reuse and fallbacks. Keep returned analysis
+immutable, and release the session when the invocation or test group ends.
+Consumers with their own overlay/staging strategy can use
+`session.LoadWithFallback` and `grammar.LoadWithLoader` to retain that strategy
+for unsupported requests, including lazily reached dependencies.
+
+A development owner can call `session.SetMaxUniverses(n)` to retain at most `n`
+complete type universes. This bounds graph versions, not bytes. A small limit
+may evict earlier roots when lowering requests source for imported dependencies.
+Every request still asks Go to verify package selection and compiler artifacts;
+this is an invocation reuse API, not an incremental development server.
+
 ### Adopt TypeScript declarations with Go JSON codecs
 
 Pin an explicit module release that contains both capabilities; the generator
