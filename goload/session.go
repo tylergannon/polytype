@@ -10,6 +10,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,7 +24,7 @@ import (
 
 // Stats counts session work. MetadataLoads includes Go's package discovery and
 // export acquisition; FileReads counts only this process's Go source reads.
-// FallbackLoads are ordinary packages.Load calls, outside the shared universe.
+// FallbackLoads count consumer fallback calls, outside the shared universe.
 type Stats struct{ MetadataLoads, PackageChecks, PackageHits, FileReads, FileParses, ExportImports, FallbackLoads, UniverseEvictions uint64 }
 
 // Session owns immutable analysis results for one invocation or test group.
@@ -55,6 +56,8 @@ func (s *Session) Stats() Stats { s.mu.Lock(); defer s.mu.Unlock(); return s.sta
 // or a negative limit keeps the invocation default of unlimited retention.
 // Previously returned packages remain valid after eviction. This bounds retained
 // graph versions, not bytes: individual package graphs may vary greatly in size.
+// Export-to-source promotion needs another universe; a small limit can therefore
+// evict earlier roots while a consumer lazily requests dependency source.
 // Eviction never changes source invalidation or combines independent type graphs.
 func (s *Session) SetMaxUniverses(limit int) {
 	s.mu.Lock()
@@ -133,33 +136,19 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 	if err != nil {
 		return nil, err
 	}
-	// Bind every source byte consumed by our parser to Go's compiler view. An
-	// already captured overlay needs no extra read or discovery. Otherwise capture
-	// the selected roots, then let Go select/compile that exact overlay.
-	for attempt := 0; ; attempt++ {
-		added := false
-		for _, p := range roots {
-			for _, name := range p.CompiledGoFiles {
-				if _, ok := cfg.Overlay[name]; !ok {
-					b, e := os.ReadFile(name)
-					s.stats.FileReads++
-					if e != nil {
-						return fallback()
-					}
-					cfg.Overlay[name] = b
-					added = true
+	// Captured overlays are consumed exactly as supplied. Ordinary disk requests
+	// retain go/packages' read-after-discovery behavior instead of imposing an
+	// additional compiler pass. Owners requiring captured bytes supply Overlay.
+	for _, p := range roots {
+		for _, name := range p.CompiledGoFiles {
+			if _, ok := cfg.Overlay[name]; !ok {
+				b, e := os.ReadFile(name)
+				s.stats.FileReads++
+				if e != nil {
+					return fallback()
 				}
+				cfg.Overlay[name] = b
 			}
-		}
-		if !added {
-			break
-		}
-		if attempt == 2 {
-			return fallback()
-		}
-		roots, err = metadata()
-		if err != nil {
-			return nil, err
 		}
 	}
 	byPath := map[string]*packages.Package{}
@@ -243,9 +232,7 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 		s.universes = append(s.universes, u)
 		s.trimUniverses()
 	}
-	for path, key := range signatures {
-		u.signatures[path] = key
-	}
+	maps.Copy(u.signatures, signatures)
 	loading := map[string]bool{}
 	var check func(*packages.Package) (*packages.Package, error)
 	check = func(p *packages.Package) (*packages.Package, error) {
@@ -406,6 +393,7 @@ func (s *Session) importExport(u *universe, p *packages.Package) (*types.Package
 	// The pinned Go 1.27 toolchain emits compiler archives. NewReader supports
 	// those archives; unsupported future export formats take the ordinary loader
 	// fallback rather than introducing a second archive implementation.
+	//lint:ignore SA1019 The pinned Go 1.27 compiler emits archives; unsupported formats use the ordinary loader.
 	r, err := gcexportdata.NewReader(f) //nolint:staticcheck // Compiler archives remain the supported Go 1.27 export format.
 	if err != nil {
 		return nil, err

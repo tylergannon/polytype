@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/tylergannon/polytype/goload"
 )
 
 func TestMain(m *testing.M) {
@@ -96,5 +98,31 @@ func TestCompilerArtifactIdentity(t *testing.T) {
 		if compilerArtifact(path, root) {
 			t.Fatalf("mutable or foreign export accepted: %s", path)
 		}
+	}
+}
+
+func TestSessionCacheDeclinesUncapturedParsedSource(t *testing.T) {
+	dir := t.TempDir()
+	for name, source := range map[string]string{"go.mod": "module example.com/capture\n\ngo 1.27\n", "types.go": "package capture\ntype Value struct { Before string }\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(source), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inputs, err := acquireCache(BuilderArgs{TargetDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs.session = &goload.Session{}
+	delete(inputs.source, filepath.Join(dir, "types.go"))
+	pkgs, err := inputs.load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := pkgs[0].Types.Scope().Lookup("Value").Type().Underlying().String()
+	if !strings.Contains(actual, "Before string") {
+		t.Fatalf("missing literal type: %s", actual)
+	}
+	if inputs.valid || inputs.session.Stats().FileReads != 1 {
+		t.Fatalf("uncaptured session parse accepted for persistent cache: valid=%v stats=%+v", inputs.valid, inputs.session.Stats())
 	}
 }

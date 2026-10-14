@@ -11,6 +11,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -283,15 +284,18 @@ func (c *cacheInputs) load(pattern string) ([]*decorator.Package, error) {
 		}
 		cfg.ParseFile = nil
 		cfg.Overlay = make(map[string][]byte, len(c.source)+len(c.overlay))
-		for path, content := range c.source {
-			cfg.Overlay[path] = content
-		}
-		for path, content := range c.overlay {
-			cfg.Overlay[path] = content
-		}
+		maps.Copy(cfg.Overlay, c.source)
+		maps.Copy(cfg.Overlay, c.overlay)
 	}
 	pkgs, err := syntax.LoadWithLoader(&cfg, load, pattern)
 	for _, p := range pkgs {
+		if c.session != nil {
+			for _, path := range p.CompiledGoFiles {
+				if _, ok := cfg.Overlay[filepath.Clean(path)]; !ok {
+					c.valid = false
+				}
+			}
+		}
 		expected, ok := c.packages[p.PkgPath]
 		files := make([]string, len(expected.CompiledGoFiles))
 		for i, path := range expected.CompiledGoFiles {

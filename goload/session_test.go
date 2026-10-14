@@ -313,3 +313,17 @@ func TestUniverseLimitEvictsLeastRecentWithoutChangingReturnedGraphs(t *testing.
 		t.Fatal("bound change evicted most recent graph")
 	}
 }
+
+func TestDiskSourceUsesOneMetadataLoadPerRequest(t *testing.T) {
+	dir := fixture(t)
+	var s goload.Session
+	cfg := &packages.Config{Dir: dir, Mode: mode}
+	first := load(t, &s, cfg, "./a")
+	second := load(t, &s, cfg, "./a")
+	if value(first) != 7 || value(second) != 7 || first.Types != second.Types || first.Syntax[0] != second.Syntax[0] {
+		t.Fatal("ordinary source request lost semantic reuse")
+	}
+	if st := s.Stats(); st.MetadataLoads != 2 || st.PackageChecks != 1 || st.PackageHits != 1 || st.FileReads != 2 || st.FileParses != 1 {
+		t.Fatalf("ordinary source repeated discovery: %+v", st)
+	}
+}

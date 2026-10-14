@@ -657,6 +657,12 @@ Consumers with their own overlay/staging strategy can use
 `session.LoadWithFallback` and `grammar.LoadWithLoader` to retain that strategy
 for unsupported requests, including lazily reached dependencies.
 
+A development owner can call `session.SetMaxUniverses(n)` to retain at most `n`
+complete type universes. This bounds graph versions, not bytes. A small limit
+may evict earlier roots when lowering requests source for imported dependencies.
+Every request still asks Go to verify package selection and compiler artifacts;
+this is an invocation reuse API, not an incremental development server.
+
 ### Adopt TypeScript declarations with Go JSON codecs
 
 Pin an explicit module release that contains both capabilities; the generator
