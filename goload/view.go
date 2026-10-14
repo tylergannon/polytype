@@ -49,7 +49,8 @@ type metadataGroup struct {
 // PrepareView creates a lazy view without running Go or reading source files.
 // The source map is copied. The owner must call Close when finished.
 func (s *Session) PrepareView(files map[string][]byte) *View {
-	return &View{session: s, files: cloneOverlay(files), headers: sourceHeaders(files), groups: map[string]*metadataGroup{}}
+	files = cloneOverlay(files)
+	return &View{session: s, files: files, headers: sourceHeaders(files), groups: map[string]*metadataGroup{}}
 }
 
 // Update replaces the complete captured input snapshot between loads. Ordinary
@@ -61,6 +62,7 @@ func (v *View) Update(files map[string][]byte) error {
 	if v.closed {
 		return fmt.Errorf("goload: source view is closed")
 	}
+	files = cloneOverlay(files)
 	if sameFiles(v.files, files) {
 		return nil
 	}
@@ -77,7 +79,7 @@ func (v *View) Update(files map[string][]byte) error {
 		}
 		v.groups = map[string]*metadataGroup{}
 	}
-	v.files = cloneOverlay(files)
+	v.files = files
 	v.headers = headers
 	return nil
 }

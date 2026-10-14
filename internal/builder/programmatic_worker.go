@@ -111,19 +111,35 @@ func (w *TypeScriptWorker) Run(target string, config ProgrammaticConfig, dir str
 		return true, err
 	}
 	if w.snapshot != nil && workerStructuralChange(w.snapshot, snapshot) {
-		if err = w.Close(); err != nil {
-			return true, err
+		// Refresh selection while retaining compiler addresses and the session's
+		// coherent unchanged packages. A new random tree defeats all reuse.
+		if w.view != nil {
+			if err = w.view.Close(); err != nil {
+				return true, err
+			}
 		}
+		w.view = nil
+		w.inputs = nil
+		w.snapshot = nil
+		w.plan = nil
 		return w.Run(target, config, dir, barrel, force, session)
 	}
 	if w.plan != nil && sameWorkerFiles(w.snapshot, snapshot) {
 		w.stats.Replays++
 		return true, applyConfiguredTypeScript(*w.plan, args)
 	}
+	first := w.snapshot == nil
+	if first {
+		if plan, hit := w.readPlan(snapshot); hit {
+			w.snapshot = snapshot
+			w.plan = &plan
+			w.stats.Replays++
+			return true, applyConfiguredTypeScript(plan, args)
+		}
+	}
 	if err = w.materialize(snapshot); err != nil {
 		return true, err
 	}
-	first := w.snapshot == nil
 	w.snapshot = snapshot
 	w.plan = nil
 	if w.view == nil {
@@ -131,16 +147,8 @@ func (w *TypeScriptWorker) Run(target string, config ProgrammaticConfig, dir str
 	} else if err = w.view.Update(w.private); err != nil {
 		return true, err
 	}
-	// A disk hit stays before any typed work. Source edits thereafter use the
-	// retained immutable view rather than obsolete acquisition-time export IDs.
-	if first {
-		if plan, hit := w.readPlan(snapshot); hit {
-			w.stats.Replays++
-			w.plan = &plan
-			return true, applyConfiguredTypeScript(plan, args)
-		}
-	}
 	sources := syntax.SourceFiles(maps.Clone(w.private))
+	loaded := map[string]*decorator.Package{}
 	load := func(pattern string) ([]*decorator.Package, error) {
 		if p, ok := w.inputs.packages[pattern]; ok && w.rebase(p.Dir) == p.Dir {
 			if err := w.inputs.captureDir(p.Dir); err != nil {
@@ -168,6 +176,28 @@ func (w *TypeScriptWorker) Run(target string, config ProgrammaticConfig, dir str
 		cfg.Env = workerEnv(cfg.Env, "GOWORK", "off")
 		cfg.BuildFlags = append(slices.Clone(cfg.BuildFlags), "-trimpath")
 		cfg.Mode |= packages.NeedExportFile | packages.NeedImports
+		if len(loaded) == 0 {
+			var patterns []string
+			for path, p := range w.inputs.packages {
+				if w.dirs[p.Dir] {
+					patterns = append(patterns, path)
+				}
+			}
+			slices.Sort(patterns)
+			roots, err := syntax.LoadWithLoader(&cfg, w.view.Load, patterns...)
+			if err != nil {
+				return nil, err
+			}
+			for _, p := range roots {
+				loaded[p.PkgPath] = p
+				if p.Dir == w.target {
+					loaded["."] = p
+				}
+			}
+		}
+		if p := loaded[pattern]; p != nil {
+			return []*decorator.Package{p}, nil
+		}
 		return syntax.LoadWithLoader(&cfg, w.view.Load, pattern)
 	}
 	w.stats.Analyses++
@@ -260,13 +290,15 @@ func (w *TypeScriptWorker) initialize(session *goload.Session) error {
 		return fmt.Errorf("no local module")
 	}
 	slices.Sort(modules)
-	temp, err := os.MkdirTemp("", "polytype-worker-")
-	if err != nil {
-		return err
+	if w.temp == "" {
+		temp, err := os.MkdirTemp("", "polytype-worker-")
+		if err != nil {
+			return err
+		}
+		w.temp = temp
 	}
-	w.temp = temp
-	for i, root := range modules {
-		w.roots[root] = filepath.Join(temp, fmt.Sprintf("module-%d", i))
+	for _, root := range modules {
+		w.roots[root] = filepath.Join(w.temp, fmt.Sprintf("module-%x", sha256.Sum256([]byte(root))))
 		w.controls[filepath.Join(root, "go.mod")] = true
 		w.controls[filepath.Join(root, "go.sum")] = true
 	}
@@ -299,7 +331,7 @@ func (w *TypeScriptWorker) initialize(session *goload.Session) error {
 			}
 			dest = filepath.Clean(dest)
 			if _, ok := w.roots[dest]; !ok {
-				w.roots[dest] = filepath.Join(temp, fmt.Sprintf("module-%d", len(w.roots)))
+				w.roots[dest] = filepath.Join(w.temp, fmt.Sprintf("module-%x", sha256.Sum256([]byte(dest))))
 				modules = append(modules, dest)
 			}
 		}
@@ -316,8 +348,10 @@ func (w *TypeScriptWorker) initialize(session *goload.Session) error {
 	if w.target == w.inputs.dir {
 		return fmt.Errorf("target outside captured modules")
 	}
-	w.session = session
-	if session == nil {
+	if session != nil {
+		w.session = session
+	}
+	if w.session == nil {
 		w.session = &goload.Session{}
 		w.session.SetMaxUniverses(4)
 	}
@@ -340,9 +374,6 @@ func (w *TypeScriptWorker) capture() (map[string][]byte, error) {
 			ext := filepath.Ext(name)
 			if ext != ".go" && ext != ".s" && ext != ".S" && ext != ".h" && ext != ".c" {
 				continue
-			}
-			if entry.Type()&os.ModeSymlink != 0 {
-				return nil, fmt.Errorf("symlinked mutable source %s", name)
 			}
 			data, err := os.ReadFile(name)
 			if err != nil {
@@ -472,7 +503,15 @@ func workerStructuralChange(a, b map[string][]byte) bool {
 			var parts []string
 			parts = append(parts, f.Name.Name)
 			for _, i := range f.Imports {
+				if i.Path.Value == `"C"` {
+					return string(src)
+				}
 				parts = append(parts, i.Path.Value)
+			}
+			// Constraint placement changes selection even when the comment text
+			// stays the same, so preserve its leading layout during acquisition.
+			if bytes.Contains(src, []byte("//go:build")) || bytes.Contains(src, []byte("// +build")) {
+				parts = append(parts, string(src[:int(f.Package)-1]))
 			}
 			for _, g := range f.Comments {
 				for _, c := range g.List {
@@ -503,7 +542,7 @@ func (w *TypeScriptWorker) originalError(err error) error {
 			}
 		}
 	}
-	return fmt.Errorf("%s", message)
+	return &workerPathError{message: message, cause: err}
 }
 
 func (w *TypeScriptWorker) Stats() WorkerStats { return w.stats }
@@ -543,3 +582,11 @@ func (w *TypeScriptWorker) savePlan(snapshot map[string][]byte, plan emissionPla
 		_ = writeOutputFile(w.inputs.path, envelope)
 	}
 }
+
+type workerPathError struct {
+	message string
+	cause   error
+}
+
+func (e *workerPathError) Error() string { return e.message }
+func (e *workerPathError) Unwrap() error { return e.cause }

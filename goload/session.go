@@ -241,8 +241,14 @@ func (s *Session) load(config *packages.Config, ordinary LoadFunc, discover disc
 	signatures := map[string]string{}
 	for path, p := range byPath {
 		signatures[path] = signature(p)
-		if changedSources[path] {
-			signatures[path] += ":source:" + sourceKeys[path]
+		if _, source := rootSet[path]; source {
+			// A source-checked package is identified by its captured bytes. Its
+			// compiler artifact may change after structural rediscovery even when
+			// those bytes did not; imported export-only dependencies still retain
+			// their compiler identities below.
+			copy := *p
+			copy.ExportFile = ""
+			signatures[path] = signature(&copy) + ":source:" + sourceKeys[path]
 		}
 		if _, root := rootSet[path]; !root && path != "unsafe" && (p.ExportFile == "" || len(p.Errors) > 0) {
 			if cfg.Logf != nil {
@@ -281,7 +287,7 @@ func (s *Session) load(config *packages.Config, ordinary LoadFunc, discover disc
 			break
 		}
 	}
-	if u == nil && len(changedSources) > 0 {
+	if u == nil && discover != nil {
 		for _, candidate := range slices.Backward(s.universes) {
 
 			if candidate.context == context {

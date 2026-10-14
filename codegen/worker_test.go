@@ -2,6 +2,7 @@ package codegen_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -218,5 +219,105 @@ replace example.test/trans => ../right
 	run(`"ready": boolean`)
 	if session.Stats().MetadataLoads <= initial {
 		t.Fatal("module selection edit failed to rediscover")
+	}
+}
+
+func TestWorkerKeepsWholeLocalGraphAcrossLeafEdits(t *testing.T) {
+	t.Setenv("POLYTYPE_CACHE_DIR", t.TempDir())
+	dir := t.TempDir()
+	write := func(name, src string) {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(src), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("go.mod", "module example.test/chain\n\ngo 1.27\n")
+	for i := 7; i >= 0; i-- {
+		src := fmt.Sprintf("package p%d\ntype Row struct { Name string }\n", i)
+		if i < 7 {
+			src = fmt.Sprintf("package p%d\nimport \"example.test/chain/p%d\"\ntype Row struct { Next p%d.Row }\n", i, i+1, i+1)
+		}
+		write(fmt.Sprintf("p%d/types.go", i), src)
+	}
+	var session goload.Session
+	var worker codegen.Worker
+	defer func() { _ = worker.Close() }()
+	cfg := polytype.DeclareType(polytype.TypeSpec{PackagePath: "example.test/chain/p0", Name: "Row"})
+	opts := codegen.Options{Session: &session, TargetDir: filepath.Join(dir, "p0"), TypeScript: &codegen.TypeScriptOptions{Dir: filepath.Join(dir, "ts")}}
+	run := func() {
+		t.Helper()
+		if err := worker.Generate(cfg, opts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run()
+	if got := session.Stats().PackageChecks; got != 8 {
+		t.Fatalf("initial graph checks=%d, want8", got)
+	}
+	for i := range 4 {
+		before := session.Stats()
+		write("p0/types.go", fmt.Sprintf("package p0\nimport \"example.test/chain/p1\"\ntype Row struct { Next p1.Row }\nfunc body() int {return %d}\n", 41+i))
+		run()
+		after := session.Stats()
+		if after.PackageChecks-before.PackageChecks != 1 || after.MetadataLoads != before.MetadataLoads {
+			t.Fatalf("edit%d should recheck only root without metadata: before=%+v after=%+v", i, before, after)
+		}
+	}
+	before := session.Stats()
+	write("p0/types.go", "package p0\nimport (\"example.test/chain/p1\"; \"example.test/chain/p2\")\ntype Row struct { Next p1.Row; Extra p2.Row }\n")
+	run()
+	after := session.Stats()
+	if after.MetadataLoads <= before.MetadataLoads || after.PackageChecks-before.PackageChecks != 1 {
+		t.Fatalf("import change should rediscover and retain unchanged packages: before=%+v after=%+v", before, after)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "ts/types.ts"))
+	if err != nil || !bytes.Contains(b, []byte(`"Name": string`)) || !bytes.Contains(b, []byte(`"Extra":`)) {
+		t.Fatalf("fresh literal types: %v %s", err, b)
+	}
+	if got := worker.Stats(); got != (codegen.WorkerStats{Analyses: 6, Emissions: 6}) {
+		t.Fatalf("worker stats: %+v", got)
+	}
+}
+
+func TestWorkerCapturesLinkedSourceBytes(t *testing.T) {
+	t.Setenv("POLYTYPE_CACHE_DIR", t.TempDir())
+	dir := t.TempDir()
+	target := filepath.Join(t.TempDir(), "authored.go")
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.test/linked\n\ngo 1.27\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	write := func(src string) {
+		t.Helper()
+		if err := os.WriteFile(target, []byte(src), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("package linked\ntype Row struct {Name string}\n")
+	if err := os.Symlink(target, filepath.Join(dir, "types.go")); err != nil {
+		t.Fatal(err)
+	}
+	var worker codegen.Worker
+	var session goload.Session
+	defer func() { _ = worker.Close() }()
+	cfg := polytype.DeclareType(polytype.TypeSpec{PackagePath: "example.test/linked", Name: "Row"})
+	opts := codegen.Options{Session: &session, TargetDir: dir, TypeScript: &codegen.TypeScriptOptions{Dir: filepath.Join(dir, "ts")}}
+	if err := worker.Generate(cfg, opts); err != nil {
+		t.Fatal(err)
+	}
+	before := session.Stats()
+	write("package linked\ntype Row struct {Ready bool}\n")
+	if err := worker.Generate(cfg, opts); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "ts/types.ts"))
+	if err != nil || !bytes.Contains(b, []byte(`"Ready": boolean`)) {
+		t.Fatalf("linked edit stale: %v %s", err, b)
+	}
+	if session.Stats().MetadataLoads != before.MetadataLoads {
+		t.Fatal("linked ordinary edit rediscovered")
 	}
 }

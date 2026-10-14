@@ -352,3 +352,35 @@ func TestPreparedViewSyntaxFailureAndRepairWithoutGo(t *testing.T) {
 		t.Fatalf("syntax error launched Go: %+v", st)
 	}
 }
+
+func TestPreparedViewNormalizesDirectoryMembershipMarkers(t *testing.T) {
+	dir := fixture(t)
+	files := captureFixture(t, dir)
+	// Capture owners may represent membership with a trailing slash. This is
+	// the same directory identity as its canonical spelling, not a deletion.
+	files[filepath.Join(dir, "a")+string(filepath.Separator)] = nil
+	var session goload.Session
+	view := session.PrepareView(files)
+	defer func() { _ = view.Close() }()
+	cfg := &packages.Config{Dir: dir, Mode: mode, Env: os.Environ()}
+	if _, err := view.Load(cfg, "./a"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	path := filepath.Join(dir, "a/root.go")
+	files[path] = append(files[path], []byte("\nconst Added = 41\n")...)
+	if err := view.Update(files); err != nil {
+		t.Fatal(err)
+	}
+	got, err := view.Load(cfg, "./a")
+	if err != nil {
+		t.Fatalf("directory marker forced rediscovery: %v", err)
+	}
+	c, ok := got[0].Types.Scope().Lookup("Added").(*types.Const)
+	if !ok || c.Val().ExactString() != "41" {
+		t.Fatal("fresh source was not checked")
+	}
+	if st := session.Stats(); st.MetadataLoads != 1 || st.MetadataHits != 1 {
+		t.Fatalf("unexpected metadata work: %+v", st)
+	}
+}

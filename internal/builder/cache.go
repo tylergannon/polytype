@@ -100,7 +100,7 @@ func acquireCacheFor(args BuilderArgs, identity any) (*cacheInputs, error) {
 	commandArgs = append(commandArgs, ".")
 	command := exec.Command("go", commandArgs...)
 	command.Dir = dir
-	cacheCommand := exec.Command("go", "env", "-json", "GOENV", "GOCACHE", "GOOS", "GOARCH", "CGO_ENABLED", "GOFLAGS", "GOEXPERIMENT", "GOROOT", "GOVERSION", "GOTOOLDIR", "GOMOD", "GOWORK", "GOTOOLCHAIN", "GOPATH", "GOMODCACHE", "GO111MODULE", "GO386", "GOAMD64", "GOARM", "GOARM64", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64", "GOWASM")
+	cacheCommand := exec.Command("go", "env", "-json", "GOPROXY", "GOPRIVATE", "GONOPROXY", "GONOSUMDB", "GOSUMDB", "GOINSECURE", "GOVCS", "GOAUTH", "CC", "CXX", "GOENV", "GOCACHE", "GOOS", "GOARCH", "CGO_ENABLED", "GOFLAGS", "GOEXPERIMENT", "GOROOT", "GOVERSION", "GOTOOLDIR", "GOMOD", "GOWORK", "GOTOOLCHAIN", "GOPATH", "GOMODCACHE", "GO111MODULE", "GO386", "GOAMD64", "GOARM", "GOARM64", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64", "GOWASM")
 	cacheCommand.Dir = dir
 	// All three inputs are independent. Join the background work before any
 	// return, while preserving the serial path's error precedence below.
