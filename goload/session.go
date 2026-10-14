@@ -299,7 +299,72 @@ func (s *Session) LoadWithFallback(config *packages.Config, ordinary LoadFunc, p
 			p.Fset = u.fset
 		}
 	}
-	return out, nil
+	return requestedFields(out, cfg.Mode), nil
+}
+
+// Return fresh metadata wrappers so mode pruning never changes cached analysis
+// or a graph previously returned to another consumer.
+func requestedFields(roots []*packages.Package, mode packages.LoadMode) []*packages.Package {
+	copies := map[*packages.Package]*packages.Package{}
+	var copyPackage func(*packages.Package) *packages.Package
+	copyPackage = func(p *packages.Package) *packages.Package {
+		if old := copies[p]; old != nil {
+			return old
+		}
+		q := *p
+		copies[p] = &q
+		if mode&packages.NeedImports != 0 {
+			q.Imports = map[string]*packages.Package{}
+			for path, dep := range p.Imports {
+				q.Imports[path] = copyPackage(dep)
+			}
+		} else {
+			q.Imports = nil
+		}
+		if mode&packages.NeedName == 0 {
+			q.Name = ""
+			q.PkgPath = ""
+		}
+		if mode&packages.NeedFiles == 0 {
+			q.GoFiles = nil
+			q.OtherFiles = nil
+			q.IgnoredFiles = nil
+		}
+		if mode&packages.NeedCompiledGoFiles == 0 {
+			q.CompiledGoFiles = nil
+		}
+		if mode&packages.NeedExportFile == 0 {
+			q.ExportFile = ""
+		}
+		if mode&packages.NeedTypes == 0 {
+			q.Types = nil
+			q.IllTyped = false
+		}
+		if mode&packages.NeedSyntax == 0 {
+			q.Syntax = nil
+		}
+		if mode&packages.NeedTypesInfo == 0 {
+			q.TypesInfo = nil
+		}
+		if mode&packages.NeedTypesSizes == 0 {
+			q.TypesSizes = nil
+		}
+		if mode&packages.NeedModule == 0 {
+			q.Module = nil
+		}
+		if mode&packages.NeedEmbedFiles == 0 {
+			q.EmbedFiles = nil
+		}
+		if mode&packages.NeedEmbedPatterns == 0 {
+			q.EmbedPatterns = nil
+		}
+		return &q
+	}
+	out := make([]*packages.Package, len(roots))
+	for i, p := range roots {
+		out[i] = copyPackage(p)
+	}
+	return out
 }
 
 func (s *Session) importExport(u *universe, p *packages.Package) (*types.Package, error) {

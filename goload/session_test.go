@@ -260,3 +260,20 @@ func TestFallbackUsesConsumerLoaderWithoutHoldingSessionLock(t *testing.T) {
 		t.Fatalf("raw loader escaped callback: %+v", st)
 	}
 }
+
+func TestRequestedFieldsDoNotMutateSharedAnalysis(t *testing.T) {
+	dir := fixture(t)
+	var s goload.Session
+	full := load(t, &s, &packages.Config{Dir: dir, Mode: mode}, "./a")
+	limited := load(t, &s, &packages.Config{Dir: dir, Mode: packages.NeedName | packages.NeedTypes}, "./a")
+	if limited.Types != full.Types || limited.Syntax != nil || limited.TypesInfo != nil || limited.GoFiles != nil || limited.CompiledGoFiles != nil || limited.ExportFile != "" || limited.Module != nil || limited.Imports != nil {
+		t.Fatalf("unrequested data retained: %+v", limited)
+	}
+	if len(full.Syntax) != 1 || full.TypesInfo == nil || len(full.Imports) != 1 {
+		t.Fatal("pruning changed previously returned graph")
+	}
+	again := load(t, &s, &packages.Config{Dir: dir, Mode: mode}, "./a")
+	if again.Types != full.Types || again.Syntax[0] != full.Syntax[0] || s.Stats().PackageChecks != 1 {
+		t.Fatalf("pruning damaged cached full analysis: %+v", s.Stats())
+	}
+}
