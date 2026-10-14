@@ -34,6 +34,7 @@ const emissionCacheVersion = "polytype-emission-v1"
 type cachePackage struct {
 	ImportPath, Name, Dir, Export               string
 	GoFiles, CompiledGoFiles, Imports, CgoFiles []string
+	EmbedFiles, EmbedPatterns                   []string
 	ImportMap                                   map[string]string
 	Module                                      *packages.Module
 	Error                                       *struct{ Err string }
@@ -42,6 +43,7 @@ type cacheInputs struct {
 	session        *goload.Session
 	overlay        map[string][]byte
 	key, path, dir string
+	environment    map[string]string
 	source         syntax.SourceFiles
 	packages       map[string]cachePackage
 	valid          bool
@@ -62,12 +64,8 @@ func cacheTrace(event string) {
 func acquireCache(args BuilderArgs) (*cacheInputs, error) { return acquireCacheFor(args, nil) }
 
 func acquireCacheFor(args BuilderArgs, identity any) (*cacheInputs, error) {
-	if os.Getenv("POLYTYPE_CACHE") == "off" || len(registeredTransforms) > 0 {
-		return nil, fmt.Errorf("disabled or custom transforms")
-	}
-	cfg := syntax.DefaultPackageCfg
-	if cfg.Mode != syntax.PackageLoadNeeds || cfg.Context != nil || cfg.Fset != nil || cfg.Tests || cfg.ParseFile != nil || cfg.Overlay != nil || cfg.Env != nil || cfg.Dir != "" || !reflect.DeepEqual(cfg.BuildFlags, []string{"-tags=jsonschema"}) {
-		return nil, fmt.Errorf("custom loader configuration")
+	if err := cacheConfigurationSupported(); err != nil {
+		return nil, err
 	}
 	if d := os.Getenv("GOPACKAGESDRIVER"); d != "" && d != "off" {
 		return nil, fmt.Errorf("custom packages driver")
@@ -90,7 +88,7 @@ func acquireCacheFor(args BuilderArgs, identity any) (*cacheInputs, error) {
 	if err != nil {
 		return nil, err
 	}
-	commandArgs := []string{"list", "-e", "-deps", "-export", "-compiled", "-tags=jsonschema", "-json=ImportPath,Name,Dir,Export,GoFiles,CompiledGoFiles,Imports,CgoFiles,ImportMap,Module,Error"}
+	commandArgs := []string{"list", "-e", "-deps", "-export", "-compiled", "-tags=jsonschema", "-json=ImportPath,Name,Dir,Export,GoFiles,CompiledGoFiles,Imports,CgoFiles,ImportMap,Module,Error,EmbedFiles,EmbedPatterns"}
 	flag, cleanup, err := generatedOverlayFlag(overlay)
 	if err != nil {
 		return nil, err
@@ -102,7 +100,7 @@ func acquireCacheFor(args BuilderArgs, identity any) (*cacheInputs, error) {
 	commandArgs = append(commandArgs, ".")
 	command := exec.Command("go", commandArgs...)
 	command.Dir = dir
-	cacheCommand := exec.Command("go", "env", "-json", "GOCACHE", "GOOS", "GOARCH", "CGO_ENABLED", "GOFLAGS", "GOEXPERIMENT", "GOROOT", "GOVERSION", "GOTOOLDIR", "GOMOD", "GOWORK", "GOTOOLCHAIN", "GOPATH", "GOMODCACHE", "GO111MODULE", "GO386", "GOAMD64", "GOARM", "GOARM64", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64", "GOWASM")
+	cacheCommand := exec.Command("go", "env", "-json", "GOENV", "GOCACHE", "GOOS", "GOARCH", "CGO_ENABLED", "GOFLAGS", "GOEXPERIMENT", "GOROOT", "GOVERSION", "GOTOOLDIR", "GOMOD", "GOWORK", "GOTOOLCHAIN", "GOPATH", "GOMODCACHE", "GO111MODULE", "GO386", "GOAMD64", "GOARM", "GOARM64", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64", "GOWASM")
 	cacheCommand.Dir = dir
 	// All three inputs are independent. Join the background work before any
 	// return, while preserving the serial path's error precedence below.
@@ -144,7 +142,7 @@ func acquireCacheFor(args BuilderArgs, identity any) (*cacheInputs, error) {
 		}
 	}
 
-	inputs := &cacheInputs{dir: dir, source: syntax.SourceFiles{}, packages: map[string]cachePackage{}, valid: true, overlay: overlay}
+	inputs := &cacheInputs{environment: effective, dir: dir, source: syntax.SourceFiles{}, packages: map[string]cachePackage{}, valid: true, overlay: overlay}
 	dec := json.NewDecoder(bytes.NewReader(out))
 	var graph []cachePackage
 	for {
@@ -453,4 +451,15 @@ func cacheDigest(plan json.RawMessage, sources map[string]string) string {
 	}{plan, sources})
 	sum := sha256.Sum256(content)
 	return hex.EncodeToString(sum[:])
+}
+
+func cacheConfigurationSupported() error {
+	if os.Getenv("POLYTYPE_CACHE") == "off" || len(registeredTransforms) > 0 {
+		return fmt.Errorf("disabled or custom transforms")
+	}
+	cfg := syntax.DefaultPackageCfg
+	if cfg.Mode != syntax.PackageLoadNeeds || cfg.Context != nil || cfg.Fset != nil || cfg.Tests || cfg.ParseFile != nil || cfg.Overlay != nil || cfg.Env != nil || cfg.Dir != "" || !reflect.DeepEqual(cfg.BuildFlags, []string{"-tags=jsonschema"}) {
+		return fmt.Errorf("custom loader configuration")
+	}
+	return nil
 }

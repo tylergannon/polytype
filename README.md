@@ -115,6 +115,12 @@ polytype is available under the permissive [Zero-Clause BSD license](LICENSE).
 
 ### Programmatic generation
 
+A generator that should not import the application package can select a source
+identity with `polytype.DeclareType(polytype.TypeSpec{PackagePath:
+"example.com/app/model", Name: "Envelope"})`. Resolution uses the current source
+package, so editing the application does not require rebuilding the generator
+just to refresh a reflected type name. `Pointer: true` selects its pointer form.
+
 The declaration API constructs real configuration values. A generator program
 can select outputs directly, with no `schema.go` registration file and no
 schema method:
@@ -637,6 +643,26 @@ excluded from the tagged snapshot. See `FromPackages`'s Go documentation for
 ownership and production-tag requirements.
 For declaration checks, explicit tags other than `jsonschema` are also treated
 as your production build tags; otherwise `GOFLAGS` supplies the production tags.
+
+For a development process, a zero-value `codegen.Worker` offers
+`Generate(config, options)`, `Stats()`, and `Close()`. It retains one
+callback-free TypeScript request, captures the selected local Go dependency
+closure, and reuses its private source view across ordinary edits. Unchanged
+inputs replay the emitted files, including restoring damaged output. A failed
+edit leaves the last successful output intact. Call `Close` when the process
+releases the worker. Workspaces, mutable native/embed dependencies, other output
+modes, and custom loader configurations keep the ordinary `Generate` path.
+
+A tool that already owns a complete private capture can use
+`session.PrepareView(files)` directly. `View.Update(files)` replaces the complete
+snapshot between serialized loads; body and API changes preserve metadata,
+while file membership, imports, build controls, and compiler directives refresh
+it. `View.Load` and `LoadWithFallback` use captured bytes with standard Go parsing
+and type checking. The owner must keep every mutable source/control input in the
+capture and update the physical private tree before `Update`. Installed
+versioned modules and the toolchain remain immutable for this lifetime. Close
+the view to release temporary files. Previously returned graphs remain valid;
+new source-checked revisions do not advertise stale compiler export files.
 
 Generators that load several packages lazily can share an invocation-owned
 `goload.Session`. Its zero value performs no work. Pass it to

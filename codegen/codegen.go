@@ -20,6 +20,7 @@ import (
 // Options selects outputs for Generate. JSON Schema is optional: TypeScript,
 // devalue, and generated Go JSON codecs can be requested independently.
 type Options struct {
+	worker *builder.TypeScriptWorker
 	// Session shares Go analysis on persistent-cache misses. It does not affect
 	// cache identity, and a persistent hit performs no session work.
 	Session *goload.Session
@@ -156,7 +157,11 @@ func Generate(config polytype.Configuration, opts Options) error {
 	}
 
 	if opts.TypeScript != nil && opts.Devalue == nil && !opts.JSONSchema && !opts.GoCode && !opts.Validate {
-		if handled, err := builder.RunCachedTypeScript(opts.TargetDir, configured, opts.TypeScript.Dir, opts.TypeScript.Barrel, opts.Force, opts.Session); handled {
+		run := builder.RunCachedTypeScript
+		if opts.worker != nil {
+			run = opts.worker.Run
+		}
+		if handled, err := run(opts.TargetDir, configured, opts.TypeScript.Dir, opts.TypeScript.Barrel, opts.Force, opts.Session); handled {
 			return err
 		}
 	}

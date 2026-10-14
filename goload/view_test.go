@@ -192,7 +192,7 @@ func TestPreparedViewCanonicalEnvironmentAndBoundedPositions(t *testing.T) {
 	}
 	file := filepath.Join(dir, "a/root.go")
 	base := slices.Clone(files[file])
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		files[file] = append(slices.Clone(base), []byte(fmt.Sprintf("\nconst Edit = %d\n", i))...)
 		if err := view.Update(files); err != nil {
 			t.Fatal(err)

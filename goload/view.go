@@ -331,6 +331,9 @@ func sourceHeader(name string, data []byte) string {
 	}
 	parts := []string{f.Name.Name}
 	for _, imp := range f.Imports {
+		if imp.Path.Value == `"C"` {
+			return string(data)
+		}
 		parts = append(parts, imp.Path.Value)
 	}
 	// Compiler directives beyond build selection (notably embed and cgo)

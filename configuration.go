@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"go/token"
 
-	"golang.org/x/mod/module"
 	"reflect"
 	"runtime"
 	"strings"
@@ -43,8 +42,8 @@ type TypeSpec struct {
 // It has no schema entrypoint or field/provider rules; select outputs explicitly.
 func DeclareType(typ TypeSpec) Configuration {
 	var err error
-	if e := module.CheckImportPath(typ.PackagePath); e != nil {
-		err = fmt.Errorf("polytype.DeclareType: %w", e)
+	if typ.PackagePath == "" {
+		err = fmt.Errorf("polytype.DeclareType: package path is required")
 	} else if !token.IsIdentifier(typ.Name) || typ.Name == "_" {
 		err = fmt.Errorf("polytype.DeclareType: %q is not a named Go type", typ.Name)
 	}

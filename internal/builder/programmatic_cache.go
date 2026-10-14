@@ -14,17 +14,9 @@ import (
 // request. It returns false for opaque configuration or unavailable cache
 // acquisition, leaving the established general programmatic path in charge.
 func RunCachedTypeScript(target string, config ProgrammaticConfig, dir string, barrel, force bool, session *goload.Session) (bool, error) {
-	type unionIdentity struct{ PackagePath, TypeName, Discriminator string }
-	identity := struct {
-		Mode         string
-		Declarations []ConfiguredDeclaration
-		Unions       []unionIdentity
-	}{Mode: "configured-typescript", Declarations: config.Declarations}
-	for _, union := range config.SealedUnions {
-		if union.Inflect != nil {
-			return false, nil
-		}
-		identity.Unions = append(identity.Unions, unionIdentity{union.PackagePath, union.TypeName, union.Discriminator})
+	identity, ok := typeScriptIdentity(config)
+	if !ok {
+		return false, nil
 	}
 	if dir == "" {
 		dir = "."
@@ -35,6 +27,10 @@ func RunCachedTypeScript(target string, config ProgrammaticConfig, dir string, b
 		cacheTrace("bypass: " + err.Error())
 		return false, nil
 	}
+	return runCachedTypeScriptInputs(inputs, args, config, barrel, session)
+}
+
+func runCachedTypeScriptInputs(inputs *cacheInputs, args BuilderArgs, config ProgrammaticConfig, barrel bool, session *goload.Session) (bool, error) {
 	if plan, hit := inputs.read(); hit {
 		cacheTrace("hit")
 		return true, applyConfiguredTypeScript(plan, args)
@@ -46,7 +42,7 @@ func RunCachedTypeScript(target string, config ProgrammaticConfig, dir string, b
 		return true, err
 	}
 	if len(pkgs) == 0 {
-		return true, fmt.Errorf("no packages found for %s", target)
+		return true, fmt.Errorf("no packages found for %s", args.TargetDir)
 	}
 	scan, err := syntax.LoadConfiguredPackageWithSource(pkgs[0], inputs.load, inputs.source)
 	if err != nil {
@@ -89,4 +85,20 @@ func applyConfiguredTypeScript(plan emissionPlan, args BuilderArgs) error {
 		}
 	}
 	return nil
+}
+
+func typeScriptIdentity(config ProgrammaticConfig) (any, bool) {
+	type unionIdentity struct{ PackagePath, TypeName, Discriminator string }
+	identity := struct {
+		Mode         string
+		Declarations []ConfiguredDeclaration
+		Unions       []unionIdentity
+	}{Mode: "configured-typescript", Declarations: config.Declarations}
+	for _, union := range config.SealedUnions {
+		if union.Inflect != nil {
+			return nil, false
+		}
+		identity.Unions = append(identity.Unions, unionIdentity{union.PackagePath, union.TypeName, union.Discriminator})
+	}
+	return identity, true
 }
