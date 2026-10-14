@@ -638,6 +638,22 @@ ownership and production-tag requirements.
 For declaration checks, explicit tags other than `jsonschema` are also treated
 as your production build tags; otherwise `GOFLAGS` supplies the production tags.
 
+Generators that load several packages lazily can share an invocation-owned
+`goload.Session`. Its zero value performs no work. Pass it to
+`grammar.LoadWithSession(cfg, &session, pattern)` or set
+`codegen.Options.Session = &session`; TypeScript emission-cache hits do not
+consult it. `session.Load` also accepts ordinary `packages.Config` requests,
+including captured source bytes in `Overlay`.
+
+Compatible requests reuse parsed syntax and checked types, including common
+dependency type identity across separate root requests. Changed source,
+compiler artifacts, tags, or overlays isolate incompatible views. Requesting
+source for a dependency previously imported from compiler exports starts a new
+type universe. Custom parsers/file sets, external drivers, tests, cgo roots and
+recursive dependency-syntax requests use ordinary loading. `session.Stats()`
+reports actual checks, parses, reuse and fallbacks. Keep returned analysis
+immutable, and release the session when the invocation or test group ends.
+
 ### Adopt TypeScript declarations with Go JSON codecs
 
 Pin an explicit module release that contains both capabilities; the generator

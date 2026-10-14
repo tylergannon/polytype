@@ -25,6 +25,7 @@ import (
 	"github.com/dave/dst/decorator"
 	"golang.org/x/tools/go/packages"
 
+	"github.com/tylergannon/polytype/goload"
 	"github.com/tylergannon/polytype/internal/builder"
 	"github.com/tylergannon/polytype/internal/syntax"
 	"github.com/tylergannon/polytype/typegrammar"
@@ -94,6 +95,12 @@ func (p *Package) Lower(roots []Root) (typegrammar.Definitions, []typegrammar.Ty
 // Declaration admission uses the same snapshot and production-tag rules as
 // FromPackages, including for files supplied solely through Overlay.
 func LoadWithConfig(config *packages.Config, pattern string) (*Package, error) {
+	return LoadWithSession(config, nil, pattern)
+}
+
+// LoadWithSession is LoadWithConfig with invocation-scoped package reuse.
+// The session also serves recursively reached source dependencies.
+func LoadWithSession(config *packages.Config, session *goload.Session, pattern string) (*Package, error) {
 	cfg := packages.Config{}
 	if config != nil {
 		cfg = *config
@@ -121,7 +128,7 @@ func LoadWithConfig(config *packages.Config, pattern string) (*Package, error) {
 	cfg.BuildFlags = append(cfg.BuildFlags, "-tags="+tags)
 	view := newSourceView(&cfg, envFlags)
 	loader := func(pattern string) ([]*decorator.Package, error) {
-		pkgs, err := decorator.Load(&cfg, pattern)
+		pkgs, err := syntax.LoadWithSession(&cfg, session, pattern)
 		if err != nil {
 			return nil, err
 		}

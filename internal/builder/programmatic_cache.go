@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tylergannon/polytype/goload"
 	"github.com/tylergannon/polytype/internal/syntax"
 	"github.com/tylergannon/polytype/typescript"
 )
@@ -12,7 +13,7 @@ import (
 // RunCachedTypeScript serves the existing codegen.Generate TypeScript-only
 // request. It returns false for opaque configuration or unavailable cache
 // acquisition, leaving the established general programmatic path in charge.
-func RunCachedTypeScript(target string, config ProgrammaticConfig, dir string, barrel, force bool) (bool, error) {
+func RunCachedTypeScript(target string, config ProgrammaticConfig, dir string, barrel, force bool, session *goload.Session) (bool, error) {
 	type unionIdentity struct{ PackagePath, TypeName, Discriminator string }
 	identity := struct {
 		Mode         string
@@ -39,6 +40,7 @@ func RunCachedTypeScript(target string, config ProgrammaticConfig, dir string, b
 		return true, applyConfiguredTypeScript(plan, args)
 	}
 	cacheTrace("miss")
+	inputs.session = session
 	pkgs, err := inputs.load(".")
 	if err != nil {
 		return true, err

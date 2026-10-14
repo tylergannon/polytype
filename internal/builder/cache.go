@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/dave/dst/decorator"
+	"github.com/tylergannon/polytype/goload"
 	"github.com/tylergannon/polytype/internal/syntax"
 	"golang.org/x/tools/go/packages"
 )
@@ -37,6 +38,7 @@ type cachePackage struct {
 	Error                                       *struct{ Err string }
 }
 type cacheInputs struct {
+	session        *goload.Session
 	overlay        map[string][]byte
 	key, path, dir string
 	source         syntax.SourceFiles
@@ -228,7 +230,11 @@ func (c *cacheInputs) load(pattern string) ([]*decorator.Package, error) {
 	cacheTrace("load " + pattern)
 	cfg := *syntax.DefaultPackageCfg
 	cfg.Dir = c.dir
-	flag, cleanup, err := generatedOverlayFlag(c.overlay)
+	overlay := c.overlay
+	if c.session != nil {
+		overlay = nil
+	}
+	flag, cleanup, err := generatedOverlayFlag(overlay)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +264,17 @@ func (c *cacheInputs) load(pattern string) ([]*decorator.Package, error) {
 		}
 		return parser.ParseFile(fset, path, content, parser.ParseComments)
 	}
-	pkgs, err := decorator.Load(&cfg, pattern)
+	if c.session != nil {
+		cfg.ParseFile = nil
+		cfg.Overlay = make(map[string][]byte, len(c.source)+len(c.overlay))
+		for path, content := range c.source {
+			cfg.Overlay[path] = content
+		}
+		for path, content := range c.overlay {
+			cfg.Overlay[path] = content
+		}
+	}
+	pkgs, err := syntax.LoadWithSession(&cfg, c.session, pattern)
 	for _, p := range pkgs {
 		expected, ok := c.packages[p.PkgPath]
 		files := make([]string, len(expected.CompiledGoFiles))

@@ -2,7 +2,10 @@ package builder
 
 import (
 	"fmt"
+	"path/filepath"
 	"unicode/utf8"
+
+	"github.com/tylergannon/polytype/goload"
 
 	"github.com/dave/dst/decorator"
 	"github.com/tylergannon/polytype/internal/syntax"
@@ -48,7 +51,38 @@ type ProgrammaticConfig struct {
 // from executable declarations. discoverCodecs walks types to populate the
 // enum and sealed-union codec metadata needed by GoJSON. mapSchemas builds
 // JSON Schema nodes; it implies discoverCodecs.
-func LoadProgrammatic(target string, config ProgrammaticConfig, discoverCodecs, mapSchemas bool) (SchemaBuilder, error) {
+func LoadProgrammatic(target string, config ProgrammaticConfig, discoverCodecs, mapSchemas bool, sessions ...*goload.Session) (SchemaBuilder, error) {
+	var session *goload.Session
+	if len(sessions) > 0 {
+		session = sessions[0]
+	}
+	if session != nil {
+		dir, err := filepath.Abs(target)
+		if err != nil {
+			return SchemaBuilder{}, err
+		}
+		cfg := *syntax.DefaultPackageCfg
+		cfg.Dir = dir
+		cfg.Overlay, err = generatedSourceOverlay(dir)
+		if err != nil {
+			return SchemaBuilder{}, err
+		}
+		loader := func(pattern string) ([]*decorator.Package, error) {
+			return syntax.LoadWithSession(&cfg, session, pattern)
+		}
+		pkgs, err := loader(".")
+		if err != nil {
+			return SchemaBuilder{}, err
+		}
+		if len(pkgs) == 0 {
+			return SchemaBuilder{}, fmt.Errorf("no packages found for %s", target)
+		}
+		scan, err := syntax.LoadConfiguredPackageWithSource(pkgs[0], loader, nil)
+		if err != nil {
+			return SchemaBuilder{}, err
+		}
+		return newProgrammaticFromScan(scan, config, discoverCodecs, mapSchemas)
+	}
 	pkgs, err := loadTarget(target)
 	if err != nil {
 		return SchemaBuilder{}, err
