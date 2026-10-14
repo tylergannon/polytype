@@ -657,6 +657,23 @@ Consumers with their own overlay/staging strategy can use
 `session.LoadWithFallback` and `grammar.LoadWithLoader` to retain that strategy
 for unsupported requests, including lazily reached dependencies.
 
+A development owner can call `session.SetMaxUniverses(n)` to retain at most `n`
+complete type universes. This bounds graph versions, not bytes. A small limit
+may evict earlier roots when lowering requests source for imported dependencies.
+
+Owners of a **private, fully captured source tree** can prepare a longer-lived
+`view := session.PrepareView(files)`. Supply every mutable source and build-control
+file, apply physical updates serially, then call `view.Update(files)` with the
+complete new capture before loading again. `view.Load` and
+`view.LoadWithFallback` reuse discovered package metadata for ordinary body and
+API edits and recheck affected packages and their importers. Changes to membership,
+imports, build constraints, compiler directives, non-Go controls, or configuration
+require Go discovery. External versioned modules and the toolchain must stay
+immutable for the view's lifetime. This API does not turn an arbitrary live
+working directory into a snapshot. Close the view to release its temporary files.
+Source-checked changed packages have no new compiler `ExportFile`; native-code
+reloaders still need fresh compiler artifacts.
+
 ### Adopt TypeScript declarations with Go JSON codecs
 
 Pin an explicit module release that contains both capabilities; the generator
