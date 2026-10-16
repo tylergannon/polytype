@@ -10,7 +10,6 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
-	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
+	"github.com/tylergannon/polytype/internal/publication"
 	"github.com/tylergannon/polytype/internal/schema"
 	"github.com/tylergannon/polytype/internal/syntax"
 	"github.com/tylergannon/polytype/typegrammar"
@@ -337,6 +337,7 @@ type InterfaceInfo struct {
 }
 
 type SchemaBuilder struct {
+	Publication       *publication.Result
 	Scan              syntax.ScanResult
 	Subdir            string
 	Pretty            bool
@@ -909,74 +910,32 @@ func (s SchemaBuilder) schemaBytes(t syntax.TypeID) ([]byte, error) {
 }
 
 func (s SchemaBuilder) writeSchema(t syntax.TypeID, targetDir string, noChanges bool) (wroteNew bool, err error) {
-	var (
-		filePath string
-		sumPath  string
-		tmpFile  *os.File
-	)
-
-	filePath = filepath.Join(targetDir, s.schemaArtifactName(t))
-	sumPath = filePath + ".sum"
-
-	// Create temp file in same directory to ensure same filesystem
-
-	if tmpFile, err = os.CreateTemp(targetDir, fmt.Sprintf("%s.*.json.tmp", t.TypeName)); err != nil {
-		return false, fmt.Errorf("could not create temp file: %w", err)
-	}
-	defer func() {
-		if fCloseErr := tmpFile.Close(); fCloseErr != nil && !errors.Is(fCloseErr, os.ErrClosed) {
-			err = errors.Join(err, fmt.Errorf("could not close temp file: %w", fCloseErr))
-		}
-		// Clean up temp file if we're returning with an error or if we didn't use it
-		_, statErr := os.Stat(tmpFile.Name())
-		if os.IsNotExist(statErr) {
-			return
-		} else if statErr != nil {
-			err = errors.Join(err, fmt.Errorf("could not stat temp file: %w", statErr))
-			return
-		}
-		if rmErr := os.Remove(tmpFile.Name()); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
-			err = errors.Join(err, fmt.Errorf("could not remove temp file: %w", rmErr))
-		}
-	}()
-
-	content, renderErr := s.schemaBytes(t)
-	if renderErr != nil {
-		return false, renderErr
-	}
-	hash := fnv.New64a()
-	if _, err = io.MultiWriter(tmpFile, hash).Write(content); err != nil {
+	path := filepath.Join(targetDir, s.schemaArtifactName(t))
+	content, err := s.schemaBytes(t)
+	if err != nil {
 		return false, err
 	}
-
-	newChecksum := hex.EncodeToString(hash.Sum(nil))
-
-	// Check if content actually changed by comparing with old checksum
-	wroteNew = true
-	if oldSum, err := os.ReadFile(sumPath); err == nil {
-		wroteNew = string(oldSum) != newChecksum
+	hash := fnv.New64a()
+	_, _ = hash.Write(content)
+	sum := []byte(hex.EncodeToString(hash.Sum(nil)))
+	old, e := os.ReadFile(path)
+	oldSum, se := os.ReadFile(path + ".sum")
+	wroteNew = e != nil || se != nil || !bytes.Equal(old, content) || !bytes.Equal(oldSum, sum)
+	if noChanges {
+		return wroteNew, nil
 	}
-
-	// If content changed and we're in noChanges mode, return without writing anything
-	if wroteNew && noChanges {
-		return true, nil
+	if err = s.Publication.Write(path, content); err != nil {
+		return wroteNew, err
 	}
-
-	// Move temp file into place and write new checksum
-	if err = tmpFile.Close(); err != nil {
-		return false, fmt.Errorf("could not close temp file: %w", err)
-	}
-	if err = os.Rename(tmpFile.Name(), filePath); err != nil {
-		return false, fmt.Errorf("could not move temp file into place: %w", err)
-	}
-	if err = os.WriteFile(sumPath, []byte(newChecksum), 0644); err != nil {
-		return false, fmt.Errorf("could not write checksum file: %w", err)
-	}
-
-	return wroteNew, nil
+	err = s.Publication.Write(path+".sum", sum)
+	return
 }
 
-func pruneOrphanedSchemaArtifacts(targetDir string, expected map[string]bool, noChanges bool) ([]string, error) {
+func pruneOrphanedSchemaArtifacts(targetDir string, expected map[string]bool, noChanges bool, results ...*publication.Result) ([]string, error) {
+	var result *publication.Result
+	if len(results) > 0 {
+		result = results[0]
+	}
 	entries, err := os.ReadDir(targetDir)
 	if err != nil {
 		return nil, fmt.Errorf("could not inspect generated schema directory: %w", err)
@@ -1023,7 +982,7 @@ func pruneOrphanedSchemaArtifacts(targetDir string, expected map[string]bool, no
 		return orphaned, nil
 	}
 	for _, name := range orphaned {
-		if err := os.Remove(filepath.Join(targetDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := result.Remove(filepath.Join(targetDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("could not remove orphaned generated schema artifact %s: %w", name, err)
 		}
 	}
@@ -1122,11 +1081,11 @@ func (s *SchemaBuilder) RenderGoCode() error {
 	if err != nil {
 		return err
 	}
-	if err = os.WriteFile(filepath.Join(s.Scan.Pkg.Dir, name), result, 0644); err != nil {
+	if err = s.Publication.Write(filepath.Join(s.Scan.Pkg.Dir, name), result); err != nil {
 		return err
 	}
 	if stale {
-		return os.Remove(otherPath)
+		return s.Publication.Remove(otherPath)
 	}
 	return nil
 }
@@ -1272,7 +1231,7 @@ func (s SchemaBuilder) RenderSchemas(noChanges, force bool) (changedSchemas map[
 		changedSchemas[root.Receiver.TypeName] = changed || force
 	}
 	if !noChanges && len(orphaned) > 0 {
-		orphaned, err = pruneOrphanedSchemaArtifacts(targetDir, expected, false)
+		orphaned, err = pruneOrphanedSchemaArtifacts(targetDir, expected, false, s.Publication)
 		if err != nil {
 			return nil, nil, err
 		}

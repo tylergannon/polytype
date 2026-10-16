@@ -6,7 +6,6 @@ package codegen
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -14,6 +13,7 @@ import (
 	devaluegen "github.com/tylergannon/polytype/devalue/codegen"
 	"github.com/tylergannon/polytype/goload"
 	"github.com/tylergannon/polytype/internal/builder"
+	"github.com/tylergannon/polytype/internal/publication"
 	"github.com/tylergannon/polytype/typescript"
 )
 
@@ -109,6 +109,34 @@ func Gen(config polytype.Configuration, options ...Option) error {
 // Generate runs the selected backends from the same declaration value used
 // by build-tagged bindings.
 func Generate(config polytype.Configuration, opts Options) error {
+	_, err := GenerateResult(config, opts)
+	return err
+}
+
+// GenResult is Gen with an actual output-change result. See GenerateResult.
+func GenResult(config polytype.Configuration, options ...Option) (bool, error) {
+	var opts Options
+	for _, option := range options {
+		if option != nil {
+			option(&opts)
+		}
+	}
+	return GenerateResult(config, opts)
+}
+
+// GenerateResult runs generation and reports whether output bytes or owned file
+// membership changed. Equal bytes preserve mtimes, including with Force. Repairs
+// count as changes. A true result remains true if a later step fails; callers
+// must handle the error before admitting generated code. Internal caches and
+// private analysis files do not contribute to the result.
+func GenerateResult(config polytype.Configuration, opts Options) (changed bool, err error) {
+	result := &publication.Result{}
+	defer func() { changed = result.Changed }()
+	err = generate(config, opts, result)
+	return
+}
+
+func generate(config polytype.Configuration, opts Options, result *publication.Result) error {
 	spec, err := polytype.ResolveConfiguration(config)
 	if err != nil {
 		return err
@@ -161,7 +189,7 @@ func Generate(config polytype.Configuration, opts Options) error {
 		if opts.worker != nil {
 			run = opts.worker.Run
 		}
-		if handled, err := run(opts.TargetDir, configured, opts.TypeScript.Dir, opts.TypeScript.Barrel, opts.Force, opts.Session); handled {
+		if handled, err := run(opts.TargetDir, configured, opts.TypeScript.Dir, opts.TypeScript.Barrel, opts.Force, opts.Session, result); handled {
 			return err
 		}
 	}
@@ -169,6 +197,7 @@ func Generate(config polytype.Configuration, opts Options) error {
 	if err != nil {
 		return err
 	}
+	b.Publication = result
 	b.Pretty = opts.Pretty
 	b.Validate = opts.Validate
 	if err := b.ApplyTransforms(); err != nil {
@@ -182,12 +211,12 @@ func Generate(config polytype.Configuration, opts Options) error {
 			return err
 		}
 		if opts.TypeScript != nil {
-			result, err := typescript.Generate(defs, typescript.Options{Barrel: opts.TypeScript.Barrel})
+			emitted, err := typescript.Generate(defs, typescript.Options{Barrel: opts.TypeScript.Barrel})
 			if err != nil {
 				return err
 			}
-			for _, file := range result.Files {
-				if err := writeOutput(filepath.Join(opts.TypeScript.Dir, file.Name), file.Content); err != nil {
+			for _, file := range emitted.Files {
+				if err := result.Write(filepath.Join(opts.TypeScript.Dir, file.Name), file.Content); err != nil {
 					return err
 				}
 			}
@@ -200,7 +229,7 @@ func Generate(config polytype.Configuration, opts Options) error {
 			if err != nil {
 				return err
 			}
-			if err := writeOutput(opts.Devalue.File, source); err != nil {
+			if err := result.Write(opts.Devalue.File, source); err != nil {
 				return err
 			}
 		}
@@ -283,17 +312,4 @@ func builderRuleKind(kind polytype.RuleKind) (string, error) {
 	default:
 		return "", fmt.Errorf("codegen: unknown declaration rule %q", kind)
 	}
-}
-
-func writeOutput(path string, content []byte) error {
-	if path == "" {
-		return errors.New("codegen: output path is required")
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create output directory for %s: %w", path, err)
-	}
-	if err := os.WriteFile(path, content, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	return nil
 }

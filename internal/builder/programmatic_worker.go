@@ -15,6 +15,7 @@ import (
 
 	"github.com/dave/dst/decorator"
 	"github.com/tylergannon/polytype/goload"
+	"github.com/tylergannon/polytype/internal/publication"
 	"github.com/tylergannon/polytype/internal/syntax"
 	"github.com/tylergannon/polytype/typescript"
 	"golang.org/x/mod/modfile"
@@ -53,7 +54,11 @@ func (w *TypeScriptWorker) Close() error {
 	return err
 }
 
-func (w *TypeScriptWorker) Run(target string, config ProgrammaticConfig, dir string, barrel, force bool, session *goload.Session) (bool, error) {
+func (w *TypeScriptWorker) Run(target string, config ProgrammaticConfig, dir string, barrel, force bool, session *goload.Session, results ...*publication.Result) (bool, error) {
+	var result *publication.Result
+	if len(results) > 0 {
+		result = results[0]
+	}
 	if err := cacheConfigurationSupported(); err != nil {
 		_ = w.Close()
 		return false, nil
@@ -103,7 +108,7 @@ func (w *TypeScriptWorker) Run(target string, config ProgrammaticConfig, dir str
 			fallback := w.inputs
 			_ = w.Close()
 			cacheTrace("worker bypass: " + err.Error())
-			return runCachedTypeScriptInputs(fallback, args, config, barrel, session)
+			return runCachedTypeScriptInputs(fallback, args, config, barrel, session, result)
 		}
 	}
 	snapshot, err := w.capture()
@@ -122,11 +127,11 @@ func (w *TypeScriptWorker) Run(target string, config ProgrammaticConfig, dir str
 		w.inputs = nil
 		w.snapshot = nil
 		w.plan = nil
-		return w.Run(target, config, dir, barrel, force, session)
+		return w.Run(target, config, dir, barrel, force, session, result)
 	}
 	if w.plan != nil && sameWorkerFiles(w.snapshot, snapshot) {
 		w.stats.Replays++
-		return true, applyConfiguredTypeScript(*w.plan, args)
+		return true, applyConfiguredTypeScript(*w.plan, args, result)
 	}
 	first := w.snapshot == nil
 	if first {
@@ -134,7 +139,7 @@ func (w *TypeScriptWorker) Run(target string, config ProgrammaticConfig, dir str
 			w.snapshot = snapshot
 			w.plan = &plan
 			w.stats.Replays++
-			return true, applyConfiguredTypeScript(plan, args)
+			return true, applyConfiguredTypeScript(plan, args, result)
 		}
 	}
 	if err = w.materialize(snapshot); err != nil {
@@ -224,16 +229,16 @@ func (w *TypeScriptWorker) Run(target string, config ProgrammaticConfig, dir str
 		return true, w.originalError(err)
 	}
 	w.stats.Emissions++
-	result, err := typescript.Generate(definitions, typescript.Options{Barrel: barrel})
+	emitted, err := typescript.Generate(definitions, typescript.Options{Barrel: barrel})
 	if err != nil {
 		return true, err
 	}
-	plan := emissionPlan{Dir: w.inputs.dir, SchemaDir: defaultSubdir, TypeScript: result.Files}
+	plan := emissionPlan{Dir: w.inputs.dir, SchemaDir: defaultSubdir, TypeScript: emitted.Files}
 	w.plan = &plan
 	if first {
 		w.savePlan(snapshot, plan)
 	}
-	return true, applyConfiguredTypeScript(plan, args)
+	return true, applyConfiguredTypeScript(plan, args, result)
 }
 
 func workerUnions(config ProgrammaticConfig) [][3]string {

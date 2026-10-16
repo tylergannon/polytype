@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/tylergannon/polytype/goload"
+	"github.com/tylergannon/polytype/internal/publication"
 	"github.com/tylergannon/polytype/internal/syntax"
 	"github.com/tylergannon/polytype/typescript"
 )
@@ -13,7 +14,11 @@ import (
 // RunCachedTypeScript serves the existing codegen.Generate TypeScript-only
 // request. It returns false for opaque configuration or unavailable cache
 // acquisition, leaving the established general programmatic path in charge.
-func RunCachedTypeScript(target string, config ProgrammaticConfig, dir string, barrel, force bool, session *goload.Session) (bool, error) {
+func RunCachedTypeScript(target string, config ProgrammaticConfig, dir string, barrel, force bool, session *goload.Session, results ...*publication.Result) (bool, error) {
+	var result *publication.Result
+	if len(results) > 0 {
+		result = results[0]
+	}
 	identity, ok := typeScriptIdentity(config)
 	if !ok {
 		return false, nil
@@ -27,13 +32,17 @@ func RunCachedTypeScript(target string, config ProgrammaticConfig, dir string, b
 		cacheTrace("bypass: " + err.Error())
 		return false, nil
 	}
-	return runCachedTypeScriptInputs(inputs, args, config, barrel, session)
+	return runCachedTypeScriptInputs(inputs, args, config, barrel, session, result)
 }
 
-func runCachedTypeScriptInputs(inputs *cacheInputs, args BuilderArgs, config ProgrammaticConfig, barrel bool, session *goload.Session) (bool, error) {
+func runCachedTypeScriptInputs(inputs *cacheInputs, args BuilderArgs, config ProgrammaticConfig, barrel bool, session *goload.Session, results ...*publication.Result) (bool, error) {
+	var result *publication.Result
+	if len(results) > 0 {
+		result = results[0]
+	}
 	if plan, hit := inputs.read(); hit {
 		cacheTrace("hit")
-		return true, applyConfiguredTypeScript(plan, args)
+		return true, applyConfiguredTypeScript(plan, args, result)
 	}
 	cacheTrace("miss")
 	inputs.session = session
@@ -59,20 +68,20 @@ func runCachedTypeScriptInputs(inputs *cacheInputs, args BuilderArgs, config Pro
 	if err != nil {
 		return true, err
 	}
-	result, err := typescript.Generate(definitions, typescript.Options{Barrel: barrel})
+	emitted, err := typescript.Generate(definitions, typescript.Options{Barrel: barrel})
 	if err != nil {
 		return true, err
 	}
 	// The common entry envelope stores a publication-independent emission. This
 	// request owns TypeScript only: it must never inspect/write/prune Go/schema.
-	plan := emissionPlan{Dir: inputs.dir, SchemaDir: defaultSubdir, TypeScript: result.Files}
+	plan := emissionPlan{Dir: inputs.dir, SchemaDir: defaultSubdir, TypeScript: emitted.Files}
 	inputs.save(plan)
-	return true, applyConfiguredTypeScript(plan, args)
+	return true, applyConfiguredTypeScript(plan, args, result)
 }
 
 // Programmatic generation historically replaces its selected files and does
 // not prune siblings. Replaying its cache must preserve those same semantics.
-func applyConfiguredTypeScript(plan emissionPlan, args BuilderArgs) error {
+func applyConfiguredTypeScript(plan emissionPlan, args BuilderArgs, result *publication.Result) error {
 	if err := os.MkdirAll(args.TypeScriptDir, 0755); err != nil {
 		return err
 	}
@@ -80,7 +89,7 @@ func applyConfiguredTypeScript(plan emissionPlan, args BuilderArgs) error {
 		if file.Name != typeScriptTypesFile && file.Name != typeScriptBarrelFile {
 			return fmt.Errorf("unexpected TypeScript output filename %q", file.Name)
 		}
-		if err := writeOutputFile(filepath.Join(args.TypeScriptDir, file.Name), file.Content); err != nil {
+		if err := result.Write(filepath.Join(args.TypeScriptDir, file.Name), file.Content); err != nil {
 			return err
 		}
 	}

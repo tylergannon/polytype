@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/tylergannon/polytype/internal/publication"
 	"os"
 	"path/filepath"
 	"slices"
@@ -172,31 +173,6 @@ func (p *outputPlan) apply(force bool) error {
 	return nil
 }
 
-func writeOutputFile(path string, content []byte) (err error) {
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("create temporary output for %s: %w", path, err)
-	}
-	tmpPath := tmp.Name()
-	defer func() {
-		if closeErr := tmp.Close(); closeErr != nil && !errors.Is(closeErr, os.ErrClosed) {
-			err = errors.Join(err, fmt.Errorf("close temporary output for %s: %w", path, closeErr))
-		}
-		if removeErr := os.Remove(tmpPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-			err = errors.Join(err, fmt.Errorf("remove temporary output for %s: %w", path, removeErr))
-		}
-	}()
-	if _, err = tmp.Write(content); err != nil {
-		return fmt.Errorf("write temporary output for %s: %w", path, err)
-	}
-	if err = tmp.Chmod(0o644); err != nil {
-		return fmt.Errorf("set permissions on output %s: %w", path, err)
-	}
-	if err = tmp.Close(); err != nil {
-		return fmt.Errorf("close temporary output for %s: %w", path, err)
-	}
-	if err = os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("replace output %s: %w", path, err)
-	}
-	return nil
+func writeOutputFile(path string, content []byte) error {
+	return (*publication.Result)(nil).Write(path, content)
 }
