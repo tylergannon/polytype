@@ -30,10 +30,16 @@ type Worker struct {
 // Generate updates the selected outputs from current authored source. Missing or
 // modified output is repaired even when no input changed.
 func (w *Worker) Generate(config polytype.Configuration, opts Options) error {
+	_, err := w.GenerateResult(config, opts)
+	return err
+}
+
+// GenerateResult is Generate with the output-change result of GenerateResult.
+func (w *Worker) GenerateResult(config polytype.Configuration, opts Options) (bool, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	opts.worker = &w.typescript
-	return Generate(config, opts)
+	return GenerateResult(config, opts)
 }
 
 // Close releases retained analysis and private files. The Worker may be reused.
